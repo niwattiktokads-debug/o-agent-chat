@@ -4,9 +4,14 @@ const ROLES = {
   Boss: { src: '/avatars/boss.svg', label: 'บ', cls: 'bg-amber-500 text-slate-950' },
   Code: { src: '/avatars/code.svg', label: 'C', cls: 'bg-sky-600 text-white' },
   Codex: { src: '/avatars/codex.svg', label: 'X', cls: 'bg-violet-600 text-white' },
+  ChatGPT: { src: '/avatars/chatgpt.svg', label: 'G', cls: 'bg-emerald-600 text-white' },
+  Cowork: { src: '/avatars/cowork.svg', label: '฿', cls: 'bg-rose-600 text-white' },
 }
 
-const ALIASES = { 'บอส': 'Boss', Boss: 'Boss', Code: 'Code', Codex: 'Codex' }
+const ALIASES = {
+  'บอส': 'Boss', Boss: 'Boss', Code: 'Code', Codex: 'Codex',
+  ChatGPT: 'ChatGPT', Cowork: 'Cowork',
+}
 
 export default function Avatar({ sender, size = 36 }) {
   const role = ALIASES[sender] || 'Boss'

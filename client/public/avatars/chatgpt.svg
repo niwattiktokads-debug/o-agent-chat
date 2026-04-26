@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#10a37f"/>
+      <stop offset="100%" stop-color="#0e8268"/>
+    </linearGradient>
+  </defs>
+  <circle cx="128" cy="128" r="128" fill="url(#g)"/>
+  <path fill="#ffffff" d="M170 92h-44a30 30 0 00-30 30v22a30 30 0 0030 30h22a30 30 0 0030-30V92zm-44 14h30v38a16 16 0 01-16 16h-22a16 16 0 01-16-16v-22a16 16 0 0116-16zM86 152V108a30 30 0 0130-30h22a30 30 0 0130 30v8h-14v-8a16 16 0 00-16-16h-22a16 16 0 00-16 16v44a16 16 0 0016 16h8v14h-8a30 30 0 01-30-30z"/>
+  <text x="128" y="222" text-anchor="middle" font-family="-apple-system, system-ui, sans-serif" font-size="22" font-weight="700" fill="#ffffff" opacity="0.85">GPT</text>
+</svg>

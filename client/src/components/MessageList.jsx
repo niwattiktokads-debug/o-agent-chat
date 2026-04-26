@@ -7,6 +7,8 @@ const styleFor = (sender) => {
   if (sender === 'บอส' || sender === 'Boss') return 'bg-amber-500/90 text-slate-950'
   if (sender === 'Code') return 'bg-sky-600 text-white'
   if (sender === 'Codex') return 'bg-violet-600 text-white'
+  if (sender === 'ChatGPT') return 'bg-emerald-600 text-white'
+  if (sender === 'Cowork') return 'bg-rose-600 text-white'
   return 'bg-slate-700 text-slate-100'
 }
 

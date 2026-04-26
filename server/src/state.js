@@ -17,7 +17,7 @@ export function createState() {
     scope: '',
     dod: '',
     messages: [],
-    presence: { Boss: false, Code: false, Codex: false },
+    presence: { Boss: false, Code: false, Codex: false, ChatGPT: false, Cowork: false },
     updatedAt: new Date().toISOString(),
   }
 
@@ -53,7 +53,7 @@ export function createState() {
 
     addMessage({ sender = 'Boss', role, text }) {
       const { tag, text: cleanText } = parseTag(text)
-      const safeRole = ['Boss', 'Code', 'Codex'].includes(role) ? role : sender
+      const safeRole = ['Boss', 'Code', 'Codex', 'ChatGPT', 'Cowork'].includes(role) ? role : sender
       const createdAt = new Date().toISOString()
       const msg = {
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,

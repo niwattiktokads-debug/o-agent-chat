@@ -18,8 +18,9 @@ export function mountRoutes(app, hub, room) {
     if (!text || typeof text !== 'string' || !text.trim()) {
       return res.status(400).json({ ok: false, error: 'empty_text' })
     }
-    const inputRole = ['Boss', 'Code', 'Codex'].includes(role) ? role : sender
-    const safeRole = ['Boss', 'Code', 'Codex'].includes(inputRole) ? inputRole : 'Boss'
+    const VALID = ['Boss', 'Code', 'Codex', 'ChatGPT', 'Cowork']
+    const inputRole = VALID.includes(role) ? role : sender
+    const safeRole = VALID.includes(inputRole) ? inputRole : 'Boss'
     const msg = room.addMessage({ role: safeRole, text: text.trim() })
     const state = room.snapshot()
     hub.broadcast('message', state)

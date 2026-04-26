@@ -56,7 +56,14 @@ function EditableField({ label, value, onSave }) {
 }
 
 export default function StatusPanel({ state, onSetLeader, onSetField }) {
-  const presence = state.presence || { Boss: false, Code: false, Codex: false }
+  const presence = state.presence || { Boss: false, Code: false, Codex: false, ChatGPT: false, Cowork: false }
+  const ROLES = [
+    { key: 'Boss', label: 'บอส', sub: 'ทิศทาง' },
+    { key: 'Code', label: 'Code', sub: 'UI/UX' },
+    { key: 'Codex', label: 'Codex', sub: 'Backend' },
+    { key: 'ChatGPT', label: 'ChatGPT', sub: 'ประสานงาน' },
+    { key: 'Cowork', label: 'Cowork', sub: 'ไฟแนนท์' },
+  ]
   const handleField = onSetField || (() => {})
 
   return (
@@ -64,11 +71,14 @@ export default function StatusPanel({ state, onSetLeader, onSetField }) {
       <div>
         <h2 className="text-xs uppercase tracking-wider text-slate-500 mb-3">ผู้ร่วมห้อง</h2>
         <div className="space-y-1.5 text-sm">
-          {['Boss', 'Code', 'Codex'].map((who) => (
-            <div key={who} className="flex items-center gap-2.5">
-              <Avatar sender={who} size={28} />
-              <span className="flex-1 text-slate-100">{who === 'Boss' ? 'บอส' : who}</span>
-              <PresenceDot online={presence[who]} />
+          {ROLES.map(({ key, label, sub }) => (
+            <div key={key} className="flex items-center gap-2.5">
+              <Avatar sender={key} size={28} />
+              <div className="flex-1 leading-tight">
+                <div className="text-slate-100">{label}</div>
+                <div className="text-[10px] text-slate-500">{sub}</div>
+              </div>
+              <PresenceDot online={presence[key]} />
             </div>
           ))}
         </div>

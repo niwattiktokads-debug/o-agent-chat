@@ -5,13 +5,18 @@
 
 import { parseTag } from './parseTag.js'
 
-const SENDER_TO_ROLE = { 'บอส': 'Boss', Boss: 'Boss', Code: 'Code', Codex: 'Codex' }
+const VALID_ROLES = ['Boss', 'Code', 'Codex', 'ChatGPT', 'Cowork']
+const SENDER_TO_ROLE = {
+  'บอส': 'Boss', Boss: 'Boss',
+  Code: 'Code', Codex: 'Codex',
+  ChatGPT: 'ChatGPT', Cowork: 'Cowork',
+}
 
 let identity = 'Boss'
 
 export function setIdentity(role) {
   const next = SENDER_TO_ROLE[role] || role
-  if (!['Boss', 'Code', 'Codex'].includes(next) || identity === next) return
+  if (!VALID_ROLES.includes(next) || identity === next) return
   identity = next
   if (wsOpen && ws) {
     ws.send(JSON.stringify({ event: 'identify', payload: { who: identity } }))
@@ -47,7 +52,7 @@ function buildState() {
     goal: serverSnapshot.goal,
     scope: serverSnapshot.scope,
     dod: serverSnapshot.dod ?? serverSnapshot.doneDefinition,
-    presence: serverSnapshot.presence || { Boss: false, Code: false, Codex: false },
+    presence: serverSnapshot.presence || { Boss: false, Code: false, Codex: false, ChatGPT: false, Cowork: false },
     messages: [...(serverSnapshot.messages || []), ...pendingMessages],
     typing: { ...typingState },
   }

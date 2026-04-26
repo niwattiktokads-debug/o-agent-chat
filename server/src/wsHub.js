@@ -18,7 +18,7 @@ export function createHub(wss, room) {
       switch (msg.event) {
         case 'identify': {
           const who = msg.payload?.who
-          if (['Boss', 'Code', 'Codex'].includes(who)) {
+          if (['Boss', 'Code', 'Codex', 'ChatGPT', 'Cowork'].includes(who)) {
             if (identifiedAs && identifiedAs !== who) {
               room.setPresence(identifiedAs, false)
             }

@@ -1,6 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react'
 
-const SENDER_TO_ROLE = { 'บอส': 'Boss', Code: 'Code', Codex: 'Codex' }
+const SENDER_TO_ROLE = {
+  'บอส': 'Boss', Code: 'Code', Codex: 'Codex',
+  ChatGPT: 'ChatGPT', Cowork: 'Cowork',
+}
 
 export default function Composer({ onSend, onTyping, online = true, onSenderChange }) {
   const [text, setText] = useState('')
@@ -55,7 +58,7 @@ export default function Composer({ onSend, onTyping, online = true, onSenderChan
   return (
     <form onSubmit={submit} className="border-t border-slate-800 bg-slate-900/60 p-3 sm:p-4">
       <div className="flex flex-wrap items-center gap-2 mb-2">
-        {['บอส', 'Code', 'Codex'].map((s) => (
+        {['บอส', 'Code', 'Codex', 'ChatGPT', 'Cowork'].map((s) => (
           <button
             key={s}
             type="button"

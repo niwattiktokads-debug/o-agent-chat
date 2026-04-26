@@ -11,7 +11,7 @@ import { useIsMobile } from './lib/useResponsive.js'
 const EMPTY_STATE = {
   leader: '—', operator: '—', goal: '', scope: '', dod: '',
   messages: [],
-  presence: { Boss: false, Code: false, Codex: false },
+  presence: { Boss: false, Code: false, Codex: false, ChatGPT: false, Cowork: false },
 }
 
 export default function App() {
@@ -51,7 +51,7 @@ export default function App() {
           )}
           <div className="flex-1">
             <h1 className="text-lg font-semibold">O Agent Chat</h1>
-            <p className="text-xs text-slate-500">ห้องแชต 3 ฝ่าย — บอส · Code · Codex</p>
+            <p className="text-xs text-slate-500">ห้องแชต 5 ฝ่าย — บอส · Code · Codex · ChatGPT · Cowork</p>
           </div>
           {!online && (
             <span className="text-[11px] text-amber-400 bg-amber-950/40 px-2 py-1 rounded">
