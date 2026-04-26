@@ -1,8 +1,19 @@
 import React, { useEffect, useRef, useState } from 'react'
 
-export default function Composer({ onSend, onTyping, online = true }) {
+const SENDER_TO_ROLE = { 'บอส': 'Boss', Code: 'Code', Codex: 'Codex' }
+
+export default function Composer({ onSend, onTyping, online = true, onSenderChange }) {
   const [text, setText] = useState('')
   const [sender, setSender] = useState('บอส')
+
+  const pickSender = (s) => {
+    setSender(s)
+    onSenderChange?.(SENDER_TO_ROLE[s] || s)
+  }
+
+  useEffect(() => {
+    onSenderChange?.(SENDER_TO_ROLE[sender] || sender)
+  }, [])
   const typingTimer = useRef(null)
   const lastTyping = useRef(false)
 
@@ -48,7 +59,7 @@ export default function Composer({ onSend, onTyping, online = true }) {
           <button
             key={s}
             type="button"
-            onClick={() => setSender(s)}
+            onClick={() => pickSender(s)}
             className={`rounded-md px-2.5 py-1 text-xs font-medium ${
               sender === s ? 'bg-slate-200 text-slate-900' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
             }`}

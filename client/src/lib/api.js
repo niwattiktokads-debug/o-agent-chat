@@ -8,7 +8,15 @@ import { parseTag } from './parseTag.js'
 const SENDER_TO_ROLE = { 'บอส': 'Boss', Boss: 'Boss', Code: 'Code', Codex: 'Codex' }
 
 let identity = 'Boss'
-export function setIdentity(role) { identity = role }
+
+export function setIdentity(role) {
+  const next = SENDER_TO_ROLE[role] || role
+  if (!['Boss', 'Code', 'Codex'].includes(next) || identity === next) return
+  identity = next
+  if (wsOpen && ws) {
+    ws.send(JSON.stringify({ event: 'identify', payload: { who: identity } }))
+  }
+}
 
 let stateCb = null
 let serverSnapshot = null

@@ -4,7 +4,7 @@ import MessageList from './components/MessageList.jsx'
 import Composer from './components/Composer.jsx'
 import MobileDrawer from './components/MobileDrawer.jsx'
 import {
-  subscribe, sendMessage, setLeader, setField, sendTyping, onConnectivity,
+  subscribe, sendMessage, setLeader, setField, sendTyping, onConnectivity, setIdentity,
 } from './lib/api.js'
 import { useIsMobile } from './lib/useResponsive.js'
 
@@ -60,7 +60,12 @@ export default function App() {
           )}
         </header>
         <MessageList messages={state.messages} />
-        <Composer onSend={sendMessage} onTyping={sendTyping} online={online} />
+        <Composer
+          onSend={sendMessage}
+          onTyping={sendTyping}
+          online={online}
+          onSenderChange={setIdentity}
+        />
       </main>
     </div>
   )
