@@ -53,6 +53,18 @@ export default function Composer({ onSend, onTyping, online = true, onSenderChan
     }
   }
 
+  const askExternal = (target) => {
+    const t = text.trim()
+    if (!t) return
+    const q = encodeURIComponent(t)
+    const url = target === 'Cowork'
+      ? `https://claude.ai/new?q=${q}`
+      : `https://chatgpt.com/?q=${q}`
+    onSend(sender, `[ASK] @${target} ${t}`)
+    window.open(url, '_blank', 'noopener')
+    setText('')
+  }
+
   useEffect(() => () => clearTimeout(typingTimer.current), [])
 
   return (
@@ -89,6 +101,27 @@ export default function Composer({ onSend, onTyping, online = true, onSenderChan
           disabled={!text.trim()}
         >
           ส่ง
+        </button>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+        <span className="text-slate-500">เปิดถามภายนอก:</span>
+        <button
+          type="button"
+          onClick={() => askExternal('Cowork')}
+          disabled={!text.trim()}
+          className="rounded-md bg-rose-600/20 px-2 py-0.5 text-rose-300 hover:bg-rose-600/30 disabled:opacity-40"
+          title="ส่งข้อความไปเปิด Claude.ai (Cowork) ใน tab ใหม่ + log [ASK] ในห้อง"
+        >
+          ถาม Cowork ↗
+        </button>
+        <button
+          type="button"
+          onClick={() => askExternal('ChatGPT')}
+          disabled={!text.trim()}
+          className="rounded-md bg-emerald-600/20 px-2 py-0.5 text-emerald-300 hover:bg-emerald-600/30 disabled:opacity-40"
+          title="ส่งข้อความไปเปิด ChatGPT ใน tab ใหม่ + log [ASK] ในห้อง"
+        >
+          ถาม ChatGPT ↗
         </button>
       </div>
     </form>
