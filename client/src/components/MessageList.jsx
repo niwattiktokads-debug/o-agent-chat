@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react'
 import TagBadge from './TagBadge.jsx'
+import Avatar from './Avatar.jsx'
 import { parseTag } from '../lib/parseTag.js'
 
 const styleFor = (sender) => {
@@ -28,9 +29,11 @@ export default function MessageList({ messages }) {
     <div className="flex-1 overflow-y-auto px-4 py-5 space-y-3 sm:px-6">
       {messages.map((m) => {
         const parsed = m.tag ? { tag: m.tag, text: m.text } : parseTag(m.text || '')
+        const isBoss = m.sender === 'บอส' || m.sender === 'Boss'
         return (
-          <div key={m.id} className={`flex ${sideFor(m.sender)}`}>
-            <div className="max-w-[80%] sm:max-w-[70%]">
+          <div key={m.id} className={`flex items-end gap-2 ${sideFor(m.sender)}`}>
+            {!isBoss && <Avatar sender={m.sender} />}
+            <div className="max-w-[75%] sm:max-w-[65%]">
               <div className="text-[11px] text-slate-500 mb-1 px-1 flex items-center gap-2">
                 <span>{m.sender}</span>
                 <span>·</span>
@@ -43,6 +46,7 @@ export default function MessageList({ messages }) {
                 <span>{parsed.text}</span>
               </div>
             </div>
+            {isBoss && <Avatar sender={m.sender} />}
           </div>
         )
       })}

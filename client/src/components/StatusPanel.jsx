@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import PresenceDot from './PresenceDot.jsx'
+import Avatar from './Avatar.jsx'
 
 const Row = ({ label, value }) => (
   <div className="flex gap-3 text-sm">
@@ -64,9 +65,10 @@ export default function StatusPanel({ state, onSetLeader, onSetField }) {
         <h2 className="text-xs uppercase tracking-wider text-slate-500 mb-3">ผู้ร่วมห้อง</h2>
         <div className="space-y-1.5 text-sm">
           {['Boss', 'Code', 'Codex'].map((who) => (
-            <div key={who} className="flex items-center gap-2">
+            <div key={who} className="flex items-center gap-2.5">
+              <Avatar sender={who} size={28} />
+              <span className="flex-1 text-slate-100">{who === 'Boss' ? 'บอส' : who}</span>
               <PresenceDot online={presence[who]} />
-              <span className="text-slate-100">{who === 'Boss' ? 'บอส' : who}</span>
             </div>
           ))}
         </div>
