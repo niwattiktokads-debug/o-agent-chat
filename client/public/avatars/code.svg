@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Code avatar</title>
+  <desc id="desc">Sharp blue profile avatar for Code.</desc>
+  <defs>
+    <linearGradient id="bg" x1="42" y1="24" x2="214" y2="232" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7dd3fc"/>
+      <stop offset="0.52" stop-color="#0284c7"/>
+      <stop offset="1" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="70" y1="64" x2="186" y2="190">
+      <stop stop-color="#f0f9ff" stop-opacity=".85"/>
+      <stop offset="1" stop-color="#bae6fd" stop-opacity=".22"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="64" fill="#020617"/>
+  <circle cx="128" cy="128" r="104" fill="url(#bg)"/>
+  <path d="M73 86c0-17 14-31 31-31h48c17 0 31 14 31 31v49c0 17-14 31-31 31h-48c-17 0-31-14-31-31V86Z" fill="url(#glass)" stroke="#e0f2fe" stroke-opacity=".7" stroke-width="5"/>
+  <path d="M95 112l-20 18 20 18M161 112l20 18-20 18M141 96l-26 68" fill="none" stroke="#0f172a" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M71 194c15-24 35-36 57-36s42 12 57 36c-17 19-37 29-57 29s-40-10-57-29Z" fill="#082f49" opacity=".78"/>
+  <circle cx="87" cy="64" r="8" fill="#e0f2fe"/>
+  <circle cx="181" cy="188" r="7" fill="#bae6fd"/>
+  <path d="M53 142c17 8 33 10 48 7" fill="none" stroke="#bae6fd" stroke-width="5" stroke-linecap="round" opacity=".7"/>
+</svg>
