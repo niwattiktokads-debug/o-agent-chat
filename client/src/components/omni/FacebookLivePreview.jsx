@@ -5,6 +5,7 @@ const PROFILES = [
   { value: 'anna_lynn', label: 'Anna Lynn' },
   { value: 'man_kynd', label: 'MAN KYND' },
   { value: 'page_des', label: 'เพจเดส' },
+  { value: 'fb_112154661515664', label: 'Facebook Page 112154661515664' },
 ]
 
 export default function FacebookLivePreview({ onSynced }) {

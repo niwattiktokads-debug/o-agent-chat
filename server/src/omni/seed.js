@@ -3,6 +3,7 @@ export function createOmniSeed() {
     { id: 'page_mankynd', name: 'MAN KYND', status: 'active', brandGroupId: 'brand_mankynd', policySetId: 'policy_mankynd', agentProfileId: 'agent_mankynd' },
     { id: 'page_annalynn', name: 'Anna Lynn', status: 'active', brandGroupId: 'brand_fashion', policySetId: 'policy_annalynn', agentProfileId: 'agent_annalynn' },
     { id: 'page_des', name: 'เพจเดส', status: 'active', brandGroupId: 'brand_oagent', policySetId: 'policy_page_des', agentProfileId: 'agent_page_des' },
+    { id: 'page_fb_112154661515664', name: 'Facebook Page 112154661515664', status: 'active', brandGroupId: 'brand_shared', policySetId: 'policy_default', agentProfileId: 'agent_default' },
     { id: 'page_shop_4', name: 'Seed Page 4', status: 'active', brandGroupId: 'brand_shared', policySetId: 'policy_default', agentProfileId: 'agent_default' },
     { id: 'page_shop_5', name: 'Seed Page 5', status: 'active', brandGroupId: 'brand_shared', policySetId: 'policy_default', agentProfileId: 'agent_default' },
   ]
@@ -11,6 +12,7 @@ export function createOmniSeed() {
     pages,
     platformAccounts: [
       { id: 'acct_fb_mankynd', pageId: 'page_mankynd', platform: 'facebook', provider: 'meta', status: 'healthy' },
+      { id: 'acct_fb_112154661515664', pageId: 'page_fb_112154661515664', platform: 'facebook', provider: 'meta', status: 'pending_token' },
       { id: 'acct_tt_shop', pageId: 'page_annalynn', platform: 'tiktok', provider: 'tiktok_shop', status: 'healthy' },
     ],
     policySets: [

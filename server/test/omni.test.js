@@ -13,7 +13,8 @@ import { mountRoutes } from '../src/routes.js'
 
 test('omni seed starts with configurable five-page seed data', () => {
   const seed = createOmniSeed()
-  assert.equal(seed.pages.length, 5)
+  assert.equal(seed.pages.length, 6)
+  assert.ok(seed.pages.find((page) => page.id === 'page_fb_112154661515664'))
   assert.equal(seed.pages.every((page) => page.status === 'active'), true)
   assert.equal(seed.pages.every((page) => page.policySetId), true)
   assert.equal(seed.pages.every((page) => page.agentProfileId), true)
@@ -52,7 +53,7 @@ test('omni routes are mounted under api', async () => {
 
     assert.equal(response.status, 200)
     assert.equal(body.ok, true)
-    assert.equal(body.pages.length, 5)
+    assert.equal(body.pages.length, 6)
   } finally {
     server.close()
   }
@@ -160,6 +161,16 @@ test('Facebook connector calls meta helper through injectable runner', async () 
   assert.deepEqual(calls[0], ['list-conversations', '--page=page_des'])
   assert.equal(result.page.omniPageId, 'page_des')
   assert.deepEqual(result.threads, [])
+})
+
+test('Facebook connector accepts configured extra page profile', async () => {
+  const result = await listFacebookConversations({
+    pageProfile: 'fb_112154661515664',
+    runner: async () => ({ ok: true, response: { data: [] } }),
+  })
+
+  assert.equal(result.page.pageId, '112154661515664')
+  assert.equal(result.page.omniPageId, 'page_fb_112154661515664')
 })
 
 test('omni service syncs normalized Facebook conversations into memory store', () => {
