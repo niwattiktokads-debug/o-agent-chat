@@ -21,3 +21,14 @@ export async function fetchFacebookConversations(pageProfile) {
   const query = new URLSearchParams({ page: pageProfile })
   return (await getJson(`/api/omni/facebook/conversations?${query.toString()}`)).data
 }
+
+export async function syncFacebookConversations(pageProfile) {
+  const response = await fetch('/api/omni/facebook/sync', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ page: pageProfile }),
+  })
+  const body = await response.json()
+  if (!response.ok || !body.ok) throw new Error(body.error || 'facebook_sync_failed')
+  return body.result
+}

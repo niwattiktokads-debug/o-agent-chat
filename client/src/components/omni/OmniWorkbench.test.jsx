@@ -16,6 +16,20 @@ vi.mock('../../lib/omniApi.js', () => ({
   }),
   fetchConnectorHealth: async () => [{ provider: 'meta', status: 'healthy' }],
   fetchFacebookConversations: async () => ({ threads: [] }),
+  syncFacebookConversations: async () => ({
+    page: { omniPageId: 'page_mankynd' },
+    threads: { inserted: 0, updated: 0 },
+    snapshot: {
+      pages: [{ id: 'page_mankynd', name: 'MAN KYND', status: 'active' }],
+      threads: [],
+      messages: [],
+      customers: [],
+      orders: [],
+      aiDecisions: [],
+      paymentRequests: [],
+      connectorHealth: [],
+    },
+  }),
 }))
 
 describe('OmniWorkbench', () => {
@@ -28,5 +42,6 @@ describe('OmniWorkbench', () => {
     expect(await screen.findByText('Order Desk')).toBeInTheDocument()
     expect(await screen.findByText('Payment Desk')).toBeInTheDocument()
     expect(await screen.findByText('Facebook Live Preview')).toBeInTheDocument()
+    expect(await screen.findByText('Sync')).toBeInTheDocument()
   })
 })

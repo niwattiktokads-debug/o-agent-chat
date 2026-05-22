@@ -59,6 +59,17 @@ export function mountRoutes(app, hub, room) {
     }
   })
 
+  app.post('/api/omni/facebook/sync', async (req, res) => {
+    try {
+      const pageProfile = String(req.body?.page || req.query.page || 'anna_lynn')
+      const data = await listFacebookConversations({ pageProfile })
+      const result = omni.syncFacebookConversations(data)
+      res.json({ ok: true, result })
+    } catch (error) {
+      res.status(400).json({ ok: false, error: error.message || 'facebook_sync_failed' })
+    }
+  })
+
   app.get('/api/state', (_req, res) => {
     res.json(room.snapshot())
   })

@@ -75,6 +75,29 @@ test('Facebook route rejects unknown page profile without mutation', async () =>
   }
 })
 
+test('Facebook sync route rejects unknown page profile without mutation', async () => {
+  const app = express()
+  app.use(express.json())
+  mountRoutes(app, { broadcast() {} }, { snapshot() { return {} } })
+
+  const server = app.listen(0)
+  try {
+    const baseUrl = `http://127.0.0.1:${server.address().port}`
+    const response = await fetch(`${baseUrl}/api/omni/facebook/sync`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ page: 'unknown_page' }),
+    })
+    const body = await response.json()
+
+    assert.equal(response.status, 400)
+    assert.equal(body.ok, false)
+    assert.match(body.error, /unknown_facebook_page/)
+  } finally {
+    server.close()
+  }
+})
+
 test('omni schema route exposes read-only database contract', async () => {
   const app = express()
   app.use(express.json())
@@ -135,6 +158,30 @@ test('Facebook connector calls meta helper through injectable runner', async () 
   assert.deepEqual(calls[0], ['list-conversations', '--page=page_des'])
   assert.equal(result.page.omniPageId, 'page_des')
   assert.deepEqual(result.threads, [])
+})
+
+test('omni service syncs normalized Facebook conversations into memory store', () => {
+  const service = createOmniService()
+  const result = service.syncFacebookConversations({
+    page: { pageId: '189971841184132', pageName: 'MAN KYND', omniPageId: 'page_mankynd' },
+    customers: [{ id: 'fb_customer_1', displayName: 'Customer One', platform: 'facebook', providerCustomerId: '1', matchConfidence: 1 }],
+    threads: [{ id: 'fb_thread_1', providerThreadId: 't_1', pageId: 'page_mankynd', platform: 'facebook', customerId: 'fb_customer_1', status: 'open', intent: 'unknown', risk: 'medium', unreadCount: 1, messageCount: 1, updatedAt: '2026-05-22T00:00:00+0000' }],
+    messages: [{ id: 'fb_preview_t_1', threadId: 'fb_thread_1', direction: 'inbound', authorName: 'Customer One', text: 'hello', createdAt: '2026-05-22T00:00:00+0000', providerMessageId: 't_1:snippet' }],
+  })
+
+  assert.equal(result.threads.inserted, 1)
+  assert.equal(service.getThread('fb_thread_1').messages[0].text, 'hello')
+
+  const second = service.syncFacebookConversations({
+    page: result.page,
+    customers: [{ id: 'fb_customer_1', displayName: 'Customer One Updated', platform: 'facebook', providerCustomerId: '1', matchConfidence: 1 }],
+    threads: [{ id: 'fb_thread_1', providerThreadId: 't_1', pageId: 'page_mankynd', platform: 'facebook', customerId: 'fb_customer_1', status: 'draft_ready', intent: 'unknown', risk: 'medium', unreadCount: 0, messageCount: 2, updatedAt: '2026-05-22T00:01:00+0000' }],
+    messages: [{ id: 'fb_preview_t_1', threadId: 'fb_thread_1', direction: 'inbound', authorName: 'Customer One', text: 'updated', createdAt: '2026-05-22T00:01:00+0000', providerMessageId: 't_1:snippet' }],
+  })
+
+  assert.equal(second.threads.updated, 1)
+  assert.equal(service.getThread('fb_thread_1').status, 'draft_ready')
+  assert.equal(service.getThread('fb_thread_1').messages[0].text, 'updated')
 })
 
 test('omni database schema includes durable memory tables and guards', () => {

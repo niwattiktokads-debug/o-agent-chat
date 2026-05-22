@@ -43,7 +43,7 @@ export default function OmniWorkbench() {
         <AiDecisionPanel snapshot={snapshot} thread={selectedThread} />
         <OrderDesk snapshot={snapshot} thread={selectedThread} />
         <PaymentDesk snapshot={snapshot} thread={selectedThread} />
-        <FacebookLivePreview />
+        <FacebookLivePreview onSynced={setSnapshot} />
         <ConnectorHealth health={snapshot.connectorHealth} />
         <PageManagement pages={snapshot.pages} />
       </aside>

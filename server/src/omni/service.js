@@ -3,6 +3,25 @@ import { createOmniSeed } from './seed.js'
 export function createOmniService(seed = createOmniSeed()) {
   const data = structuredClone(seed)
 
+  function upsert(collectionName, rows, key = 'id') {
+    const collection = data[collectionName]
+    let inserted = 0
+    let updated = 0
+
+    for (const row of rows || []) {
+      const existingIndex = collection.findIndex((item) => item[key] === row[key])
+      if (existingIndex >= 0) {
+        collection[existingIndex] = { ...collection[existingIndex], ...structuredClone(row) }
+        updated += 1
+      } else {
+        collection.push(structuredClone(row))
+        inserted += 1
+      }
+    }
+
+    return { inserted, updated }
+  }
+
   function getPolicyForThread(thread) {
     const page = data.pages.find((item) => item.id === thread.pageId)
     return data.policySets.find((item) => item.id === page?.policySetId)
@@ -47,6 +66,19 @@ export function createOmniService(seed = createOmniSeed()) {
       if (!thread) return { ok: false, error: 'thread_not_found' }
       thread.status = 'auto_sent'
       return { ok: true, thread: structuredClone(thread) }
+    },
+    syncFacebookConversations(normalized) {
+      const customerResult = upsert('customers', normalized.customers)
+      const threadResult = upsert('threads', normalized.threads)
+      const messageResult = upsert('messages', normalized.messages)
+      return {
+        ok: true,
+        page: normalized.page,
+        customers: customerResult,
+        threads: threadResult,
+        messages: messageResult,
+        snapshot: this.snapshot(),
+      }
     },
   }
 }
