@@ -3,6 +3,7 @@ import StatusPanel from './components/StatusPanel.jsx'
 import MessageList from './components/MessageList.jsx'
 import Composer from './components/Composer.jsx'
 import MobileDrawer from './components/MobileDrawer.jsx'
+import OmniWorkbench from './components/omni/OmniWorkbench.jsx'
 import {
   subscribe, sendMessage, setLeader, setField, sendTyping, onConnectivity, setIdentity,
 } from './lib/api.js'
@@ -17,6 +18,7 @@ const EMPTY_STATE = {
 export default function App() {
   const [state, setState] = useState(EMPTY_STATE)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [mode, setMode] = useState('chat')
   const [online, setOnline] = useState(true)
   const isMobile = useIsMobile()
 
@@ -26,6 +28,20 @@ export default function App() {
   const panel = (
     <StatusPanel state={state} onSetLeader={setLeader} onSetField={setField} />
   )
+
+  if (mode === 'omni') {
+    return (
+      <div className="flex h-full flex-col bg-slate-950 text-slate-100">
+        <header className="flex items-center gap-3 border-b border-slate-800 px-4 py-2">
+          <button type="button" className="rounded bg-slate-800 px-3 py-1 text-sm" onClick={() => setMode('chat')}>Chat</button>
+          <button type="button" className="rounded bg-cyan-950 px-3 py-1 text-sm text-cyan-100" onClick={() => setMode('omni')}>Omni</button>
+        </header>
+        <div className="min-h-0 flex-1">
+          <OmniWorkbench />
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-full text-slate-100">
@@ -53,6 +69,7 @@ export default function App() {
             <h1 className="text-lg font-semibold">O Agent Chat</h1>
             <p className="text-xs text-slate-500">ห้องแชต 5 ฝ่าย — บอส · Code · Codex · ChatGPT · Cowork</p>
           </div>
+          <button type="button" className="rounded bg-slate-800 px-3 py-1 text-sm" onClick={() => setMode('omni')}>Omni</button>
           {!online && (
             <span className="text-[11px] text-amber-400 bg-amber-950/40 px-2 py-1 rounded">
               เชื่อมต่อใหม่...
