@@ -47,6 +47,19 @@ vi.mock('../../lib/omniApi.js', () => ({
       connectorHealth: [],
     },
   }),
+  createAiDraft: async () => ({
+    decision: { action: 'draft_ready', confidence: 0.82, draftText: 'เดี๋ยวเช็กสต็อกให้ค่ะ' },
+    snapshot: {
+      pages: [{ id: 'page_mankynd', name: 'MAN KYND', status: 'active' }],
+      threads: [],
+      messages: [],
+      customers: [],
+      orders: [],
+      aiDecisions: [],
+      paymentRequests: [],
+      connectorHealth: [],
+    },
+  }),
 }))
 
 describe('OmniWorkbench', () => {
@@ -56,6 +69,7 @@ describe('OmniWorkbench', () => {
     expect((await screen.findAllByText('MAN KYND')).length).toBeGreaterThan(0)
     expect((await screen.findAllByText('VZ')).length).toBeGreaterThan(1)
     expect(await screen.findByText('AI Decision')).toBeInTheDocument()
+    expect(await screen.findByText('AI Draft')).toBeInTheDocument()
     expect(await screen.findByText('Connector Health')).toBeInTheDocument()
     expect(await screen.findByText('Order Desk')).toBeInTheDocument()
     expect(await screen.findByText('Recent TikTok Orders')).toBeInTheDocument()

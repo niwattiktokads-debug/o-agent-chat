@@ -6,6 +6,8 @@ import { createOmniSeed } from '../src/omni/seed.js'
 import { createAdapterRegistry } from '../src/omni/adapters.js'
 import { createOmniService } from '../src/omni/service.js'
 import { listFacebookConversations, normalizeMetaConversations } from '../src/omni/metaInboxClient.js'
+import { createAiReplyEngine } from '../src/omni/aiReplyEngine.js'
+import { normalizeMetaWebhookPayload } from '../src/omni/metaWebhook.js'
 import { listTikTokOrders, normalizeTikTokOrders } from '../src/omni/tiktokOrderClient.js'
 import { getOmniSchemaSummary, loadOmniSchemaSql, REQUIRED_OMNI_TABLES } from '../src/omni/db/schema.js'
 import { createSqliteOmniStore } from '../src/omni/db/sqliteStore.js'
@@ -195,6 +197,56 @@ test('omni service syncs normalized Facebook conversations into memory store', (
   assert.equal(second.threads.updated, 1)
   assert.equal(service.getThread('fb_thread_1').status, 'draft_ready')
   assert.equal(service.getThread('fb_thread_1').messages[0].text, 'updated')
+})
+
+test('normalizes Meta webhook messages into Omni memory rows', () => {
+  const normalized = normalizeMetaWebhookPayload({
+    object: 'page',
+    entry: [{
+      id: '112154661515664',
+      messaging: [{
+        sender: { id: 'customer_vz_1' },
+        recipient: { id: '112154661515664' },
+        timestamp: 1779470000000,
+        message: { mid: 'mid_vz_1', text: 'มีสินค้าไหม' },
+      }],
+    }],
+  })
+
+  assert.equal(normalized.threads[0].pageId, 'page_fb_112154661515664')
+  assert.equal(normalized.messages[0].direction, 'inbound')
+  assert.equal(normalized.messages[0].text, 'มีสินค้าไหม')
+})
+
+test('omni service syncs Meta webhook messages into memory store', () => {
+  const service = createOmniService()
+  const result = service.syncFacebookWebhookEvents(normalizeMetaWebhookPayload({
+    object: 'page',
+    entry: [{
+      id: '122106446570001676',
+      messaging: [{
+        sender: { id: 'customer_anna_1' },
+        recipient: { id: '122106446570001676' },
+        timestamp: 1779470000000,
+        message: { mid: 'mid_anna_1', text: 'ราคาเท่าไหร่' },
+      }],
+    }],
+  }))
+
+  assert.equal(result.threads.inserted, 1)
+  assert.equal(result.messages.inserted, 1)
+})
+
+test('AI reply engine drafts guarded replies from thread memory', () => {
+  const service = createOmniService()
+  const thread = service.getThread('thread_1')
+  const ai = createAiReplyEngine({ provider: 'local_rules', model: 'test' })
+  const decision = ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
+
+  assert.equal(decision.ok, true)
+  assert.equal(decision.intent, 'stock')
+  assert.equal(decision.allowed, true)
+  assert.match(decision.draftText, /เช็กสต็อก/)
 })
 
 test('SQLite Omni store persists synced Facebook conversations across service instances', () => {

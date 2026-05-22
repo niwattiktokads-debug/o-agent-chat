@@ -41,7 +41,7 @@ export default function OmniWorkbench() {
         <ThreadDetail snapshot={snapshot} thread={selectedThread} />
       </main>
       <aside className="overflow-y-auto">
-        <AiDecisionPanel snapshot={snapshot} thread={selectedThread} />
+        <AiDecisionPanel snapshot={snapshot} thread={selectedThread} onDrafted={setSnapshot} />
         <OrderDesk snapshot={snapshot} thread={selectedThread} />
         <PaymentDesk snapshot={snapshot} thread={selectedThread} />
         <TikTokOrderSync onSynced={setSnapshot} />

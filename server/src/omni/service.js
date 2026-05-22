@@ -74,6 +74,24 @@ export function createOmniService(options = createOmniSeed()) {
       if (thread.risk !== 'low') return { allowed: false, reason: 'risk_not_low' }
       return { allowed: true, reason: 'policy_whitelist' }
     },
+    getPolicyForThread(thread) {
+      return structuredClone(getPolicyForThread(thread))
+    },
+    recordAiDecision(decision) {
+      const id = decision.id || `ai_${decision.threadId}_${Date.now()}`
+      const row = {
+        id,
+        threadId: decision.threadId,
+        agentProfileId: decision.agentProfileId || null,
+        confidence: decision.confidence || 0,
+        action: decision.action,
+        sourceIds: decision.sourceIds || [],
+        reason: decision.reason || '',
+        createdAt: decision.createdAt || new Date().toISOString(),
+      }
+      const result = upsert('aiDecisions', [row])
+      return { ok: true, result, decision: structuredClone(row), snapshot: this.snapshot() }
+    },
     approveDraft({ threadId }) {
       if (store) return { ok: false, error: 'approval_not_supported_for_sqlite_store_yet' }
       const thread = data.threads.find((item) => item.id === threadId)
@@ -88,6 +106,19 @@ export function createOmniService(options = createOmniSeed()) {
       return {
         ok: true,
         page: normalized.page,
+        customers: customerResult,
+        threads: threadResult,
+        messages: messageResult,
+        snapshot: this.snapshot(),
+      }
+    },
+    syncFacebookWebhookEvents(normalized) {
+      const customerResult = upsert('customers', normalized.customers)
+      const threadResult = upsert('threads', normalized.threads)
+      const messageResult = upsert('messages', normalized.messages)
+      return {
+        ok: true,
+        source: normalized.source,
         customers: customerResult,
         threads: threadResult,
         messages: messageResult,

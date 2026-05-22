@@ -48,3 +48,13 @@ export async function syncTikTokOrders(status = 'AWAITING_COLLECTION', pageSize 
   if (!response.ok || !body.ok) throw new Error(body.error || 'tiktok_sync_failed')
   return body.result
 }
+
+export async function createAiDraft(threadId) {
+  const response = await fetch(`/api/omni/threads/${threadId}/ai-draft`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+  })
+  const body = await response.json()
+  if (!response.ok || !body.ok) throw new Error(body.error || 'ai_draft_failed')
+  return body
+}

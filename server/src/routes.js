@@ -1,4 +1,5 @@
 import { createAdapterRegistry } from './omni/adapters.js'
+import { createAiReplyEngine } from './omni/aiReplyEngine.js'
 import { getOmniSchemaSummary } from './omni/db/schema.js'
 import { listFacebookConversations } from './omni/metaInboxClient.js'
 import { createOmniService } from './omni/service.js'
@@ -21,6 +22,7 @@ function normalizePageSize(value) {
 export function mountRoutes(app, hub, room, options = {}) {
   const omni = options.omni || createOmniService()
   const adapters = createAdapterRegistry()
+  const ai = options.ai || createAiReplyEngine()
 
   app.get('/api/health', (_req, res) => res.json({ ok: true }))
 
@@ -48,6 +50,24 @@ export function mountRoutes(app, hub, room, options = {}) {
 
   app.post('/api/omni/threads/:threadId/evaluate-auto-send', (req, res) => {
     res.json({ ok: true, decision: omni.evaluateAutoSend({ threadId: req.params.threadId }) })
+  })
+
+  app.post('/api/omni/threads/:threadId/ai-draft', (req, res) => {
+    const thread = omni.getThread(req.params.threadId)
+    if (!thread) return res.status(404).json({ ok: false, error: 'thread_not_found' })
+    const snapshot = omni.snapshot()
+    const policy = omni.getPolicyForThread(thread)
+    const decision = ai.draft({ thread, snapshot, policy })
+    if (!decision.ok) return res.status(400).json(decision)
+    const recorded = omni.recordAiDecision({
+      threadId: thread.id,
+      agentProfileId: policy?.agentProfileId,
+      confidence: decision.confidence,
+      action: decision.action,
+      sourceIds: decision.sourceIds,
+      reason: decision.reason,
+    })
+    res.json({ ok: true, decision, recorded: recorded.decision, snapshot: recorded.snapshot })
   })
 
   app.get('/api/omni/connectors/health', async (_req, res) => {

@@ -2,7 +2,9 @@ import { test, after } from 'node:test'
 import assert from 'node:assert/strict'
 import express from 'express'
 import { mountRoutes } from '../src/routes.js'
+import { mountWebhook } from '../src/webhook.js'
 import { createState } from '../src/state.js'
+import { createOmniService } from '../src/omni/service.js'
 
 const app = express()
 app.use(express.json())
@@ -10,6 +12,7 @@ const events = []
 const hub = { broadcast: (event, payload) => events.push({ event, payload }) }
 const room = createState()
 mountRoutes(app, hub, room)
+mountWebhook(app, hub, room, { omni: createOmniService(), metaVerifyToken: 'verify-token-test' })
 const server = app.listen(0)
 const port = server.address().port
 after(() => server.close())
@@ -64,4 +67,29 @@ test('POST /api/field accepts doneDefinition alias', async () => {
   assert.equal(body.ok, true)
   assert.equal(body.state.dod, 'green E2E')
   assert.equal(body.state.doneDefinition, 'green E2E')
+})
+
+test('GET /webhook/meta verifies Meta challenge', async () => {
+  const response = await fetch(`http://localhost:${port}/webhook/meta?hub.mode=subscribe&hub.verify_token=verify-token-test&hub.challenge=abc123`)
+  assert.equal(response.status, 200)
+  assert.equal(await response.text(), 'abc123')
+})
+
+test('POST /webhook/meta syncs Meta messenger event', async () => {
+  const { body, status } = await req('POST', '/webhook/meta', {
+    object: 'page',
+    entry: [{
+      id: '112154661515664',
+      messaging: [{
+        sender: { id: 'customer_vz_route' },
+        recipient: { id: '112154661515664' },
+        timestamp: 1779470000000,
+        message: { mid: 'route_mid_vz', text: 'มีของไหม' },
+      }],
+    }],
+  })
+
+  assert.equal(status, 200)
+  assert.equal(body.ok, true)
+  assert.equal(body.result.threads.inserted, 1)
 })
