@@ -1,4 +1,5 @@
 import { createAdapterRegistry } from './omni/adapters.js'
+import { listFacebookConversations } from './omni/metaInboxClient.js'
 import { createOmniService } from './omni/service.js'
 
 function normalizeLeader(input) {
@@ -41,6 +42,16 @@ export function mountRoutes(app, hub, room) {
     const providers = adapters.list()
     const health = await Promise.all(providers.map((provider) => adapters.get(provider).healthcheck()))
     res.json({ ok: true, health })
+  })
+
+  app.get('/api/omni/facebook/conversations', async (req, res) => {
+    try {
+      const pageProfile = String(req.query.page || 'anna_lynn')
+      const data = await listFacebookConversations({ pageProfile })
+      res.json({ ok: true, data })
+    } catch (error) {
+      res.status(400).json({ ok: false, error: error.message || 'facebook_conversations_failed' })
+    }
   })
 
   app.get('/api/state', (_req, res) => {

@@ -15,16 +15,18 @@ vi.mock('../../lib/omniApi.js', () => ({
     connectorHealth: [{ id: 'health_meta', provider: 'meta', status: 'healthy' }],
   }),
   fetchConnectorHealth: async () => [{ provider: 'meta', status: 'healthy' }],
+  fetchFacebookConversations: async () => ({ threads: [] }),
 }))
 
 describe('OmniWorkbench', () => {
   it('renders inbox, AI panel, connector health, order desk, and payment desk', async () => {
     render(<OmniWorkbench />)
     expect(await screen.findByText('Omnichannel Inbox')).toBeInTheDocument()
-    expect(await screen.findByText('MAN KYND')).toBeInTheDocument()
+    expect((await screen.findAllByText('MAN KYND')).length).toBeGreaterThan(0)
     expect(await screen.findByText('AI Decision')).toBeInTheDocument()
     expect(await screen.findByText('Connector Health')).toBeInTheDocument()
     expect(await screen.findByText('Order Desk')).toBeInTheDocument()
     expect(await screen.findByText('Payment Desk')).toBeInTheDocument()
+    expect(await screen.findByText('Facebook Live Preview')).toBeInTheDocument()
   })
 })

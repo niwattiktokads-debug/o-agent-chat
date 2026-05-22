@@ -16,3 +16,8 @@ export async function fetchThread(threadId) {
 export async function fetchConnectorHealth() {
   return (await getJson('/api/omni/connectors/health')).health
 }
+
+export async function fetchFacebookConversations(pageProfile) {
+  const query = new URLSearchParams({ page: pageProfile })
+  return (await getJson(`/api/omni/facebook/conversations?${query.toString()}`)).data
+}
