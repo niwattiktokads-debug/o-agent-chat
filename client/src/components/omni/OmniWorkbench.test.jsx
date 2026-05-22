@@ -7,7 +7,7 @@ vi.mock('../../lib/omniApi.js', () => ({
   fetchOmniSnapshot: async () => ({
     pages: [
       { id: 'page_mankynd', name: 'MAN KYND', status: 'active' },
-      { id: 'page_fb_112154661515664', name: 'Facebook Page 112154661515664', status: 'active' },
+      { id: 'page_fb_112154661515664', name: 'VZ by viris zamara.', status: 'active' },
     ],
     threads: [{ id: 'thread_1', pageId: 'page_mankynd', platform: 'facebook', status: 'draft_ready', intent: 'stock', risk: 'low' }],
     messages: [{ id: 'msg_1', threadId: 'thread_1', direction: 'inbound', authorName: 'ลูกค้า A', text: 'มีไซซ์ M สีดำไหม' }],
@@ -54,7 +54,7 @@ describe('OmniWorkbench', () => {
     render(<OmniWorkbench />)
     expect(await screen.findByText('Omnichannel Inbox')).toBeInTheDocument()
     expect((await screen.findAllByText('MAN KYND')).length).toBeGreaterThan(0)
-    expect((await screen.findAllByText('Facebook Page 112154661515664')).length).toBeGreaterThan(1)
+    expect((await screen.findAllByText('VZ by viris zamara.')).length).toBeGreaterThan(1)
     expect(await screen.findByText('AI Decision')).toBeInTheDocument()
     expect(await screen.findByText('Connector Health')).toBeInTheDocument()
     expect(await screen.findByText('Order Desk')).toBeInTheDocument()

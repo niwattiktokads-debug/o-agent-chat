@@ -8,7 +8,7 @@ export const FACEBOOK_PAGE_PROFILES = {
   man_kynd: { pageId: '189971841184132', pageName: 'MAN KYND', omniPageId: 'page_mankynd' },
   anna_lynn: { pageId: '122106446570001676', pageName: 'Anna Lynn', omniPageId: 'page_annalynn' },
   page_des: { pageId: '1137894522741329', pageName: 'Niwatha และ AI ชื่อเดส', omniPageId: 'page_des' },
-  fb_112154661515664: { pageId: '112154661515664', pageName: 'Facebook Page 112154661515664', omniPageId: 'page_fb_112154661515664' },
+  fb_112154661515664: { pageId: '112154661515664', pageName: 'VZ by viris zamara.', omniPageId: 'page_fb_112154661515664' },
 }
 
 async function defaultRunner(args) {
