@@ -11,8 +11,8 @@ function normalizeLeader(input) {
   return null
 }
 
-export function mountRoutes(app, hub, room) {
-  const omni = createOmniService()
+export function mountRoutes(app, hub, room, options = {}) {
+  const omni = options.omni || createOmniService()
   const adapters = createAdapterRegistry()
 
   app.get('/api/health', (_req, res) => res.json({ ok: true }))

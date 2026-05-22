@@ -1,9 +1,20 @@
 import { createOmniSeed } from './seed.js'
 
-export function createOmniService(seed = createOmniSeed()) {
+function resolveOptions(input) {
+  if (input?.store || input?.seed) return { seed: input.seed || createOmniSeed(), store: input.store || null }
+  return { seed: input || createOmniSeed(), store: null }
+}
+
+export function createOmniService(options = createOmniSeed()) {
+  const { seed, store } = resolveOptions(options)
   const data = structuredClone(seed)
 
+  function currentData() {
+    return store ? store.snapshot() : data
+  }
+
   function upsert(collectionName, rows, key = 'id') {
+    if (store) return store.upsert(collectionName, rows, key)
     const collection = data[collectionName]
     let inserted = 0
     let updated = 0
@@ -23,37 +34,39 @@ export function createOmniService(seed = createOmniSeed()) {
   }
 
   function getPolicyForThread(thread) {
-    const page = data.pages.find((item) => item.id === thread.pageId)
-    return data.policySets.find((item) => item.id === page?.policySetId)
+    const snapshot = currentData()
+    const page = snapshot.pages.find((item) => item.id === thread.pageId)
+    return snapshot.policySets.find((item) => item.id === page?.policySetId)
   }
 
   return {
     snapshot() {
-      return structuredClone(data)
+      return structuredClone(currentData())
     },
     listPages() {
-      return structuredClone(data.pages)
+      return structuredClone(currentData().pages)
     },
     listThreads(filters = {}) {
-      return data.threads
+      return currentData().threads
         .filter((thread) => !filters.pageId || thread.pageId === filters.pageId)
         .filter((thread) => !filters.status || thread.status === filters.status)
         .map((thread) => structuredClone(thread))
     },
     getThread(threadId) {
-      const thread = data.threads.find((item) => item.id === threadId)
+      const snapshot = currentData()
+      const thread = snapshot.threads.find((item) => item.id === threadId)
       if (!thread) return null
       return {
         ...structuredClone(thread),
-        messages: data.messages.filter((message) => message.threadId === threadId),
-        customer: data.customers.find((customer) => customer.id === thread.customerId) || null,
-        orders: data.orders.filter((order) => order.customerId === thread.customerId),
-        payments: data.paymentRequests.filter((payment) => payment.threadId === threadId),
-        decisions: data.aiDecisions.filter((decision) => decision.threadId === threadId),
+        messages: snapshot.messages.filter((message) => message.threadId === threadId),
+        customer: snapshot.customers.find((customer) => customer.id === thread.customerId) || null,
+        orders: snapshot.orders.filter((order) => order.customerId === thread.customerId),
+        payments: snapshot.paymentRequests.filter((payment) => payment.threadId === threadId),
+        decisions: snapshot.aiDecisions.filter((decision) => decision.threadId === threadId),
       }
     },
     evaluateAutoSend({ threadId }) {
-      const thread = data.threads.find((item) => item.id === threadId)
+      const thread = currentData().threads.find((item) => item.id === threadId)
       if (!thread) return { allowed: false, reason: 'thread_not_found' }
       const policy = getPolicyForThread(thread)
       if (!policy) return { allowed: false, reason: 'missing_policy' }
@@ -62,6 +75,7 @@ export function createOmniService(seed = createOmniSeed()) {
       return { allowed: true, reason: 'policy_whitelist' }
     },
     approveDraft({ threadId }) {
+      if (store) return { ok: false, error: 'approval_not_supported_for_sqlite_store_yet' }
       const thread = data.threads.find((item) => item.id === threadId)
       if (!thread) return { ok: false, error: 'thread_not_found' }
       thread.status = 'auto_sent'

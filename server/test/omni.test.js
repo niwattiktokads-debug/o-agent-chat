@@ -7,6 +7,7 @@ import { createAdapterRegistry } from '../src/omni/adapters.js'
 import { createOmniService } from '../src/omni/service.js'
 import { listFacebookConversations, normalizeMetaConversations } from '../src/omni/metaInboxClient.js'
 import { getOmniSchemaSummary, loadOmniSchemaSql, REQUIRED_OMNI_TABLES } from '../src/omni/db/schema.js'
+import { createSqliteOmniStore } from '../src/omni/db/sqliteStore.js'
 import { mountRoutes } from '../src/routes.js'
 
 test('omni seed starts with configurable five-page seed data', () => {
@@ -182,6 +183,28 @@ test('omni service syncs normalized Facebook conversations into memory store', (
   assert.equal(second.threads.updated, 1)
   assert.equal(service.getThread('fb_thread_1').status, 'draft_ready')
   assert.equal(service.getThread('fb_thread_1').messages[0].text, 'updated')
+})
+
+test('SQLite Omni store persists synced Facebook conversations across service instances', () => {
+  const dbPath = `${process.cwd()}/.tmp-test/omni-${Date.now()}-${Math.random().toString(16).slice(2)}.sqlite`
+  const firstStore = createSqliteOmniStore({ dbPath })
+  const firstService = createOmniService({ store: firstStore })
+
+  firstService.syncFacebookConversations({
+    page: { pageId: '189971841184132', pageName: 'MAN KYND', omniPageId: 'page_mankynd' },
+    customers: [{ id: 'fb_customer_persist', displayName: 'Persist Customer', platform: 'facebook', providerCustomerId: 'persist', matchConfidence: 1 }],
+    threads: [{ id: 'fb_thread_persist', providerThreadId: 't_persist', pageId: 'page_mankynd', platform: 'facebook', customerId: 'fb_customer_persist', status: 'open', intent: 'unknown', risk: 'medium', unreadCount: 1, messageCount: 1, updatedAt: '2026-05-23T00:00:00+0000' }],
+    messages: [{ id: 'fb_preview_persist', threadId: 'fb_thread_persist', direction: 'inbound', authorName: 'Persist Customer', text: 'persisted hello', createdAt: '2026-05-23T00:00:00+0000', providerMessageId: 't_persist:snippet' }],
+  })
+  firstStore.close()
+
+  const secondStore = createSqliteOmniStore({ dbPath })
+  const secondService = createOmniService({ store: secondStore })
+  const persisted = secondService.getThread('fb_thread_persist')
+
+  assert.equal(persisted.customer.displayName, 'Persist Customer')
+  assert.equal(persisted.messages[0].text, 'persisted hello')
+  secondStore.close()
 })
 
 test('omni database schema includes durable memory tables and guards', () => {
