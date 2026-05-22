@@ -1,3 +1,6 @@
+import { createAdapterRegistry } from './omni/adapters.js'
+import { createOmniService } from './omni/service.js'
+
 function normalizeLeader(input) {
   if (!input) return null
   const lower = String(input).toLowerCase()
@@ -7,7 +10,38 @@ function normalizeLeader(input) {
 }
 
 export function mountRoutes(app, hub, room) {
+  const omni = createOmniService()
+  const adapters = createAdapterRegistry()
+
   app.get('/api/health', (_req, res) => res.json({ ok: true }))
+
+  app.get('/api/omni/pages', (_req, res) => {
+    res.json({ ok: true, pages: omni.listPages() })
+  })
+
+  app.get('/api/omni/snapshot', (_req, res) => {
+    res.json({ ok: true, snapshot: omni.snapshot() })
+  })
+
+  app.get('/api/omni/threads', (req, res) => {
+    res.json({ ok: true, threads: omni.listThreads({ pageId: req.query.pageId, status: req.query.status }) })
+  })
+
+  app.get('/api/omni/threads/:threadId', (req, res) => {
+    const thread = omni.getThread(req.params.threadId)
+    if (!thread) return res.status(404).json({ ok: false, error: 'thread_not_found' })
+    res.json({ ok: true, thread })
+  })
+
+  app.post('/api/omni/threads/:threadId/evaluate-auto-send', (req, res) => {
+    res.json({ ok: true, decision: omni.evaluateAutoSend({ threadId: req.params.threadId }) })
+  })
+
+  app.get('/api/omni/connectors/health', async (_req, res) => {
+    const providers = adapters.list()
+    const health = await Promise.all(providers.map((provider) => adapters.get(provider).healthcheck()))
+    res.json({ ok: true, health })
+  })
 
   app.get('/api/state', (_req, res) => {
     res.json(room.snapshot())
