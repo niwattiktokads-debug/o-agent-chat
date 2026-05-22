@@ -6,6 +6,7 @@ import { createOmniSeed } from '../src/omni/seed.js'
 import { createAdapterRegistry } from '../src/omni/adapters.js'
 import { createOmniService } from '../src/omni/service.js'
 import { listFacebookConversations, normalizeMetaConversations } from '../src/omni/metaInboxClient.js'
+import { listTikTokOrders, normalizeTikTokOrders } from '../src/omni/tiktokOrderClient.js'
 import { getOmniSchemaSummary, loadOmniSchemaSql, REQUIRED_OMNI_TABLES } from '../src/omni/db/schema.js'
 import { createSqliteOmniStore } from '../src/omni/db/sqliteStore.js'
 import { mountRoutes } from '../src/routes.js'
@@ -205,6 +206,89 @@ test('SQLite Omni store persists synced Facebook conversations across service in
   assert.equal(persisted.customer.displayName, 'Persist Customer')
   assert.equal(persisted.messages[0].text, 'persisted hello')
   secondStore.close()
+})
+
+test('normalizes TikTok orders into Omni customers and orders', () => {
+  const normalized = normalizeTikTokOrders({
+    code: 0,
+    data: {
+      total_count: 1,
+      orders: [{
+        id: '584032386060683081',
+        user_id: '7494557570104855369',
+        status: 'AWAITING_COLLECTION',
+        tracking_number: '796906652754',
+        create_time: 1778812319,
+        update_time: 1778815864,
+        payment_method_name: 'Mbanking',
+        payment: { total_amount: '841.5', currency: 'THB' },
+        recipient_address: { name: 'เ***จา พ***์โภสคราม', phone_number: '(+66)080*****42' },
+        line_items: [{
+          id: 'line_1',
+          product_name: 'Lorra เดรสเชิ้ต Polo',
+          sku_name: 'สีเทา, XL',
+          seller_sku: 'lorสีเทาXL',
+          sale_price: '841.5',
+          tracking_number: '796906652754',
+        }],
+      }],
+    },
+  })
+
+  assert.equal(normalized.orders[0].id, 'tt_order_584032386060683081')
+  assert.equal(normalized.orders[0].total, 841.5)
+  assert.equal(normalized.orders[0].itemSummary[0].sellerSku, 'lorสีเทาXL')
+  assert.equal(normalized.customers[0].id, 'tt_customer_7494557570104855369')
+})
+
+test('TikTok order connector calls finance helper through injectable runner', async () => {
+  const calls = []
+  const result = await listTikTokOrders({
+    status: 'AWAITING_COLLECTION',
+    pageSize: 2,
+    runner: async (args) => {
+      calls.push(args)
+      return { code: 0, data: { orders: [], total_count: 0, next_page_token: '' } }
+    },
+  })
+
+  assert.deepEqual(calls[0], ['orders', '--status', 'AWAITING_COLLECTION', '--page-size', '2'])
+  assert.equal(result.source, 'tiktok_shop')
+  assert.deepEqual(result.orders, [])
+})
+
+test('omni service syncs normalized TikTok orders into memory store', () => {
+  const service = createOmniService()
+  const result = service.syncTikTokOrders({
+    source: 'tiktok_shop',
+    totalCount: 1,
+    nextPageToken: '',
+    customers: [{ id: 'tt_customer_1', displayName: 'TikTok Customer', platform: 'tiktok', providerCustomerId: '1', matchConfidence: 1 }],
+    orders: [{ id: 'tt_order_1', customerId: 'tt_customer_1', platform: 'tiktok', providerOrderId: '1', status: 'AWAITING_COLLECTION', total: 841.5, currency: 'THB' }],
+  })
+
+  assert.equal(result.customers.inserted, 1)
+  assert.equal(result.orders.inserted, 1)
+  assert.equal(service.snapshot().orders.find((order) => order.id === 'tt_order_1').total, 841.5)
+})
+
+test('TikTok order route rejects unknown status before helper mutation', async () => {
+  const app = express()
+  app.use(express.json())
+  mountRoutes(app, { broadcast() {} }, { snapshot() { return {} } })
+
+  const server = app.listen(0)
+  try {
+    const baseUrl = `http://127.0.0.1:${server.address().port}`
+    const response = await fetch(`${baseUrl}/api/omni/tiktok/orders?status=UNKNOWN`)
+    const body = await response.json()
+
+    assert.equal(response.status, 400)
+    assert.equal(body.ok, false)
+    assert.match(body.error, /unknown_tiktok_order_status/)
+  } finally {
+    server.close()
+  }
 })
 
 test('omni database schema includes durable memory tables and guards', () => {

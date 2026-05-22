@@ -32,3 +32,19 @@ export async function syncFacebookConversations(pageProfile) {
   if (!response.ok || !body.ok) throw new Error(body.error || 'facebook_sync_failed')
   return body.result
 }
+
+export async function fetchTikTokOrders(status = 'AWAITING_COLLECTION', pageSize = 10) {
+  const query = new URLSearchParams({ status, pageSize: String(pageSize) })
+  return (await getJson(`/api/omni/tiktok/orders?${query.toString()}`)).data
+}
+
+export async function syncTikTokOrders(status = 'AWAITING_COLLECTION', pageSize = 10) {
+  const response = await fetch('/api/omni/tiktok/sync', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ status, pageSize }),
+  })
+  const body = await response.json()
+  if (!response.ok || !body.ok) throw new Error(body.error || 'tiktok_sync_failed')
+  return body.result
+}

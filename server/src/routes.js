@@ -2,6 +2,7 @@ import { createAdapterRegistry } from './omni/adapters.js'
 import { getOmniSchemaSummary } from './omni/db/schema.js'
 import { listFacebookConversations } from './omni/metaInboxClient.js'
 import { createOmniService } from './omni/service.js'
+import { listTikTokOrders } from './omni/tiktokOrderClient.js'
 
 function normalizeLeader(input) {
   if (!input) return null
@@ -9,6 +10,12 @@ function normalizeLeader(input) {
   if (lower === 'code') return 'Code'
   if (lower === 'codex') return 'Codex'
   return null
+}
+
+function normalizePageSize(value) {
+  const parsed = Number(value || 10)
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 50) return 10
+  return parsed
 }
 
 export function mountRoutes(app, hub, room, options = {}) {
@@ -67,6 +74,29 @@ export function mountRoutes(app, hub, room, options = {}) {
       res.json({ ok: true, result })
     } catch (error) {
       res.status(400).json({ ok: false, error: error.message || 'facebook_sync_failed' })
+    }
+  })
+
+  app.get('/api/omni/tiktok/orders', async (req, res) => {
+    try {
+      const status = String(req.query.status || 'AWAITING_COLLECTION')
+      const pageSize = normalizePageSize(req.query.pageSize)
+      const data = await listTikTokOrders({ status, pageSize })
+      res.json({ ok: true, data })
+    } catch (error) {
+      res.status(400).json({ ok: false, error: error.message || 'tiktok_orders_failed' })
+    }
+  })
+
+  app.post('/api/omni/tiktok/sync', async (req, res) => {
+    try {
+      const status = String(req.body?.status || req.query.status || 'AWAITING_COLLECTION')
+      const pageSize = normalizePageSize(req.body?.pageSize || req.query.pageSize)
+      const data = await listTikTokOrders({ status, pageSize })
+      const result = omni.syncTikTokOrders(data)
+      res.json({ ok: true, result })
+    } catch (error) {
+      res.status(400).json({ ok: false, error: error.message || 'tiktok_sync_failed' })
     }
   })
 

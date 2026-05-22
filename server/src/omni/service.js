@@ -94,5 +94,18 @@ export function createOmniService(options = createOmniSeed()) {
         snapshot: this.snapshot(),
       }
     },
+    syncTikTokOrders(normalized) {
+      const customerResult = upsert('customers', normalized.customers)
+      const orderResult = upsert('orders', normalized.orders)
+      return {
+        ok: true,
+        source: normalized.source,
+        totalCount: normalized.totalCount,
+        nextPageToken: normalized.nextPageToken,
+        customers: customerResult,
+        orders: orderResult,
+        snapshot: this.snapshot(),
+      }
+    },
   }
 }

@@ -10,6 +10,7 @@ import PaymentDesk from './PaymentDesk.jsx'
 import ConnectorHealth from './ConnectorHealth.jsx'
 import PageManagement from './PageManagement.jsx'
 import FacebookLivePreview from './FacebookLivePreview.jsx'
+import TikTokOrderSync from './TikTokOrderSync.jsx'
 
 export default function OmniWorkbench() {
   const [snapshot, setSnapshot] = useState(null)
@@ -43,6 +44,7 @@ export default function OmniWorkbench() {
         <AiDecisionPanel snapshot={snapshot} thread={selectedThread} />
         <OrderDesk snapshot={snapshot} thread={selectedThread} />
         <PaymentDesk snapshot={snapshot} thread={selectedThread} />
+        <TikTokOrderSync onSynced={setSnapshot} />
         <FacebookLivePreview onSynced={setSnapshot} />
         <ConnectorHealth health={snapshot.connectorHealth} />
         <PageManagement pages={snapshot.pages} />
