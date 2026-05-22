@@ -219,6 +219,24 @@ test('SQLite Omni store persists synced Facebook conversations across service in
   secondStore.close()
 })
 
+test('SQLite Omni store backfills missing seed pages for existing databases', () => {
+  const dbPath = `${process.cwd()}/.tmp-test/omni-${Date.now()}-${Math.random().toString(16).slice(2)}.sqlite`
+  const initialSeed = createOmniSeed()
+  initialSeed.pages = initialSeed.pages.filter((page) => page.id !== 'page_fb_112154661515664')
+  initialSeed.platformAccounts = initialSeed.platformAccounts.filter((account) => account.id !== 'acct_fb_112154661515664')
+
+  const firstStore = createSqliteOmniStore({ dbPath, seed: initialSeed })
+  assert.equal(firstStore.snapshot().pages.some((page) => page.id === 'page_fb_112154661515664'), false)
+  firstStore.close()
+
+  const migratedStore = createSqliteOmniStore({ dbPath, seed: createOmniSeed() })
+  const snapshot = migratedStore.snapshot()
+
+  assert.equal(snapshot.pages.some((page) => page.id === 'page_fb_112154661515664'), true)
+  assert.equal(snapshot.platformAccounts.some((account) => account.id === 'acct_fb_112154661515664'), true)
+  migratedStore.close()
+})
+
 test('normalizes TikTok orders into Omni customers and orders', () => {
   const normalized = normalizeTikTokOrders({
     code: 0,

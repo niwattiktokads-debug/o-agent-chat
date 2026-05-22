@@ -26,6 +26,16 @@ const COLLECTIONS = [
   'connectorHealth',
 ]
 
+const SEED_BACKED_COLLECTIONS = [
+  'pages',
+  'platformAccounts',
+  'brandGroups',
+  'policySets',
+  'agentProfiles',
+  'inventorySnapshots',
+  'connectorHealth',
+]
+
 function clone(value) {
   return structuredClone(value)
 }
@@ -71,12 +81,29 @@ export function createSqliteOmniStore({ dbPath, seed = createOmniSeed() } = {}) 
     upsertCollection.run(name, JSON.stringify(rows || []))
   }
 
+  function upsertSeedRows(name, seedRows) {
+    const collection = readCollection(name) || []
+    let changed = false
+
+    for (const row of seedRows || []) {
+      if (!collection.find((item) => item.id === row.id)) {
+        collection.push(clone(row))
+        changed = true
+      }
+    }
+
+    if (changed) writeCollection(name, collection)
+  }
+
   function seedMissingCollections() {
     const base = createEmptySnapshot(seed)
     for (const collection of COLLECTIONS) {
       if (readCollection(collection) === null) {
         writeCollection(collection, base[collection])
       }
+    }
+    for (const collection of SEED_BACKED_COLLECTIONS) {
+      upsertSeedRows(collection, base[collection])
     }
   }
 
