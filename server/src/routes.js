@@ -1,4 +1,5 @@
 import { createAdapterRegistry } from './omni/adapters.js'
+import { getOmniSchemaSummary } from './omni/db/schema.js'
 import { listFacebookConversations } from './omni/metaInboxClient.js'
 import { createOmniService } from './omni/service.js'
 
@@ -22,6 +23,10 @@ export function mountRoutes(app, hub, room) {
 
   app.get('/api/omni/snapshot', (_req, res) => {
     res.json({ ok: true, snapshot: omni.snapshot() })
+  })
+
+  app.get('/api/omni/schema', (_req, res) => {
+    res.json({ ok: true, schema: getOmniSchemaSummary() })
   })
 
   app.get('/api/omni/threads', (req, res) => {

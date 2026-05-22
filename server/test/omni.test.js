@@ -6,6 +6,7 @@ import { createOmniSeed } from '../src/omni/seed.js'
 import { createAdapterRegistry } from '../src/omni/adapters.js'
 import { createOmniService } from '../src/omni/service.js'
 import { listFacebookConversations, normalizeMetaConversations } from '../src/omni/metaInboxClient.js'
+import { getOmniSchemaSummary, loadOmniSchemaSql, REQUIRED_OMNI_TABLES } from '../src/omni/db/schema.js'
 import { mountRoutes } from '../src/routes.js'
 
 test('omni seed starts with configurable five-page seed data', () => {
@@ -74,6 +75,26 @@ test('Facebook route rejects unknown page profile without mutation', async () =>
   }
 })
 
+test('omni schema route exposes read-only database contract', async () => {
+  const app = express()
+  app.use(express.json())
+  mountRoutes(app, { broadcast() {} }, { snapshot() { return {} } })
+
+  const server = app.listen(0)
+  try {
+    const baseUrl = `http://127.0.0.1:${server.address().port}`
+    const response = await fetch(`${baseUrl}/api/omni/schema`)
+    const body = await response.json()
+
+    assert.equal(response.status, 200)
+    assert.equal(body.ok, true)
+    assert.equal(body.schema.tableCount, REQUIRED_OMNI_TABLES.length)
+    assert.equal(body.schema.hasPaymentApprovalGuard, true)
+  } finally {
+    server.close()
+  }
+})
+
 test('normalizes Meta conversations into Omni threads and customers', () => {
   const normalized = normalizeMetaConversations({
     pageProfile: 'man_kynd',
@@ -114,4 +135,19 @@ test('Facebook connector calls meta helper through injectable runner', async () 
   assert.deepEqual(calls[0], ['list-conversations', '--page=page_des'])
   assert.equal(result.page.omniPageId, 'page_des')
   assert.deepEqual(result.threads, [])
+})
+
+test('omni database schema includes durable memory tables and guards', () => {
+  const sql = loadOmniSchemaSql()
+  const summary = getOmniSchemaSummary()
+
+  for (const table of REQUIRED_OMNI_TABLES) {
+    assert.match(sql, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}`))
+  }
+
+  assert.equal(summary.dialect, 'sqlite_first_postgres_compatible')
+  assert.equal(summary.hasPaymentApprovalGuard, true)
+  assert.equal(summary.hasAuditLog, true)
+  assert.equal(summary.hasSourceRefs, true)
+  assert.match(sql, /CREATE INDEX IF NOT EXISTS idx_messages_thread_created/)
 })
