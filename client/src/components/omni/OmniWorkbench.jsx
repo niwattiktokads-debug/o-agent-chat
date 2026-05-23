@@ -27,20 +27,20 @@ export default function OmniWorkbench() {
   const threads = useMemo(() => filterThreads(snapshot?.threads || [], { pageId }), [snapshot, pageId])
   const selectedThread = threads.find((thread) => thread.id === threadId) || threads[0] || null
 
-  if (!snapshot) return <div className="p-6 text-slate-300">Loading omnichannel workbench...</div>
+  if (!snapshot) return <div className="bg-[#f4f7f6] p-6 text-[#60726b]">Loading omnichannel workbench...</div>
 
   return (
-    <div className="grid h-full grid-cols-[220px_minmax(260px,360px)_1fr_320px] bg-slate-950 text-slate-100">
+    <div className="grid h-full grid-cols-[240px_minmax(300px,380px)_1fr_340px] bg-[#f4f7f6] text-[#16231f]">
       <PageRail pages={snapshot.pages} accounts={snapshot.platformAccounts} activePageId={pageId} onSelect={setPageId} />
       <ThreadList threads={threads} activeThreadId={selectedThread?.id} onSelect={setThreadId} />
-      <main className="min-w-0 border-x border-slate-800">
-        <header className="border-b border-slate-800 px-5 py-4">
-          <h1 className="text-lg font-semibold">Omnichannel Inbox</h1>
-          <p className="text-xs text-slate-500">Local-first customer inbox with guarded AI replies</p>
+      <main className="min-w-0 border-x border-[#dfe8e4] bg-white">
+        <header className="border-b border-[#dfe8e4] bg-white px-5 py-4">
+          <h1 className="text-lg font-semibold text-[#16231f]">Omnichannel Inbox</h1>
+          <p className="text-xs text-[#7a8b84]">Local-first customer inbox with guarded AI replies</p>
         </header>
         <ThreadDetail snapshot={snapshot} thread={selectedThread} />
       </main>
-      <aside className="overflow-y-auto">
+      <aside className="overflow-y-auto bg-[#f8fbfa]">
         <AiDecisionPanel snapshot={snapshot} thread={selectedThread} onDrafted={setSnapshot} />
         <OrderDesk snapshot={snapshot} thread={selectedThread} />
         <PaymentDesk snapshot={snapshot} thread={selectedThread} />

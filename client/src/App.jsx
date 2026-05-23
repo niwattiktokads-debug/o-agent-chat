@@ -31,10 +31,10 @@ export default function App() {
 
   if (mode === 'omni') {
     return (
-      <div className="flex h-full flex-col bg-slate-950 text-slate-100">
-        <header className="flex items-center gap-3 border-b border-slate-800 px-4 py-2">
-          <button type="button" className="rounded bg-slate-800 px-3 py-1 text-sm" onClick={() => setMode('chat')}>Chat</button>
-          <button type="button" className="rounded bg-cyan-950 px-3 py-1 text-sm text-cyan-100" onClick={() => setMode('omni')}>Omni</button>
+      <div className="flex h-full flex-col bg-[#f4f7f6] text-[#16231f]">
+        <header className="flex items-center gap-3 border-b border-[#dfe8e4] bg-white px-4 py-2 shadow-sm">
+          <button type="button" className="rounded-lg border border-[#dfe8e4] bg-white px-3 py-1 text-sm text-[#4d5f58]" onClick={() => setMode('chat')}>Chat</button>
+          <button type="button" className="rounded-lg bg-[#0f8f7b] px-3 py-1 text-sm font-semibold text-white shadow-sm" onClick={() => setMode('omni')}>Omni</button>
         </header>
         <div className="min-h-0 flex-1">
           <OmniWorkbench />
