@@ -18,7 +18,7 @@ const EMPTY_STATE = {
 export default function App() {
   const [state, setState] = useState(EMPTY_STATE)
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const [mode, setMode] = useState('chat')
+  const [mode, setMode] = useState(() => new URLSearchParams(window.location.search).get('mode') === 'omni' ? 'omni' : 'chat')
   const [online, setOnline] = useState(true)
   const isMobile = useIsMobile()
 
