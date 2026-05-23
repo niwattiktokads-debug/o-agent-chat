@@ -97,6 +97,21 @@ test('knowledge source routes persist searchable training sources', async () => 
     assert.equal(search.ok, true)
     assert.equal(search.sources.some((source) => source.id === created.source.id), true)
 
+    const updateResponse = await fetch(`${baseUrl}/api/omni/knowledge-sources`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        id: created.source.id,
+        title: 'Test stock answer updated',
+        content: 'อัปเดตแล้ว ใช้รายการเดิม ไม่สร้างซ้ำ',
+        tags: ['stock', 'test'],
+      }),
+    })
+    const updated = await updateResponse.json()
+    assert.equal(updateResponse.status, 200)
+    assert.equal(updated.source.id, created.source.id)
+    assert.equal(updated.snapshot.knowledgeSources.filter((source) => source.id === created.source.id).length, 1)
+
     const deleteResponse = await fetch(`${baseUrl}/api/omni/knowledge-sources/${created.source.id}`, { method: 'DELETE' })
     const deleted = await deleteResponse.json()
     assert.equal(deleteResponse.status, 200)
@@ -293,6 +308,8 @@ test('AI reply engine drafts guarded replies from thread memory', () => {
   assert.equal(decision.allowed, true)
   assert.match(decision.draftText, /เช็กสต็อก/)
   assert.equal(decision.sourceIds.some((id) => id.startsWith('ks_')), true)
+  assert.equal(decision.sourceIds.every((id) => id.startsWith('ks_')), true)
+  assert.deepEqual(decision.evidenceIds, ['msg_1'])
 })
 
 test('SQLite Omni store persists synced Facebook conversations across service instances', () => {

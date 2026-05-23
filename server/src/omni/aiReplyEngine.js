@@ -72,7 +72,8 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
         allowed,
         draftText: draftForIntent(intent),
         reason: allowed ? 'policy_allows_low_risk_intent' : 'guard_requires_human_or_more_data',
-        sourceIds: [...(inbound?.id ? [inbound.id] : []), ...knowledge.map((source) => source.id)],
+        sourceIds: knowledge.map((source) => source.id),
+        evidenceIds: inbound?.id ? [inbound.id] : [],
       }
     },
   }

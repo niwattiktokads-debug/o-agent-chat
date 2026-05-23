@@ -27,9 +27,11 @@ function labelStatus(status) {
 export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat }) {
   const [sources, setSources] = useState([])
   const [query, setQuery] = useState('')
+  const [typeFilter, setTypeFilter] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [form, setForm] = useState({
+    id: '',
     title: '',
     type: 'manual',
     scope: 'all_pages',
@@ -37,11 +39,11 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat }) {
     tags: '',
   })
 
-  async function loadSources(search = query) {
+  async function loadSources(search = query, type = typeFilter) {
     if (!search) setBusy(true)
     setError('')
     try {
-      setSources(await fetchKnowledgeSources(search))
+      setSources(await fetchKnowledgeSources({ query: search, type }))
     } catch (err) {
       setError(err.message || 'knowledge_load_failed')
     } finally {
@@ -58,9 +60,9 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat }) {
     setBusy(true)
     setError('')
     try {
-      const result = await saveKnowledgeSource(form)
-      setSources(result.snapshot.knowledgeSources || [])
-      setForm({ title: '', type: 'manual', scope: 'all_pages', content: '', tags: '' })
+      await saveKnowledgeSource(form)
+      await loadSources(query, typeFilter)
+      setForm({ id: '', title: '', type: 'manual', scope: 'all_pages', content: '', tags: '' })
     } catch (err) {
       setError(err.message || 'knowledge_save_failed')
     } finally {
@@ -72,8 +74,8 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat }) {
     setBusy(true)
     setError('')
     try {
-      const result = await deleteKnowledgeSource(sourceId)
-      setSources(result.snapshot.knowledgeSources || [])
+      await deleteKnowledgeSource(sourceId)
+      await loadSources(query, typeFilter)
     } catch (err) {
       setError(err.message || 'knowledge_delete_failed')
     } finally {
@@ -88,7 +90,7 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat }) {
   }, [sources])
 
   return (
-    <div className="flex h-full bg-[#f6f8fb] text-[#17211e]">
+    <div className="flex h-full min-w-[1200px] bg-[#f6f8fb] text-[#17211e]">
       <aside className="flex w-[68px] flex-col items-center border-r border-[#e5e9ef] bg-white py-4">
         <div className="grid h-9 w-9 place-items-center rounded-xl bg-[#0f8f7b] text-sm font-bold text-white shadow-sm">OA</div>
         <div className="mt-8 flex flex-1 flex-col gap-5 text-[#9aa5b1]">
@@ -227,18 +229,37 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat }) {
                       value={form.tags}
                       onChange={(event) => setForm((current) => ({ ...current, tags: event.target.value }))}
                     />
+                    {form.id ? (
+                      <button type="button" className="h-10 rounded-xl border border-[#dce3e8] px-4 text-sm font-bold text-[#52606b]" onClick={() => setForm({ id: '', title: '', type: 'manual', scope: 'all_pages', content: '', tags: '' })}>
+                        Cancel
+                      </button>
+                    ) : null}
                     <button type="submit" className="h-10 rounded-xl bg-[#0f8f7b] px-4 text-sm font-bold text-white disabled:opacity-50" disabled={busy}>
-                      {busy ? 'Saving' : 'Save source'}
+                      {busy ? 'Saving' : form.id ? 'Update source' : 'Save source'}
                     </button>
                   </div>
                   {error ? <p className="text-sm font-semibold text-rose-600">{error}</p> : null}
                 </form>
                 <div className="flex items-center justify-between border-b border-[#eef2f5] px-5 py-4">
                   <div className="flex rounded-xl bg-[#f3f6f8] p-1 text-sm font-semibold text-[#66737f]">
-                    <button type="button" className="rounded-lg bg-white px-4 py-2 text-[#17211e] shadow-sm">All</button>
-                    <button type="button" className="px-4 py-2">Website</button>
-                    <button type="button" className="px-4 py-2">Files</button>
-                    <button type="button" className="px-4 py-2">Manual</button>
+                    {[
+                      ['All', ''],
+                      ['Website', 'website'],
+                      ['Files', 'file'],
+                      ['Manual', 'manual'],
+                    ].map(([label, value]) => (
+                      <button
+                        key={label}
+                        type="button"
+                        className={`rounded-lg px-4 py-2 ${typeFilter === value ? 'bg-white text-[#17211e] shadow-sm' : ''}`}
+                        onClick={() => {
+                          setTypeFilter(value)
+                          loadSources(query, value)
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
                   </div>
                   <input
                     className="h-10 w-72 rounded-xl border border-[#dce3e8] px-3 text-sm outline-none focus:border-[#0f8f7b]"
@@ -246,7 +267,7 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat }) {
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
                     onKeyDown={(event) => {
-                      if (event.key === 'Enter') loadSources(query)
+                      if (event.key === 'Enter') loadSources(event.currentTarget.value)
                     }}
                   />
                   <button type="button" className="ml-2 h-10 rounded-xl border border-[#dce3e8] px-3 text-sm font-semibold text-[#52606b]" onClick={() => loadSources(query)}>Search</button>
@@ -262,7 +283,7 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat }) {
                       <span className="text-sm text-[#66737f]">{formatUpdated(row.updatedAt)}</span>
                       <span className={`w-fit rounded-full px-3 py-1 text-xs font-bold ${row.status === 'ready' ? 'bg-[#e8faf6] text-[#0f8f7b]' : 'bg-[#fff3df] text-[#b7791f]'}`}>{labelStatus(row.status)}</span>
                       <div className="flex justify-end gap-2">
-                        <button type="button" className="rounded-lg border border-[#dce3e8] px-3 py-1.5 text-sm font-semibold text-[#52606b]" onClick={() => setForm({ title: row.title, type: row.type, scope: row.scope, content: row.content, tags: (row.tags || []).join(', ') })}>Edit</button>
+                        <button type="button" className="rounded-lg border border-[#dce3e8] px-3 py-1.5 text-sm font-semibold text-[#52606b]" onClick={() => setForm({ id: row.id, title: row.title, type: row.type, scope: row.scope, content: row.content, tags: (row.tags || []).join(', ') })}>Edit</button>
                         <button type="button" className="rounded-lg border border-[#dce3e8] px-3 py-1.5 text-sm font-semibold text-[#52606b]">Test</button>
                         <button type="button" className="rounded-lg border border-rose-200 px-3 py-1.5 text-sm font-semibold text-rose-600" onClick={() => removeSource(row.id)}>Delete</button>
                       </div>

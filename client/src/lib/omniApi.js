@@ -17,9 +17,10 @@ export async function fetchConnectorHealth() {
   return (await getJson('/api/omni/connectors/health')).health
 }
 
-export async function fetchKnowledgeSources(query = '') {
+export async function fetchKnowledgeSources({ query = '', type = '' } = {}) {
   const params = new URLSearchParams()
   if (query) params.set('q', query)
+  if (type) params.set('type', type)
   const suffix = params.toString() ? `?${params.toString()}` : ''
   return (await getJson(`/api/omni/knowledge-sources${suffix}`)).sources
 }
