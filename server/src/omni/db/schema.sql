@@ -194,6 +194,19 @@ CREATE TABLE IF NOT EXISTS connector_health (
   detail_json TEXT NOT NULL DEFAULT '{}'
 );
 
+CREATE TABLE IF NOT EXISTS knowledge_sources (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('manual', 'website', 'file', 'faq', 'order_policy')),
+  scope TEXT NOT NULL DEFAULT 'all_pages',
+  status TEXT NOT NULL CHECK (status IN ('ready', 'training', 'needs_review', 'archived')),
+  content TEXT NOT NULL,
+  tags_json TEXT NOT NULL DEFAULT '[]',
+  source_ref TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_threads_page_status ON threads(page_id, status);
 CREATE INDEX IF NOT EXISTS idx_threads_customer ON threads(customer_id);
 CREATE INDEX IF NOT EXISTS idx_messages_thread_created ON messages(thread_id, created_at);
@@ -201,3 +214,4 @@ CREATE INDEX IF NOT EXISTS idx_orders_customer ON orders(customer_id);
 CREATE INDEX IF NOT EXISTS idx_payment_requests_thread ON payment_requests(thread_id);
 CREATE INDEX IF NOT EXISTS idx_ai_decisions_thread ON ai_decisions(thread_id);
 CREATE INDEX IF NOT EXISTS idx_action_audits_thread ON action_audits(thread_id);
+CREATE INDEX IF NOT EXISTS idx_knowledge_sources_status ON knowledge_sources(status);

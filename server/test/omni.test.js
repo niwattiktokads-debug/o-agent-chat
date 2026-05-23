@@ -27,6 +27,8 @@ test('omni seed starts with configured production page data', () => {
   assert.equal(seed.pages.every((page) => page.status === 'active'), true)
   assert.equal(seed.pages.every((page) => page.policySetId), true)
   assert.equal(seed.pages.every((page) => page.agentProfileId), true)
+  assert.equal(seed.knowledgeSources.length, 3)
+  assert.equal(seed.knowledgeSources.every((source) => source.content), true)
 })
 
 test('page validation accepts active, paused, and archived statuses', () => {
@@ -63,6 +65,42 @@ test('omni routes are mounted under api', async () => {
     assert.equal(response.status, 200)
     assert.equal(body.ok, true)
     assert.equal(body.pages.length, 5)
+  } finally {
+    server.close()
+  }
+})
+
+test('knowledge source routes persist searchable training sources', async () => {
+  const app = express()
+  app.use(express.json())
+  mountRoutes(app, { broadcast() {} }, { snapshot() { return {} } })
+
+  const server = app.listen(0)
+  try {
+    const baseUrl = `http://127.0.0.1:${server.address().port}`
+    const createResponse = await fetch(`${baseUrl}/api/omni/knowledge-sources`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        title: 'Test stock answer',
+        content: 'ตอบลูกค้าว่าสินค้ามีพร้อมส่งหลังเช็กคลัง',
+        tags: ['stock', 'test'],
+      }),
+    })
+    const created = await createResponse.json()
+    assert.equal(createResponse.status, 200)
+    assert.equal(created.ok, true)
+    assert.equal(created.source.status, 'ready')
+
+    const searchResponse = await fetch(`${baseUrl}/api/omni/knowledge-sources?q=stock`)
+    const search = await searchResponse.json()
+    assert.equal(search.ok, true)
+    assert.equal(search.sources.some((source) => source.id === created.source.id), true)
+
+    const deleteResponse = await fetch(`${baseUrl}/api/omni/knowledge-sources/${created.source.id}`, { method: 'DELETE' })
+    const deleted = await deleteResponse.json()
+    assert.equal(deleteResponse.status, 200)
+    assert.equal(deleted.deletedId, created.source.id)
   } finally {
     server.close()
   }
@@ -254,6 +292,7 @@ test('AI reply engine drafts guarded replies from thread memory', () => {
   assert.equal(decision.intent, 'stock')
   assert.equal(decision.allowed, true)
   assert.match(decision.draftText, /เช็กสต็อก/)
+  assert.equal(decision.sourceIds.some((id) => id.startsWith('ks_')), true)
 })
 
 test('SQLite Omni store persists synced Facebook conversations across service instances', () => {

@@ -5,6 +5,39 @@ function resolveOptions(input) {
   return { seed: input || createOmniSeed(), store: null }
 }
 
+const KNOWLEDGE_TYPES = new Set(['manual', 'website', 'file', 'faq', 'order_policy'])
+const KNOWLEDGE_STATUSES = new Set(['ready', 'training', 'needs_review', 'archived'])
+
+function normalizeKnowledgeSource(input = {}) {
+  const title = String(input.title || '').trim()
+  const content = String(input.content || '').trim()
+  if (!title) return { ok: false, error: 'knowledge_title_required' }
+  if (!content) return { ok: false, error: 'knowledge_content_required' }
+
+  const now = new Date().toISOString()
+  const type = KNOWLEDGE_TYPES.has(input.type) ? input.type : 'manual'
+  const status = KNOWLEDGE_STATUSES.has(input.status) ? input.status : 'ready'
+  const tags = Array.isArray(input.tags)
+    ? input.tags.map((tag) => String(tag).trim()).filter(Boolean)
+    : String(input.tags || '').split(',').map((tag) => tag.trim()).filter(Boolean)
+
+  return {
+    ok: true,
+    row: {
+      id: input.id || `ks_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`,
+      title,
+      type,
+      scope: String(input.scope || 'all_pages').trim() || 'all_pages',
+      status,
+      content,
+      tags,
+      sourceRef: input.sourceRef || null,
+      createdAt: input.createdAt || now,
+      updatedAt: now,
+    },
+  }
+}
+
 export function createOmniService(options = createOmniSeed()) {
   const { seed, store } = resolveOptions(options)
   const data = structuredClone(seed)
@@ -45,6 +78,30 @@ export function createOmniService(options = createOmniSeed()) {
     },
     listPages() {
       return structuredClone(currentData().pages)
+    },
+    listKnowledgeSources(filters = {}) {
+      const query = String(filters.query || '').trim().toLowerCase()
+      return (currentData().knowledgeSources || [])
+        .filter((source) => !filters.status || source.status === filters.status)
+        .filter((source) => !filters.type || source.type === filters.type)
+        .filter((source) => !query || [source.title, source.content, source.scope, ...(source.tags || [])].join(' ').toLowerCase().includes(query))
+        .map((source) => structuredClone(source))
+    },
+    upsertKnowledgeSource(input) {
+      const normalized = normalizeKnowledgeSource(input)
+      if (!normalized.ok) return normalized
+      const result = upsert('knowledgeSources', [normalized.row])
+      return { ok: true, result, source: structuredClone(normalized.row), snapshot: this.snapshot() }
+    },
+    deleteKnowledgeSource(id) {
+      const sourceId = String(id || '').trim()
+      if (!sourceId) return { ok: false, error: 'knowledge_id_required' }
+      const snapshot = currentData()
+      const next = (snapshot.knowledgeSources || []).filter((source) => source.id !== sourceId)
+      if (next.length === (snapshot.knowledgeSources || []).length) return { ok: false, error: 'knowledge_not_found' }
+      if (store) store.replace('knowledgeSources', next)
+      else data.knowledgeSources = next
+      return { ok: true, deletedId: sourceId, snapshot: this.snapshot() }
     },
     listThreads(filters = {}) {
       return currentData().threads

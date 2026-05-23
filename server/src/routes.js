@@ -38,6 +38,29 @@ export function mountRoutes(app, hub, room, options = {}) {
     res.json({ ok: true, schema: getOmniSchemaSummary() })
   })
 
+  app.get('/api/omni/knowledge-sources', (req, res) => {
+    res.json({
+      ok: true,
+      sources: omni.listKnowledgeSources({
+        query: req.query.q,
+        status: req.query.status,
+        type: req.query.type,
+      }),
+    })
+  })
+
+  app.post('/api/omni/knowledge-sources', (req, res) => {
+    const result = omni.upsertKnowledgeSource(req.body || {})
+    if (!result.ok) return res.status(400).json(result)
+    res.json(result)
+  })
+
+  app.delete('/api/omni/knowledge-sources/:sourceId', (req, res) => {
+    const result = omni.deleteKnowledgeSource(req.params.sourceId)
+    if (!result.ok) return res.status(404).json(result)
+    res.json(result)
+  })
+
   app.get('/api/omni/threads', (req, res) => {
     res.json({ ok: true, threads: omni.listThreads({ pageId: req.query.pageId, status: req.query.status }) })
   })

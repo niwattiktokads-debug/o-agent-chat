@@ -30,6 +30,24 @@ function draftForIntent(intent) {
   return 'รับทราบค่ะ เดี๋ยวช่วยดูรายละเอียดให้นะคะ'
 }
 
+function relevantKnowledge(intent, snapshot) {
+  const termsByIntent = {
+    stock: ['สินค้า', 'stock', 'product', 'faq'],
+    price: ['ราคา', 'โปร', 'price', 'product'],
+    orderStatus: ['พัสดุ', 'shipping', 'order', 'payment'],
+    refund: ['คืน', 'refund', 'exchange', 'policy'],
+    faq: ['faq', 'policy'],
+  }
+  const terms = termsByIntent[intent] || termsByIntent.faq
+  return (snapshot.knowledgeSources || [])
+    .filter((source) => source.status === 'ready')
+    .filter((source) => {
+      const haystack = [source.title, source.content, ...(source.tags || [])].join(' ').toLowerCase()
+      return terms.some((term) => haystack.includes(term.toLowerCase()))
+    })
+    .slice(0, 3)
+}
+
 export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAULT_MODEL } = {}) {
   return {
     provider,
@@ -40,6 +58,7 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
       const intent = classifyIntent(inbound?.text || '')
       const risk = riskForIntent(intent, policy)
       const allowed = Boolean(policy?.autoSend?.[intent]) && risk === 'low'
+      const knowledge = relevantKnowledge(intent, snapshot)
 
       return {
         ok: true,
@@ -53,7 +72,7 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
         allowed,
         draftText: draftForIntent(intent),
         reason: allowed ? 'policy_allows_low_risk_intent' : 'guard_requires_human_or_more_data',
-        sourceIds: inbound?.id ? [inbound.id] : [],
+        sourceIds: [...(inbound?.id ? [inbound.id] : []), ...knowledge.map((source) => source.id)],
       }
     },
   }

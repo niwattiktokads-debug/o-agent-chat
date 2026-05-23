@@ -21,6 +21,7 @@ export const REQUIRED_OMNI_TABLES = [
   'action_audits',
   'approval_tasks',
   'connector_health',
+  'knowledge_sources',
 ]
 
 export function loadOmniSchemaSql() {

@@ -17,6 +17,31 @@ export async function fetchConnectorHealth() {
   return (await getJson('/api/omni/connectors/health')).health
 }
 
+export async function fetchKnowledgeSources(query = '') {
+  const params = new URLSearchParams()
+  if (query) params.set('q', query)
+  const suffix = params.toString() ? `?${params.toString()}` : ''
+  return (await getJson(`/api/omni/knowledge-sources${suffix}`)).sources
+}
+
+export async function saveKnowledgeSource(source) {
+  const response = await fetch('/api/omni/knowledge-sources', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(source),
+  })
+  const body = await response.json()
+  if (!response.ok || !body.ok) throw new Error(body.error || 'knowledge_save_failed')
+  return body
+}
+
+export async function deleteKnowledgeSource(sourceId) {
+  const response = await fetch(`/api/omni/knowledge-sources/${sourceId}`, { method: 'DELETE' })
+  const body = await response.json()
+  if (!response.ok || !body.ok) throw new Error(body.error || 'knowledge_delete_failed')
+  return body
+}
+
 export async function fetchFacebookConversations(pageProfile) {
   const query = new URLSearchParams({ page: pageProfile })
   return (await getJson(`/api/omni/facebook/conversations?${query.toString()}`)).data

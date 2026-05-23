@@ -1,10 +1,5 @@
-import React from 'react'
-
-const knowledgeRows = [
-  { title: 'Return and exchange policy', source: 'Manual note', status: 'Ready', updated: 'Today 08:20' },
-  { title: 'Anna Lynn product FAQ', source: 'Product sheet', status: 'Ready', updated: 'Today 08:12' },
-  { title: 'Shipping and payment answers', source: 'Messenger playbook', status: 'Training', updated: 'Today 07:58' },
-]
+import React, { useEffect, useMemo, useState } from 'react'
+import { deleteKnowledgeSource, fetchKnowledgeSources, saveKnowledgeSource } from '../../lib/omniApi.js'
 
 const navItems = [
   ['Inbox', '12'],
@@ -17,7 +12,81 @@ const navItems = [
 
 const trainMenu = ['Overview', 'Instructions', 'Knowledge Source', 'Testing', 'Deploy']
 
+function formatUpdated(value) {
+  if (!value) return '—'
+  return new Intl.DateTimeFormat('th-TH', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
+}
+
+function labelStatus(status) {
+  if (status === 'ready') return 'Ready'
+  if (status === 'training') return 'Training'
+  if (status === 'needs_review') return 'Needs review'
+  return 'Archived'
+}
+
 export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat }) {
+  const [sources, setSources] = useState([])
+  const [query, setQuery] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [form, setForm] = useState({
+    title: '',
+    type: 'manual',
+    scope: 'all_pages',
+    content: '',
+    tags: '',
+  })
+
+  async function loadSources(search = query) {
+    if (!search) setBusy(true)
+    setError('')
+    try {
+      setSources(await fetchKnowledgeSources(search))
+    } catch (err) {
+      setError(err.message || 'knowledge_load_failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  useEffect(() => {
+    loadSources('')
+  }, [])
+
+  async function submitSource(event) {
+    event.preventDefault()
+    setBusy(true)
+    setError('')
+    try {
+      const result = await saveKnowledgeSource(form)
+      setSources(result.snapshot.knowledgeSources || [])
+      setForm({ title: '', type: 'manual', scope: 'all_pages', content: '', tags: '' })
+    } catch (err) {
+      setError(err.message || 'knowledge_save_failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function removeSource(sourceId) {
+    setBusy(true)
+    setError('')
+    try {
+      const result = await deleteKnowledgeSource(sourceId)
+      setSources(result.snapshot.knowledgeSources || [])
+    } catch (err) {
+      setError(err.message || 'knowledge_delete_failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const stats = useMemo(() => {
+    const ready = sources.filter((source) => source.status === 'ready').length
+    const needsReview = sources.filter((source) => source.status === 'needs_review' || source.status === 'training').length
+    return { total: sources.length, ready, needsReview }
+  }, [sources])
+
   return (
     <div className="flex h-full bg-[#f6f8fb] text-[#17211e]">
       <aside className="flex w-[68px] flex-col items-center border-r border-[#e5e9ef] bg-white py-4">
@@ -54,9 +123,9 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat }) {
 
         <div className="mt-8 rounded-2xl border border-[#dcefe9] bg-[#f1fbf8] p-4">
           <p className="text-sm font-bold text-[#153d35]">AI training status</p>
-          <p className="mt-1 text-xs leading-5 text-[#5f746e]">3 sources connected. Auto-retrain is enabled for new customer answers.</p>
+          <p className="mt-1 text-xs leading-5 text-[#5f746e]">{stats.total} sources connected. Auto-retrain is enabled for new customer answers.</p>
           <div className="mt-3 h-2 rounded-full bg-white">
-            <div className="h-2 w-[72%] rounded-full bg-[#0f8f7b]" />
+            <div className="h-2 rounded-full bg-[#0f8f7b]" style={{ width: `${stats.total ? Math.round((stats.ready / stats.total) * 100) : 0}%` }} />
           </div>
         </div>
       </aside>
@@ -70,7 +139,7 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat }) {
           <div className="flex items-center gap-2">
             <button type="button" className="rounded-xl border border-[#dce3e8] bg-white px-4 py-2 text-sm font-semibold text-[#52606b]" onClick={onOpenInbox}>Inbox</button>
             <button type="button" className="rounded-xl border border-[#dce3e8] bg-white px-4 py-2 text-sm font-semibold text-[#52606b]" onClick={onOpenChat}>Chat</button>
-            <button type="button" className="rounded-xl bg-[#0f8f7b] px-4 py-2 text-sm font-bold text-white shadow-sm">Add source</button>
+            <button type="button" className="rounded-xl bg-[#0f8f7b] px-4 py-2 text-sm font-bold text-white shadow-sm" onClick={() => document.getElementById('knowledge-title')?.focus()}>Add source</button>
           </div>
         </header>
 
@@ -100,14 +169,14 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat }) {
                       Add trusted information for the AI chatbot to answer customers across Facebook, TikTok, Shopee, and order chats.
                     </p>
                   </div>
-                  <button type="button" className="rounded-xl bg-[#0f8f7b] px-4 py-2.5 text-sm font-bold text-white shadow-sm">+ New knowledge</button>
+                  <button type="button" className="rounded-xl bg-[#0f8f7b] px-4 py-2.5 text-sm font-bold text-white shadow-sm" onClick={() => document.getElementById('knowledge-title')?.focus()}>+ New knowledge</button>
                 </div>
 
                 <div className="mt-6 grid grid-cols-3 gap-3">
                   {[
-                    ['Knowledge items', '3'],
-                    ['Ready to answer', '2'],
-                    ['Needs review', '1'],
+                    ['Knowledge items', String(stats.total)],
+                    ['Ready to answer', String(stats.ready)],
+                    ['Needs review', String(stats.needsReview)],
                   ].map(([label, value]) => (
                     <div key={label} className="rounded-2xl border border-[#e5e9ef] bg-[#fbfcfd] p-4">
                       <p className="text-xs font-semibold text-[#8a96a3]">{label}</p>
@@ -118,6 +187,52 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat }) {
               </div>
 
               <div className="mt-5 rounded-3xl border border-[#e5e9ef] bg-white shadow-sm">
+                <form className="grid gap-3 border-b border-[#eef2f5] px-5 py-4" onSubmit={submitSource}>
+                  <div className="grid grid-cols-[1fr_150px_180px] gap-3">
+                    <input
+                      id="knowledge-title"
+                      className="h-11 rounded-xl border border-[#dce3e8] px-3 text-sm outline-none focus:border-[#0f8f7b]"
+                      placeholder="Knowledge title"
+                      value={form.title}
+                      onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
+                    />
+                    <select
+                      className="h-11 rounded-xl border border-[#dce3e8] px-3 text-sm outline-none focus:border-[#0f8f7b]"
+                      value={form.type}
+                      onChange={(event) => setForm((current) => ({ ...current, type: event.target.value }))}
+                    >
+                      <option value="manual">Manual</option>
+                      <option value="website">Website</option>
+                      <option value="file">File</option>
+                      <option value="faq">FAQ</option>
+                      <option value="order_policy">Order policy</option>
+                    </select>
+                    <input
+                      className="h-11 rounded-xl border border-[#dce3e8] px-3 text-sm outline-none focus:border-[#0f8f7b]"
+                      placeholder="Scope เช่น all_pages"
+                      value={form.scope}
+                      onChange={(event) => setForm((current) => ({ ...current, scope: event.target.value }))}
+                    />
+                  </div>
+                  <textarea
+                    className="min-h-[92px] rounded-xl border border-[#dce3e8] px-3 py-2 text-sm leading-6 outline-none focus:border-[#0f8f7b]"
+                    placeholder="Paste trusted answer, policy, product FAQ, or instruction for the AI"
+                    value={form.content}
+                    onChange={(event) => setForm((current) => ({ ...current, content: event.target.value }))}
+                  />
+                  <div className="flex items-center gap-3">
+                    <input
+                      className="h-10 flex-1 rounded-xl border border-[#dce3e8] px-3 text-sm outline-none focus:border-[#0f8f7b]"
+                      placeholder="Tags, comma separated"
+                      value={form.tags}
+                      onChange={(event) => setForm((current) => ({ ...current, tags: event.target.value }))}
+                    />
+                    <button type="submit" className="h-10 rounded-xl bg-[#0f8f7b] px-4 text-sm font-bold text-white disabled:opacity-50" disabled={busy}>
+                      {busy ? 'Saving' : 'Save source'}
+                    </button>
+                  </div>
+                  {error ? <p className="text-sm font-semibold text-rose-600">{error}</p> : null}
+                </form>
                 <div className="flex items-center justify-between border-b border-[#eef2f5] px-5 py-4">
                   <div className="flex rounded-xl bg-[#f3f6f8] p-1 text-sm font-semibold text-[#66737f]">
                     <button type="button" className="rounded-lg bg-white px-4 py-2 text-[#17211e] shadow-sm">All</button>
@@ -125,24 +240,35 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat }) {
                     <button type="button" className="px-4 py-2">Files</button>
                     <button type="button" className="px-4 py-2">Manual</button>
                   </div>
-                  <input className="h-10 w-72 rounded-xl border border-[#dce3e8] px-3 text-sm outline-none focus:border-[#0f8f7b]" placeholder="Search knowledge" />
+                  <input
+                    className="h-10 w-72 rounded-xl border border-[#dce3e8] px-3 text-sm outline-none focus:border-[#0f8f7b]"
+                    placeholder="Search knowledge"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') loadSources(query)
+                    }}
+                  />
+                  <button type="button" className="ml-2 h-10 rounded-xl border border-[#dce3e8] px-3 text-sm font-semibold text-[#52606b]" onClick={() => loadSources(query)}>Search</button>
                 </div>
 
                 <div className="divide-y divide-[#eef2f5]">
-                  {knowledgeRows.map((row) => (
-                    <article key={row.title} className="grid grid-cols-[1fr_160px_120px_150px] items-center gap-4 px-5 py-4">
+                  {sources.map((row) => (
+                    <article key={row.id} className="grid grid-cols-[1fr_160px_120px_150px] items-center gap-4 px-5 py-4">
                       <div>
                         <p className="font-bold text-[#17211e]">{row.title}</p>
-                        <p className="mt-1 text-sm text-[#8a96a3]">{row.source}</p>
+                        <p className="mt-1 line-clamp-1 text-sm text-[#8a96a3]">{row.type} · {row.scope}</p>
                       </div>
-                      <span className="text-sm text-[#66737f]">{row.updated}</span>
-                      <span className={`w-fit rounded-full px-3 py-1 text-xs font-bold ${row.status === 'Ready' ? 'bg-[#e8faf6] text-[#0f8f7b]' : 'bg-[#fff3df] text-[#b7791f]'}`}>{row.status}</span>
+                      <span className="text-sm text-[#66737f]">{formatUpdated(row.updatedAt)}</span>
+                      <span className={`w-fit rounded-full px-3 py-1 text-xs font-bold ${row.status === 'ready' ? 'bg-[#e8faf6] text-[#0f8f7b]' : 'bg-[#fff3df] text-[#b7791f]'}`}>{labelStatus(row.status)}</span>
                       <div className="flex justify-end gap-2">
-                        <button type="button" className="rounded-lg border border-[#dce3e8] px-3 py-1.5 text-sm font-semibold text-[#52606b]">Edit</button>
+                        <button type="button" className="rounded-lg border border-[#dce3e8] px-3 py-1.5 text-sm font-semibold text-[#52606b]" onClick={() => setForm({ title: row.title, type: row.type, scope: row.scope, content: row.content, tags: (row.tags || []).join(', ') })}>Edit</button>
                         <button type="button" className="rounded-lg border border-[#dce3e8] px-3 py-1.5 text-sm font-semibold text-[#52606b]">Test</button>
+                        <button type="button" className="rounded-lg border border-rose-200 px-3 py-1.5 text-sm font-semibold text-rose-600" onClick={() => removeSource(row.id)}>Delete</button>
                       </div>
                     </article>
                   ))}
+                  {!sources.length ? <div className="px-5 py-8 text-sm text-[#66737f]">No knowledge sources found.</div> : null}
                 </div>
               </div>
             </div>

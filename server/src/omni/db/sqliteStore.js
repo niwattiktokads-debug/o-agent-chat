@@ -24,6 +24,7 @@ const COLLECTIONS = [
   'actionAudits',
   'approvalTasks',
   'connectorHealth',
+  'knowledgeSources',
 ]
 
 const SEED_BACKED_COLLECTIONS = [
@@ -34,6 +35,7 @@ const SEED_BACKED_COLLECTIONS = [
   'agentProfiles',
   'inventorySnapshots',
   'connectorHealth',
+  'knowledgeSources',
 ]
 
 const DEPRECATED_SEED_IDS = {
