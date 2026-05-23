@@ -149,6 +149,32 @@ export function createOmniService(options = createOmniSeed()) {
       const result = upsert('aiDecisions', [row])
       return { ok: true, result, decision: structuredClone(row), snapshot: this.snapshot() }
     },
+    recordOutboundMessage({ threadId, authorName = 'AI', text, providerMessageId = null, sourceRef = 'ai_auto_reply' }) {
+      const snapshot = currentData()
+      const thread = snapshot.threads.find((item) => item.id === threadId)
+      if (!thread) return { ok: false, error: 'thread_not_found' }
+      const now = new Date().toISOString()
+      const message = {
+        id: `out_${threadId}_${Date.now()}`,
+        threadId,
+        direction: 'outbound',
+        authorName,
+        text: String(text || ''),
+        createdAt: now,
+        providerMessageId,
+        sourceRef,
+      }
+      const updatedThread = {
+        ...thread,
+        status: 'auto_sent',
+        unreadCount: 0,
+        messageCount: (thread.messageCount || 0) + 1,
+        updatedAt: now,
+      }
+      upsert('messages', [message])
+      upsert('threads', [updatedThread])
+      return { ok: true, message: structuredClone(message), thread: structuredClone(updatedThread), snapshot: this.snapshot() }
+    },
     approveDraft({ threadId }) {
       if (store) return { ok: false, error: 'approval_not_supported_for_sqlite_store_yet' }
       const thread = data.threads.find((item) => item.id === threadId)

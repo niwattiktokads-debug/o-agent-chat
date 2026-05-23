@@ -126,3 +126,48 @@ test('POST /webhook/dex/auto-reply drafts from existing thread memory', async ()
   assert.match(body.decision.draftText, /เช็กสต็อก/)
   assert.equal(body.decision.sourceIds.every((id) => id.startsWith('ks_')), true)
 })
+
+test('POST /webhook/meta can send guarded auto reply for Anna Lynn only', async () => {
+  const app = express()
+  app.use(express.json())
+  const sent = []
+  const localEvents = []
+  const localHub = { broadcast: (event, payload) => localEvents.push({ event, payload }) }
+  mountWebhook(app, localHub, createState(), {
+    omni: createOmniService(),
+    metaVerifyToken: 'verify-token-test',
+    sendReply: async (payload) => {
+      sent.push(payload)
+      return { ok: true, response: { message_id: 'sent_mid_anna' } }
+    },
+  })
+  const localServer = app.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const response = await fetch(`http://localhost:${localPort}/webhook/meta?autoReply=1&send=1`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        object: 'page',
+        entry: [{
+          id: '122106446570001676',
+          messaging: [{
+            sender: { id: 'customer_anna_send' },
+            recipient: { id: '122106446570001676' },
+            timestamp: 1779470300000,
+            message: { mid: 'route_mid_anna_send', text: 'มีสินค้าไหม' },
+          }],
+        }],
+      }),
+    })
+    const body = await response.json()
+    assert.equal(response.status, 200)
+    assert.equal(body.result.autoReplies[0].sent, true)
+    assert.equal(sent[0].pageProfile, 'anna_lynn')
+    assert.equal(sent[0].recipientId, 'customer_anna_send')
+    assert.match(sent[0].message, /เช็กสต็อก/)
+    assert.equal(localEvents.at(-1).event, 'omni')
+  } finally {
+    localServer.close()
+  }
+})

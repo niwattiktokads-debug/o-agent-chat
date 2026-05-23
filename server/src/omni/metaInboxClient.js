@@ -83,3 +83,18 @@ export async function listFacebookConversations({ pageProfile = 'anna_lynn', run
   if (!payload?.ok) throw new Error(payload?.error || 'meta_inbox_failed')
   return normalizeMetaConversations({ pageProfile, response: payload.response })
 }
+
+export async function sendFacebookReply({ pageProfile = 'anna_lynn', recipientId, message, runner = defaultRunner } = {}) {
+  if (!FACEBOOK_PAGE_PROFILES[pageProfile]) throw new Error(`unknown_facebook_page:${pageProfile}`)
+  if (!recipientId) throw new Error('recipient_id_required')
+  if (!String(message || '').trim()) throw new Error('message_required')
+  const payload = await runner([
+    'send-reply',
+    `--page=${pageProfile}`,
+    `--recipient-id=${recipientId}`,
+    `--message=${String(message).trim()}`,
+    '--approved',
+  ])
+  if (!payload?.ok) throw new Error(payload?.error || 'meta_send_reply_failed')
+  return payload
+}
