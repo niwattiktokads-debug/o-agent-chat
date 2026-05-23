@@ -31,7 +31,7 @@ export default function OmniWorkbench() {
 
   return (
     <div className="grid h-full grid-cols-[220px_minmax(260px,360px)_1fr_320px] bg-slate-950 text-slate-100">
-      <PageRail pages={snapshot.pages} activePageId={pageId} onSelect={setPageId} />
+      <PageRail pages={snapshot.pages} accounts={snapshot.platformAccounts} activePageId={pageId} onSelect={setPageId} />
       <ThreadList threads={threads} activeThreadId={selectedThread?.id} onSelect={setThreadId} />
       <main className="min-w-0 border-x border-slate-800">
         <header className="border-b border-slate-800 px-5 py-4">

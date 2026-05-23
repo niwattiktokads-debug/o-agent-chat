@@ -15,7 +15,11 @@ import { mountRoutes } from '../src/routes.js'
 
 test('omni seed starts with configured production page data', () => {
   const seed = createOmniSeed()
-  assert.equal(seed.pages.length, 4)
+  assert.equal(seed.pages.length, 5)
+  assert.equal(seed.pages.find((page) => page.id === 'page_annalynn').name, 'Anna Lynn')
+  assert.equal(seed.pages.find((page) => page.id === 'page_annalynn_tiktok').name, 'AnnaLynn')
+  assert.equal(seed.platformAccounts.find((account) => account.id === 'acct_fb_annalynn').pageId, 'page_annalynn')
+  assert.equal(seed.platformAccounts.find((account) => account.id === 'acct_tt_shop').pageId, 'page_annalynn_tiktok')
   assert.ok(seed.pages.find((page) => page.id === 'page_fb_112154661515664'))
   assert.equal(seed.pages.find((page) => page.id === 'page_fb_112154661515664').name, 'VZ')
   assert.equal(seed.pages.some((page) => page.id === 'page_shop_4'), false)
@@ -58,7 +62,7 @@ test('omni routes are mounted under api', async () => {
 
     assert.equal(response.status, 200)
     assert.equal(body.ok, true)
-    assert.equal(body.pages.length, 4)
+    assert.equal(body.pages.length, 5)
   } finally {
     server.close()
   }
@@ -314,6 +318,29 @@ test('SQLite Omni store removes deprecated seed pages and updates seed names', (
   assert.equal(pages.some((page) => page.id === 'page_shop_4'), false)
   assert.equal(pages.some((page) => page.id === 'page_shop_5'), false)
   assert.equal(pages.find((page) => page.id === 'page_fb_112154661515664').name, 'VZ')
+  migratedStore.close()
+})
+
+test('SQLite Omni store separates Anna Lynn Facebook and AnnaLynn TikTok source pages', () => {
+  const dbPath = `${process.cwd()}/.tmp-test/omni-${Date.now()}-${Math.random().toString(16).slice(2)}.sqlite`
+  const legacySeed = createOmniSeed()
+  legacySeed.pages = legacySeed.pages.filter((page) => page.id !== 'page_annalynn_tiktok')
+  legacySeed.platformAccounts = legacySeed.platformAccounts
+    .filter((account) => account.id !== 'acct_fb_annalynn')
+    .map((account) => account.id === 'acct_tt_shop' ? { ...account, pageId: 'page_annalynn' } : account)
+  legacySeed.threads = legacySeed.threads.map((thread) => thread.id === 'thread_2' ? { ...thread, pageId: 'page_annalynn' } : thread)
+
+  const legacyStore = createSqliteOmniStore({ dbPath, seed: legacySeed })
+  legacyStore.close()
+
+  const migratedStore = createSqliteOmniStore({ dbPath, seed: createOmniSeed() })
+  const snapshot = migratedStore.snapshot()
+
+  assert.equal(snapshot.pages.find((page) => page.id === 'page_annalynn').name, 'Anna Lynn')
+  assert.equal(snapshot.pages.find((page) => page.id === 'page_annalynn_tiktok').name, 'AnnaLynn')
+  assert.equal(snapshot.platformAccounts.find((account) => account.id === 'acct_fb_annalynn').platform, 'facebook')
+  assert.equal(snapshot.platformAccounts.find((account) => account.id === 'acct_tt_shop').pageId, 'page_annalynn_tiktok')
+  assert.equal(snapshot.threads.find((thread) => thread.id === 'thread_2').pageId, 'page_annalynn_tiktok')
   migratedStore.close()
 })
 

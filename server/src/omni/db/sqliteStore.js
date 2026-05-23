@@ -124,6 +124,13 @@ export function createSqliteOmniStore({ dbPath, seed = createOmniSeed() } = {}) 
     for (const collection of SEED_BACKED_COLLECTIONS) {
       upsertSeedRows(collection, base[collection])
     }
+    const threads = readCollection('threads') || []
+    const migratedThreads = threads.map((thread) => (
+      thread.id === 'thread_2' && thread.platform === 'tiktok' && thread.pageId === 'page_annalynn'
+        ? { ...thread, pageId: 'page_annalynn_tiktok' }
+        : thread
+    ))
+    if (JSON.stringify(migratedThreads) !== JSON.stringify(threads)) writeCollection('threads', migratedThreads)
   }
 
   seedMissingCollections()

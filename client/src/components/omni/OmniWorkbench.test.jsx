@@ -7,7 +7,13 @@ vi.mock('../../lib/omniApi.js', () => ({
   fetchOmniSnapshot: async () => ({
     pages: [
       { id: 'page_mankynd', name: 'MAN KYND', status: 'active' },
+      { id: 'page_annalynn_tiktok', name: 'AnnaLynn', status: 'active' },
       { id: 'page_fb_112154661515664', name: 'VZ', status: 'active' },
+    ],
+    platformAccounts: [
+      { id: 'acct_fb_mankynd', pageId: 'page_mankynd', platform: 'facebook' },
+      { id: 'acct_tt_shop', pageId: 'page_annalynn_tiktok', platform: 'tiktok' },
+      { id: 'acct_fb_vz', pageId: 'page_fb_112154661515664', platform: 'facebook' },
     ],
     threads: [{ id: 'thread_1', pageId: 'page_mankynd', platform: 'facebook', status: 'draft_ready', intent: 'stock', risk: 'low' }],
     messages: [{ id: 'msg_1', threadId: 'thread_1', direction: 'inbound', authorName: 'ลูกค้า A', text: 'มีไซซ์ M สีดำไหม' }],
@@ -67,6 +73,8 @@ describe('OmniWorkbench', () => {
     render(<OmniWorkbench />)
     expect(await screen.findByText('Omnichannel Inbox')).toBeInTheDocument()
     expect((await screen.findAllByText('MAN KYND')).length).toBeGreaterThan(0)
+    expect(await screen.findByText('AnnaLynn')).toBeInTheDocument()
+    expect(await screen.findByText('tiktok · active')).toBeInTheDocument()
     expect((await screen.findAllByText('VZ')).length).toBeGreaterThan(1)
     expect(await screen.findByText('AI Decision')).toBeInTheDocument()
     expect(await screen.findByText('AI Draft')).toBeInTheDocument()

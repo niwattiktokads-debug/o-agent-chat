@@ -2,6 +2,7 @@ export function createOmniSeed() {
   const pages = [
     { id: 'page_mankynd', name: 'MAN KYND', status: 'active', brandGroupId: 'brand_mankynd', policySetId: 'policy_mankynd', agentProfileId: 'agent_mankynd' },
     { id: 'page_annalynn', name: 'Anna Lynn', status: 'active', brandGroupId: 'brand_fashion', policySetId: 'policy_annalynn', agentProfileId: 'agent_annalynn' },
+    { id: 'page_annalynn_tiktok', name: 'AnnaLynn', status: 'active', brandGroupId: 'brand_fashion', policySetId: 'policy_annalynn', agentProfileId: 'agent_annalynn' },
     { id: 'page_des', name: 'เพจเดส', status: 'active', brandGroupId: 'brand_oagent', policySetId: 'policy_page_des', agentProfileId: 'agent_page_des' },
     { id: 'page_fb_112154661515664', name: 'VZ', status: 'active', brandGroupId: 'brand_shared', policySetId: 'policy_default', agentProfileId: 'agent_default' },
   ]
@@ -10,8 +11,9 @@ export function createOmniSeed() {
     pages,
     platformAccounts: [
       { id: 'acct_fb_mankynd', pageId: 'page_mankynd', platform: 'facebook', provider: 'meta', status: 'healthy' },
+      { id: 'acct_fb_annalynn', pageId: 'page_annalynn', platform: 'facebook', provider: 'meta', providerAccountId: '122106446570001676', status: 'healthy' },
       { id: 'acct_fb_112154661515664', pageId: 'page_fb_112154661515664', platform: 'facebook', provider: 'meta', status: 'pending_token' },
-      { id: 'acct_tt_shop', pageId: 'page_annalynn', platform: 'tiktok', provider: 'tiktok_shop', status: 'healthy' },
+      { id: 'acct_tt_shop', pageId: 'page_annalynn_tiktok', platform: 'tiktok', provider: 'tiktok_shop', providerAccountId: '7494912558026296148', status: 'healthy' },
     ],
     policySets: [
       { id: 'policy_default', autoSend: { faq: true, stock: true, price: false, orderStatus: false }, forbidden: ['refund', 'cancel', 'คืนเงิน', 'ยกเลิก'] },
@@ -29,7 +31,7 @@ export function createOmniSeed() {
     ],
     threads: [
       { id: 'thread_1', pageId: 'page_mankynd', platform: 'facebook', customerId: 'cust_1', status: 'draft_ready', intent: 'stock', risk: 'low', updatedAt: '2026-05-22T10:00:00.000Z' },
-      { id: 'thread_2', pageId: 'page_annalynn', platform: 'tiktok', customerId: 'cust_2', status: 'needs_approval', intent: 'orderStatus', risk: 'medium', updatedAt: '2026-05-22T10:05:00.000Z' },
+      { id: 'thread_2', pageId: 'page_annalynn_tiktok', platform: 'tiktok', customerId: 'cust_2', status: 'needs_approval', intent: 'orderStatus', risk: 'medium', updatedAt: '2026-05-22T10:05:00.000Z' },
     ],
     messages: [
       { id: 'msg_1', threadId: 'thread_1', direction: 'inbound', authorName: 'ลูกค้า A', text: 'มีไซซ์ M สีดำไหม', createdAt: '2026-05-22T10:00:00.000Z', providerMessageId: 'fb_mid_1' },
