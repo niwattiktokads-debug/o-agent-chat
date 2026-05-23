@@ -13,10 +13,13 @@ import { getOmniSchemaSummary, loadOmniSchemaSql, REQUIRED_OMNI_TABLES } from '.
 import { createSqliteOmniStore } from '../src/omni/db/sqliteStore.js'
 import { mountRoutes } from '../src/routes.js'
 
-test('omni seed starts with configurable five-page seed data', () => {
+test('omni seed starts with configured production page data', () => {
   const seed = createOmniSeed()
-  assert.equal(seed.pages.length, 6)
+  assert.equal(seed.pages.length, 4)
   assert.ok(seed.pages.find((page) => page.id === 'page_fb_112154661515664'))
+  assert.equal(seed.pages.find((page) => page.id === 'page_fb_112154661515664').name, 'VZ')
+  assert.equal(seed.pages.some((page) => page.id === 'page_shop_4'), false)
+  assert.equal(seed.pages.some((page) => page.id === 'page_shop_5'), false)
   assert.equal(seed.pages.every((page) => page.status === 'active'), true)
   assert.equal(seed.pages.every((page) => page.policySetId), true)
   assert.equal(seed.pages.every((page) => page.agentProfileId), true)
@@ -55,7 +58,7 @@ test('omni routes are mounted under api', async () => {
 
     assert.equal(response.status, 200)
     assert.equal(body.ok, true)
-    assert.equal(body.pages.length, 6)
+    assert.equal(body.pages.length, 4)
   } finally {
     server.close()
   }
@@ -286,6 +289,31 @@ test('SQLite Omni store backfills missing seed pages for existing databases', ()
 
   assert.equal(snapshot.pages.some((page) => page.id === 'page_fb_112154661515664'), true)
   assert.equal(snapshot.platformAccounts.some((account) => account.id === 'acct_fb_112154661515664'), true)
+  migratedStore.close()
+})
+
+test('SQLite Omni store removes deprecated seed pages and updates seed names', () => {
+  const dbPath = `${process.cwd()}/.tmp-test/omni-${Date.now()}-${Math.random().toString(16).slice(2)}.sqlite`
+  const legacySeed = createOmniSeed()
+  legacySeed.pages.push(
+    { id: 'page_shop_4', name: 'Seed Page 4', status: 'active', brandGroupId: 'brand_shared', policySetId: 'policy_default', agentProfileId: 'agent_default' },
+    { id: 'page_shop_5', name: 'Seed Page 5', status: 'active', brandGroupId: 'brand_shared', policySetId: 'policy_default', agentProfileId: 'agent_default' },
+  )
+  legacySeed.pages = legacySeed.pages.map((page) => (
+    page.id === 'page_fb_112154661515664' ? { ...page, name: 'Facebook Page 112154661515664' } : page
+  ))
+
+  const legacyStore = createSqliteOmniStore({ dbPath, seed: legacySeed })
+  assert.equal(legacyStore.snapshot().pages.some((page) => page.id === 'page_shop_4'), true)
+  assert.equal(legacyStore.snapshot().pages.find((page) => page.id === 'page_fb_112154661515664').name, 'Facebook Page 112154661515664')
+  legacyStore.close()
+
+  const migratedStore = createSqliteOmniStore({ dbPath, seed: createOmniSeed() })
+  const pages = migratedStore.snapshot().pages
+
+  assert.equal(pages.some((page) => page.id === 'page_shop_4'), false)
+  assert.equal(pages.some((page) => page.id === 'page_shop_5'), false)
+  assert.equal(pages.find((page) => page.id === 'page_fb_112154661515664').name, 'VZ')
   migratedStore.close()
 })
 

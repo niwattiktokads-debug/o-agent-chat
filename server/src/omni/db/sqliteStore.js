@@ -36,6 +36,10 @@ const SEED_BACKED_COLLECTIONS = [
   'connectorHealth',
 ]
 
+const DEPRECATED_SEED_IDS = {
+  pages: ['page_shop_4', 'page_shop_5'],
+}
+
 function clone(value) {
   return structuredClone(value)
 }
@@ -84,9 +88,24 @@ export function createSqliteOmniStore({ dbPath, seed = createOmniSeed() } = {}) 
   function upsertSeedRows(name, seedRows) {
     const collection = readCollection(name) || []
     let changed = false
+    const deprecatedIds = new Set(DEPRECATED_SEED_IDS[name] || [])
+
+    for (let index = collection.length - 1; index >= 0; index -= 1) {
+      if (deprecatedIds.has(collection[index].id)) {
+        collection.splice(index, 1)
+        changed = true
+      }
+    }
 
     for (const row of seedRows || []) {
-      if (!collection.find((item) => item.id === row.id)) {
+      const existingIndex = collection.findIndex((item) => item.id === row.id)
+      if (existingIndex >= 0) {
+        const next = { ...collection[existingIndex], ...clone(row) }
+        if (JSON.stringify(next) !== JSON.stringify(collection[existingIndex])) {
+          collection[existingIndex] = next
+          changed = true
+        }
+      } else {
         collection.push(clone(row))
         changed = true
       }
