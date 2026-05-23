@@ -93,3 +93,36 @@ test('POST /webhook/meta syncs Meta messenger event', async () => {
   assert.equal(body.ok, true)
   assert.equal(body.result.threads.inserted, 1)
 })
+
+test('POST /webhook/meta can auto draft a reply for synced messages', async () => {
+  events.length = 0
+  const { body, status } = await req('POST', '/webhook/meta?autoReply=1', {
+    object: 'page',
+    entry: [{
+      id: '189971841184132',
+      messaging: [{
+        sender: { id: 'customer_mk_auto' },
+        recipient: { id: '189971841184132' },
+        timestamp: 1779470100000,
+        message: { mid: 'route_mid_mk_auto', text: 'มีไซซ์ M ไหม' },
+      }],
+    }],
+  })
+
+  assert.equal(status, 200)
+  assert.equal(body.ok, true)
+  assert.equal(body.result.autoReplies.length, 1)
+  assert.equal(body.result.autoReplies[0].ok, true)
+  assert.equal(body.result.autoReplies[0].decision.sourceIds.every((id) => id.startsWith('ks_')), true)
+  assert.equal(events.at(-1).event, 'omni')
+})
+
+test('POST /webhook/dex/auto-reply drafts from existing thread memory', async () => {
+  const { body, status } = await req('POST', '/webhook/dex/auto-reply', { threadId: 'thread_1' })
+
+  assert.equal(status, 200)
+  assert.equal(body.ok, true)
+  assert.equal(body.decision.threadId, 'thread_1')
+  assert.match(body.decision.draftText, /เช็กสต็อก/)
+  assert.equal(body.decision.sourceIds.every((id) => id.startsWith('ks_')), true)
+})
