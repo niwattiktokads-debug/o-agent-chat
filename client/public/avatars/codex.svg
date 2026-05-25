@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Codex avatar</title>
+  <desc id="desc">Violet profile avatar for Codex.</desc>
+  <defs>
+    <linearGradient id="bg" x1="36" y1="30" x2="220" y2="230" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#c4b5fd"/>
+      <stop offset="0.46" stop-color="#7c3aed"/>
+      <stop offset="1" stop-color="#1e1b4b"/>
+    </linearGradient>
+    <radialGradient id="core" cx="50%" cy="48%" r="48%">
+      <stop stop-color="#f5f3ff"/>
+      <stop offset=".56" stop-color="#a78bfa"/>
+      <stop offset="1" stop-color="#4c1d95"/>
+    </radialGradient>
+  </defs>
+  <rect width="256" height="256" rx="64" fill="#0f1020"/>
+  <circle cx="128" cy="128" r="104" fill="url(#bg)"/>
+  <path d="M62 128c0-44 28-76 66-76s66 32 66 76-28 76-66 76-66-32-66-76Z" fill="url(#core)" opacity=".94"/>
+  <path d="M80 126c14-30 30-45 48-45s34 15 48 45c-14 31-30 46-48 46s-34-15-48-46Z" fill="#1e1b4b" opacity=".9"/>
+  <circle cx="128" cy="126" r="30" fill="#ede9fe"/>
+  <circle cx="128" cy="126" r="16" fill="#5b21b6"/>
+  <path d="M56 82c23 5 43 16 60 34M200 82c-23 5-43 16-60 34M56 174c23-5 43-16 60-34M200 174c-23-5-43-16-60-34" fill="none" stroke="#ddd6fe" stroke-width="7" stroke-linecap="round" opacity=".72"/>
+  <path d="M128 28v34M128 194v34M28 128h34M194 128h34" fill="none" stroke="#f5f3ff" stroke-width="6" stroke-linecap="round" opacity=".8"/>
+  <circle cx="128" cy="126" r="70" fill="none" stroke="#ddd6fe" stroke-width="4" stroke-dasharray="8 12" opacity=".65"/>
+</svg>

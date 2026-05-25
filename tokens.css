@@ -1,0 +1,51 @@
+/* Hallmark · genre: modern-minimal · macrostructure: Workbench · design-system: design.md · designed-as-app */
+:root {
+  --color-paper: oklch(98% 0.006 165);
+  --color-panel: oklch(100% 0 0);
+  --color-panel-2: oklch(96% 0.01 165);
+  --color-panel-3: oklch(93% 0.018 165);
+  --color-ink: oklch(19% 0.035 170);
+  --color-ink-2: oklch(43% 0.03 170);
+  --color-muted: oklch(61% 0.025 170);
+  --color-rule: oklch(88% 0.015 165);
+  --color-accent: oklch(49% 0.105 174);
+  --color-accent-soft: oklch(93% 0.045 174);
+  --color-accent-ink: oklch(98% 0.006 165);
+  --color-live: oklch(57% 0.14 150);
+  --color-live-soft: oklch(93% 0.055 150);
+  --color-warn: oklch(67% 0.14 75);
+  --color-warn-soft: oklch(94% 0.06 75);
+  --color-danger: oklch(56% 0.17 24);
+  --color-danger-soft: oklch(94% 0.055 24);
+  --color-ai: oklch(52% 0.09 255);
+  --color-ai-soft: oklch(93% 0.035 255);
+  --color-customer: oklch(35% 0.035 170);
+  --color-focus: oklch(61% 0.16 180);
+
+  --font-display: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans Thai", sans-serif;
+  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans Thai", sans-serif;
+  --font-mono: "SFMono-Regular", "Menlo", "Monaco", monospace;
+
+  --space-3xs: 0.25rem;
+  --space-2xs: 0.5rem;
+  --space-xs: 0.75rem;
+  --space-sm: 1rem;
+  --space-md: 1.5rem;
+  --space-lg: 2rem;
+  --space-xl: 3rem;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-md: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+
+  --radius-xs: 0.25rem;
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-pill: 999px;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-short: 160ms;
+  --dur-med: 220ms;
+}

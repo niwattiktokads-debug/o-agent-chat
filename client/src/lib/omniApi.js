@@ -1,0 +1,191 @@
+async function getJson(path) {
+  const response = await fetch(path)
+  const body = await response.json()
+  if (!response.ok || !body.ok) throw new Error(body.error || `request_failed:${path}`)
+  return body
+}
+
+export async function fetchOmniSnapshot() {
+  return (await getJson('/api/omni/snapshot')).snapshot
+}
+
+export function subscribeOmniSnapshots(onSnapshot) {
+  let closed = false
+  let ws = null
+  let retry = 1000
+
+  function connect() {
+    if (closed) return
+    ws = new WebSocket(`ws://${location.host}/ws`)
+    ws.onopen = () => { retry = 1000 }
+    ws.onmessage = (event) => {
+      let envelope
+      try { envelope = JSON.parse(event.data) } catch { return }
+      if (envelope?.event === 'omni' && envelope.state) onSnapshot(envelope.state)
+    }
+    ws.onclose = () => {
+      if (closed) return
+      setTimeout(connect, retry)
+      retry = Math.min(retry * 2, 30000)
+    }
+    ws.onerror = () => ws?.close()
+  }
+
+  connect()
+  return () => {
+    closed = true
+    ws?.close()
+  }
+}
+
+export async function fetchThread(threadId) {
+  return (await getJson(`/api/omni/threads/${threadId}`)).thread
+}
+
+export async function setPageAutoReply(pageId, enabled) {
+  const response = await fetch(`/api/omni/pages/${encodeURIComponent(pageId)}/auto-reply`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ enabled, updatedBy: 'boss' }),
+  })
+  const body = await response.json()
+  if (!response.ok || !body.ok) throw new Error(body.error || 'page_auto_reply_update_failed')
+  return body
+}
+
+export async function fetchConnectorHealth() {
+  return (await getJson('/api/omni/connectors/health')).health
+}
+
+export async function fetchConnections() {
+  return getJson('/api/omni/connections')
+}
+
+export async function verifyConnection(connectionId) {
+  const response = await fetch(`/api/omni/connections/${connectionId}/verify`, { method: 'POST' })
+  const body = await response.json()
+  if (!response.ok || !body.ok) throw new Error(body.summary || body.error || 'connection_verify_failed')
+  return body
+}
+
+export async function saveConnectionSecrets(connectionId, fields) {
+  const response = await fetch(`/api/omni/connections/${connectionId}/secrets`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ fields }),
+  })
+  const body = await response.json()
+  if (!response.ok || !body.ok) throw new Error(body.error || 'connection_secret_save_failed')
+  return body
+}
+
+export async function fetchConnectionConversations(connectionId, limit = 5) {
+  const query = new URLSearchParams({ limit: String(limit) })
+  return getJson(`/api/omni/connections/${connectionId}/conversations?${query.toString()}`)
+}
+
+export async function fetchConnectionThread(connectionId, conversationId, limit = 20) {
+  const query = new URLSearchParams({ limit: String(limit) })
+  return getJson(`/api/omni/connections/${connectionId}/conversations/${encodeURIComponent(conversationId)}/messages?${query.toString()}`)
+}
+
+export async function createConnectionAiDraft(connectionId, conversationId) {
+  const response = await fetch(`/api/omni/connections/${connectionId}/conversations/${encodeURIComponent(conversationId)}/ai-draft`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({}),
+  })
+  const body = await response.json()
+  if (!response.ok || !body.ok) throw new Error(body.error || 'connection_ai_draft_failed')
+  return body
+}
+
+export async function sendConnectionReply(connectionId, conversationId, message) {
+  const response = await fetch(`/api/omni/connections/${connectionId}/conversations/${encodeURIComponent(conversationId)}/send`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ message, approved: true }),
+  })
+  const body = await response.json()
+  if (!response.ok || !body.ok) throw new Error(body.error || 'connection_send_failed')
+  return body
+}
+
+export async function fetchKnowledgeSources({ query = '', type = '' } = {}) {
+  const params = new URLSearchParams()
+  if (query) params.set('q', query)
+  if (type) params.set('type', type)
+  const suffix = params.toString() ? `?${params.toString()}` : ''
+  return (await getJson(`/api/omni/knowledge-sources${suffix}`)).sources
+}
+
+export async function saveKnowledgeSource(source) {
+  const response = await fetch('/api/omni/knowledge-sources', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(source),
+  })
+  const body = await response.json()
+  if (!response.ok || !body.ok) throw new Error(body.error || 'knowledge_save_failed')
+  return body
+}
+
+export async function deleteKnowledgeSource(sourceId) {
+  const response = await fetch(`/api/omni/knowledge-sources/${sourceId}`, { method: 'DELETE' })
+  const body = await response.json()
+  if (!response.ok || !body.ok) throw new Error(body.error || 'knowledge_delete_failed')
+  return body
+}
+
+export async function fetchFacebookConversations(pageProfile) {
+  const query = new URLSearchParams({ page: pageProfile })
+  return (await getJson(`/api/omni/facebook/conversations?${query.toString()}`)).data
+}
+
+export async function syncFacebookConversations(pageProfile) {
+  const response = await fetch('/api/omni/facebook/sync', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ page: pageProfile }),
+  })
+  const body = await response.json()
+  if (!response.ok || !body.ok) throw new Error(body.error || 'facebook_sync_failed')
+  return body.result
+}
+
+export async function fetchTikTokOrders(status = 'AWAITING_COLLECTION', pageSize = 10) {
+  const query = new URLSearchParams({ status, pageSize: String(pageSize) })
+  return (await getJson(`/api/omni/tiktok/orders?${query.toString()}`)).data
+}
+
+export async function syncTikTokOrders(status = 'AWAITING_COLLECTION', pageSize = 10) {
+  const response = await fetch('/api/omni/tiktok/sync', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ status, pageSize }),
+  })
+  const body = await response.json()
+  if (!response.ok || !body.ok) throw new Error(body.error || 'tiktok_sync_failed')
+  return body.result
+}
+
+export async function createAiDraft(threadId) {
+  const response = await fetch(`/api/omni/threads/${threadId}/ai-draft`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+  })
+  const body = await response.json()
+  if (!response.ok || !body.ok) throw new Error(body.error || 'ai_draft_failed')
+  return body
+}
+
+export async function saveManualReplyDraft(threadId, draft) {
+  const response = await fetch(`/api/omni/threads/${threadId}/manual-draft`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(draft),
+  })
+  const body = await response.json()
+  if (!response.ok || !body.ok) throw new Error(body.error || 'manual_draft_failed')
+  return body
+}

@@ -1,0 +1,120 @@
+import { DEFAULT_CHAT_RETENTION_POLICY } from './retention.js'
+
+export function createOmniSeed() {
+  const pages = [
+    { id: 'page_mankynd', name: 'MAN KYND', status: 'active', brandGroupId: 'brand_mankynd', policySetId: 'policy_mankynd', agentProfileId: 'agent_mankynd' },
+    { id: 'page_annalynn', name: 'Anna Lynn', status: 'active', brandGroupId: 'brand_fashion', policySetId: 'policy_annalynn', agentProfileId: 'agent_annalynn' },
+    { id: 'page_annalynn_tiktok', name: 'AnnaLynn', status: 'active', brandGroupId: 'brand_fashion', policySetId: 'policy_annalynn', agentProfileId: 'agent_annalynn' },
+    { id: 'page_des', name: 'เพจเดส', status: 'active', brandGroupId: 'brand_oagent', policySetId: 'policy_page_des', agentProfileId: 'agent_page_des' },
+    { id: 'page_fb_112154661515664', name: 'Viris Zamara', shortName: 'VZ', status: 'active', brandGroupId: 'brand_shared', policySetId: 'policy_default', agentProfileId: 'agent_default' },
+  ]
+
+  return {
+    pages,
+    platformAccounts: [
+      { id: 'acct_fb_mankynd', pageId: 'page_mankynd', platform: 'facebook', provider: 'meta', status: 'healthy' },
+      { id: 'acct_fb_annalynn', pageId: 'page_annalynn', platform: 'facebook', provider: 'meta', providerAccountId: '122106446570001676', status: 'healthy' },
+      { id: 'acct_fb_112154661515664', pageId: 'page_fb_112154661515664', platform: 'facebook', provider: 'meta', status: 'pending_token' },
+      { id: 'acct_tt_shop', pageId: 'page_annalynn_tiktok', platform: 'tiktok', provider: 'tiktok_shop', providerAccountId: '7494912558026296148', status: 'healthy' },
+      { id: 'acct_tt_annalynn_dm', pageId: 'page_annalynn_tiktok', platform: 'tiktok', provider: 'tiktok_business_messaging', providerAccountId: 'AnnaLynn', status: 'pending_oauth_approval' },
+    ],
+    pageRuntimeSettings: pages.map((page) => ({
+      pageId: page.id,
+      autoReplyEnabled: true,
+      updatedAt: '2026-05-24T00:00:00.000Z',
+      updatedBy: 'seed',
+    })),
+    policySets: [
+      { id: 'policy_default', autoSend: { faq: true, stock: true, price: true, orderStatus: true, refund: true }, forbidden: [] },
+      { id: 'policy_mankynd', autoSend: { faq: true, stock: true, price: true, orderStatus: true, refund: true }, forbidden: [] },
+      { id: 'policy_annalynn', autoSend: { faq: true, stock: true, price: true, orderStatus: true, refund: true }, forbidden: [] },
+      { id: 'policy_page_des', autoSend: { faq: true, stock: true, price: true, orderStatus: true, refund: true }, forbidden: [] },
+    ],
+    agentProfiles: [
+      { id: 'agent_default', name: 'Default Sales AI', provider: 'omni_ai_reply', model: 'configurable', role: 'page_primary' },
+      { id: 'agent_mankynd', name: 'MAN KYND Page AI', provider: 'omni_ai_reply', model: 'configurable', role: 'page_primary' },
+      { id: 'agent_annalynn', name: 'Anna Lynn Page AI', provider: 'omni_ai_reply', model: 'configurable', role: 'page_primary' },
+      { id: 'agent_page_des', name: 'Page Des AI', provider: 'omni_ai_reply', model: 'configurable', role: 'page_primary' },
+      { id: 'agent_stock', name: 'Stock Specialist', provider: 'omni_ai_reply', model: 'configurable', role: 'stock_specialist' },
+      { id: 'agent_reviewer', name: 'Risk Reviewer', provider: 'omni_ai_reply', model: 'configurable', role: 'reviewer' },
+    ],
+    threads: [
+      { id: 'thread_1', pageId: 'page_mankynd', platform: 'facebook', customerId: 'cust_1', status: 'draft_ready', intent: 'stock', risk: 'low', updatedAt: '2026-05-22T10:00:00.000Z' },
+      { id: 'thread_2', pageId: 'page_annalynn_tiktok', platform: 'tiktok', customerId: 'cust_2', status: 'needs_approval', intent: 'orderStatus', risk: 'medium', updatedAt: '2026-05-22T10:05:00.000Z' },
+    ],
+    messages: [
+      { id: 'msg_1', threadId: 'thread_1', direction: 'inbound', authorName: 'ลูกค้า A', text: 'มีไซซ์ M สีดำไหม', createdAt: '2026-05-22T10:00:00.000Z', providerMessageId: 'fb_mid_1' },
+      { id: 'msg_2', threadId: 'thread_2', direction: 'inbound', authorName: 'ลูกค้า B', text: 'ขอเลขพัสดุค่ะ', createdAt: '2026-05-22T10:05:00.000Z', providerMessageId: 'tt_mid_1' },
+    ],
+    customers: [
+      { id: 'cust_1', displayName: 'ลูกค้า A', matchConfidence: 0.98 },
+      { id: 'cust_2', displayName: 'ลูกค้า B', matchConfidence: 0.62 },
+    ],
+    orders: [
+      { id: 'order_1', customerId: 'cust_2', platform: 'tiktok', status: 'awaiting_shipment', total: 729, tracking: null },
+    ],
+    inventorySnapshots: [
+      { id: 'stock_1', sku: 'BLACK-M', source: 'bigseller_mock', available: 4, checkedAt: '2026-05-22T10:00:00.000Z' },
+    ],
+    aiDecisions: [
+      { id: 'decision_1', threadId: 'thread_1', agentProfileId: 'agent_stock', confidence: 0.94, action: 'draft_ready', sourceIds: ['stock_1'] },
+      { id: 'decision_2', threadId: 'thread_2', agentProfileId: 'agent_reviewer', confidence: 0.61, action: 'needs_approval', sourceIds: ['order_1'] },
+    ],
+    actionAudits: [],
+    paymentRequests: [
+      { id: 'pay_1', threadId: 'thread_2', orderId: 'order_1', provider: 'promptpay', status: 'draft', amount: 729, currency: 'THB', approvalRequired: true },
+      { id: 'pay_2', threadId: 'thread_1', orderId: null, provider: 'meta_pay_kgp', status: 'draft', amount: 0, currency: 'THB', approvalRequired: true },
+    ],
+    paymentEvents: [
+      { id: 'pay_event_1', paymentRequestId: 'pay_1', type: 'created', source: 'mock', createdAt: '2026-05-22T10:06:00.000Z' },
+    ],
+    connectorHealth: [
+      { id: 'health_meta', provider: 'meta', status: 'healthy', lastCheckedAt: '2026-05-22T10:00:00.000Z' },
+      { id: 'health_tiktok', provider: 'tiktok_shop', status: 'healthy', lastCheckedAt: '2026-05-22T10:00:00.000Z' },
+      { id: 'health_tiktok_business_messaging', provider: 'tiktok_business_messaging', status: 'pending_oauth_approval', lastCheckedAt: null },
+      { id: 'health_bigseller', provider: 'bigseller', status: 'disabled', lastCheckedAt: null },
+      { id: 'health_shopee', provider: 'shopee', status: 'disabled', lastCheckedAt: null },
+      { id: 'health_meta_pay_kgp', provider: 'meta_pay_kgp', status: 'disabled', lastCheckedAt: null },
+      { id: 'health_promptpay', provider: 'promptpay', status: 'disabled', lastCheckedAt: null },
+    ],
+    knowledgeSources: [
+      {
+        id: 'ks_return_exchange',
+        title: 'Return and exchange policy',
+        type: 'manual',
+        scope: 'all_pages',
+        status: 'ready',
+        content: 'สินค้าที่ยังไม่ใช้งานและยังอยู่ในสภาพเดิมสามารถส่งเรื่องให้แอดมินตรวจสอบการเปลี่ยนหรือคืนตามเงื่อนไขร้านได้',
+        tags: ['policy', 'refund'],
+        updatedAt: '2026-05-23T01:20:00.000Z',
+        createdAt: '2026-05-23T01:20:00.000Z',
+      },
+      {
+        id: 'ks_annalynn_product_faq',
+        title: 'Anna Lynn product FAQ',
+        type: 'manual',
+        scope: 'page_annalynn',
+        status: 'ready',
+        content: 'Anna Lynn ใช้ชื่อเพจ Facebook ว่า Anna Lynn และ TikTok ว่า AnnaLynn แยก source ตาม platform เพื่อไม่ให้ตอบผิดหน้า',
+        tags: ['annalynn', 'product'],
+        updatedAt: '2026-05-23T01:12:00.000Z',
+        createdAt: '2026-05-23T01:12:00.000Z',
+      },
+      {
+        id: 'ks_shipping_payment',
+        title: 'Shipping and payment answers',
+        type: 'manual',
+        scope: 'all_pages',
+        status: 'training',
+        content: 'คำถามเลขพัสดุและชำระเงินต้องเช็ก order desk ก่อนตอบลูกค้า และต้องขอ approval ก่อนส่งลิงก์ชำระเงิน',
+        tags: ['shipping', 'payment'],
+        updatedAt: '2026-05-23T00:58:00.000Z',
+        createdAt: '2026-05-23T00:58:00.000Z',
+      },
+    ],
+    retentionPolicies: [
+      DEFAULT_CHAT_RETENTION_POLICY,
+    ],
+    retentionRuns: [],
+  }
+}
