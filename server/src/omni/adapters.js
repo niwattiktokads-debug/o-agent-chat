@@ -38,6 +38,7 @@ export function createAdapterRegistry() {
   const adapters = new Map([
     ['meta', createMockAdapter('meta')],
     ['tiktok_shop', createMockAdapter('tiktok_shop')],
+    ['tiktok_business_messaging', createMockAdapter('tiktok_business_messaging')],
     ['bigseller', createMockAdapter('bigseller')],
     ['shopee', createMockAdapter('shopee')],
     ['meta_pay_kgp', createMockAdapter('meta_pay_kgp')],

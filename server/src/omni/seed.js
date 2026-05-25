@@ -1,10 +1,12 @@
+import { DEFAULT_CHAT_RETENTION_POLICY } from './retention.js'
+
 export function createOmniSeed() {
   const pages = [
     { id: 'page_mankynd', name: 'MAN KYND', status: 'active', brandGroupId: 'brand_mankynd', policySetId: 'policy_mankynd', agentProfileId: 'agent_mankynd' },
     { id: 'page_annalynn', name: 'Anna Lynn', status: 'active', brandGroupId: 'brand_fashion', policySetId: 'policy_annalynn', agentProfileId: 'agent_annalynn' },
     { id: 'page_annalynn_tiktok', name: 'AnnaLynn', status: 'active', brandGroupId: 'brand_fashion', policySetId: 'policy_annalynn', agentProfileId: 'agent_annalynn' },
     { id: 'page_des', name: 'เพจเดส', status: 'active', brandGroupId: 'brand_oagent', policySetId: 'policy_page_des', agentProfileId: 'agent_page_des' },
-    { id: 'page_fb_112154661515664', name: 'VZ', status: 'active', brandGroupId: 'brand_shared', policySetId: 'policy_default', agentProfileId: 'agent_default' },
+    { id: 'page_fb_112154661515664', name: 'Viris Zamara', shortName: 'VZ', status: 'active', brandGroupId: 'brand_shared', policySetId: 'policy_default', agentProfileId: 'agent_default' },
   ]
 
   return {
@@ -14,20 +16,27 @@ export function createOmniSeed() {
       { id: 'acct_fb_annalynn', pageId: 'page_annalynn', platform: 'facebook', provider: 'meta', providerAccountId: '122106446570001676', status: 'healthy' },
       { id: 'acct_fb_112154661515664', pageId: 'page_fb_112154661515664', platform: 'facebook', provider: 'meta', status: 'pending_token' },
       { id: 'acct_tt_shop', pageId: 'page_annalynn_tiktok', platform: 'tiktok', provider: 'tiktok_shop', providerAccountId: '7494912558026296148', status: 'healthy' },
+      { id: 'acct_tt_annalynn_dm', pageId: 'page_annalynn_tiktok', platform: 'tiktok', provider: 'tiktok_business_messaging', providerAccountId: 'AnnaLynn', status: 'pending_oauth_approval' },
     ],
+    pageRuntimeSettings: pages.map((page) => ({
+      pageId: page.id,
+      autoReplyEnabled: true,
+      updatedAt: '2026-05-24T00:00:00.000Z',
+      updatedBy: 'seed',
+    })),
     policySets: [
-      { id: 'policy_default', autoSend: { faq: true, stock: true, price: false, orderStatus: false }, forbidden: ['refund', 'cancel', 'คืนเงิน', 'ยกเลิก'] },
-      { id: 'policy_mankynd', autoSend: { faq: true, stock: true, price: true, orderStatus: false }, forbidden: ['refund', 'cancel', 'คืนเงิน', 'ยกเลิก'] },
-      { id: 'policy_annalynn', autoSend: { faq: true, stock: true, price: true, orderStatus: false }, forbidden: ['refund', 'cancel', 'คืนเงิน', 'ยกเลิก'] },
-      { id: 'policy_page_des', autoSend: { faq: false, stock: false, price: false, orderStatus: false }, forbidden: ['publish', 'live', 'โพสต์เลย'] },
+      { id: 'policy_default', autoSend: { faq: true, stock: true, price: true, orderStatus: true, refund: true }, forbidden: [] },
+      { id: 'policy_mankynd', autoSend: { faq: true, stock: true, price: true, orderStatus: true, refund: true }, forbidden: [] },
+      { id: 'policy_annalynn', autoSend: { faq: true, stock: true, price: true, orderStatus: true, refund: true }, forbidden: [] },
+      { id: 'policy_page_des', autoSend: { faq: true, stock: true, price: true, orderStatus: true, refund: true }, forbidden: [] },
     ],
     agentProfiles: [
-      { id: 'agent_default', name: 'Default Sales AI', provider: 'openai', model: 'configurable', role: 'page_primary' },
-      { id: 'agent_mankynd', name: 'MAN KYND Page AI', provider: 'openai', model: 'configurable', role: 'page_primary' },
-      { id: 'agent_annalynn', name: 'Anna Lynn Page AI', provider: 'openai', model: 'configurable', role: 'page_primary' },
-      { id: 'agent_page_des', name: 'Page Des AI', provider: 'openai', model: 'configurable', role: 'page_primary' },
-      { id: 'agent_stock', name: 'Stock Specialist', provider: 'openai', model: 'configurable', role: 'stock_specialist' },
-      { id: 'agent_reviewer', name: 'Risk Reviewer', provider: 'openai', model: 'configurable', role: 'reviewer' },
+      { id: 'agent_default', name: 'Default Sales AI', provider: 'omni_ai_reply', model: 'configurable', role: 'page_primary' },
+      { id: 'agent_mankynd', name: 'MAN KYND Page AI', provider: 'omni_ai_reply', model: 'configurable', role: 'page_primary' },
+      { id: 'agent_annalynn', name: 'Anna Lynn Page AI', provider: 'omni_ai_reply', model: 'configurable', role: 'page_primary' },
+      { id: 'agent_page_des', name: 'Page Des AI', provider: 'omni_ai_reply', model: 'configurable', role: 'page_primary' },
+      { id: 'agent_stock', name: 'Stock Specialist', provider: 'omni_ai_reply', model: 'configurable', role: 'stock_specialist' },
+      { id: 'agent_reviewer', name: 'Risk Reviewer', provider: 'omni_ai_reply', model: 'configurable', role: 'reviewer' },
     ],
     threads: [
       { id: 'thread_1', pageId: 'page_mankynd', platform: 'facebook', customerId: 'cust_1', status: 'draft_ready', intent: 'stock', risk: 'low', updatedAt: '2026-05-22T10:00:00.000Z' },
@@ -51,6 +60,7 @@ export function createOmniSeed() {
       { id: 'decision_1', threadId: 'thread_1', agentProfileId: 'agent_stock', confidence: 0.94, action: 'draft_ready', sourceIds: ['stock_1'] },
       { id: 'decision_2', threadId: 'thread_2', agentProfileId: 'agent_reviewer', confidence: 0.61, action: 'needs_approval', sourceIds: ['order_1'] },
     ],
+    actionAudits: [],
     paymentRequests: [
       { id: 'pay_1', threadId: 'thread_2', orderId: 'order_1', provider: 'promptpay', status: 'draft', amount: 729, currency: 'THB', approvalRequired: true },
       { id: 'pay_2', threadId: 'thread_1', orderId: null, provider: 'meta_pay_kgp', status: 'draft', amount: 0, currency: 'THB', approvalRequired: true },
@@ -61,6 +71,7 @@ export function createOmniSeed() {
     connectorHealth: [
       { id: 'health_meta', provider: 'meta', status: 'healthy', lastCheckedAt: '2026-05-22T10:00:00.000Z' },
       { id: 'health_tiktok', provider: 'tiktok_shop', status: 'healthy', lastCheckedAt: '2026-05-22T10:00:00.000Z' },
+      { id: 'health_tiktok_business_messaging', provider: 'tiktok_business_messaging', status: 'pending_oauth_approval', lastCheckedAt: null },
       { id: 'health_bigseller', provider: 'bigseller', status: 'disabled', lastCheckedAt: null },
       { id: 'health_shopee', provider: 'shopee', status: 'disabled', lastCheckedAt: null },
       { id: 'health_meta_pay_kgp', provider: 'meta_pay_kgp', status: 'disabled', lastCheckedAt: null },
@@ -101,5 +112,9 @@ export function createOmniSeed() {
         createdAt: '2026-05-23T00:58:00.000Z',
       },
     ],
+    retentionPolicies: [
+      DEFAULT_CHAT_RETENTION_POLICY,
+    ],
+    retentionRuns: [],
   }
 }

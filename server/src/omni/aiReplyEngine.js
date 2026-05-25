@@ -1,5 +1,8 @@
+import { spawn } from 'node:child_process'
 const DEFAULT_PROVIDER = process.env.OMNI_AI_PROVIDER || 'local_rules'
 const DEFAULT_MODEL = process.env.OMNI_AI_MODEL || 'guarded-draft-v1'
+const DEFAULT_HELPER = process.env.OMNI_AI_REPLY_HELPER || '/Users/babycuca/.codex/bin/omni-ai-reply'
+const AUTO_SEND_ALL = process.env.OMNI_AI_AUTO_SEND_ALL === '1'
 
 function latestInboundMessage(thread, snapshot) {
   return (snapshot.messages || [])
@@ -16,7 +19,8 @@ function classifyIntent(text) {
   return 'faq'
 }
 
-function riskForIntent(intent, policy) {
+function riskForIntent(intent, policy, autoSendAll = AUTO_SEND_ALL) {
+  if (autoSendAll) return 'low'
   if (intent === 'refund') return 'high'
   if (!policy?.autoSend?.[intent]) return 'medium'
   return 'low'
@@ -49,18 +53,80 @@ function relevantKnowledge(intent, snapshot) {
 }
 
 export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAULT_MODEL } = {}) {
+  function runHelper(payload) {
+    return new Promise((resolve, reject) => {
+      const child = spawn(DEFAULT_HELPER, ['draft'], {
+        env: {
+          ...process.env,
+          OMNI_AI_PROVIDER: provider,
+          OMNI_AI_MODEL: model,
+        },
+        stdio: ['pipe', 'pipe', 'pipe'],
+      })
+      let stdout = ''
+      let stderr = ''
+      const timeout = setTimeout(() => {
+        child.kill('SIGTERM')
+        reject(new Error('ai_helper_timeout'))
+      }, Number(process.env.OMNI_AI_TIMEOUT_MS || 60000))
+      child.stdout.setEncoding('utf8')
+      child.stderr.setEncoding('utf8')
+      child.stdout.on('data', (chunk) => { stdout += chunk })
+      child.stderr.on('data', (chunk) => { stderr += chunk })
+      child.on('error', (error) => {
+        clearTimeout(timeout)
+        reject(error)
+      })
+      child.on('close', (code) => {
+        clearTimeout(timeout)
+        if (code === 0) return resolve(stdout)
+        const error = new Error(stderr || `ai_helper_exit_${code}`)
+        error.stdout = stdout
+        reject(error)
+      })
+      child.stdin.end(JSON.stringify(payload))
+    })
+  }
+
+  async function draftWithHelper({ thread, snapshot, policy, baseDecision }) {
+    let payload
+    try {
+      const stdout = await runHelper({ thread, snapshot, policy, decision: baseDecision })
+      payload = JSON.parse(stdout)
+    } catch (error) {
+      if (error.stdout) {
+        try {
+          payload = JSON.parse(error.stdout)
+        } catch {
+          return { ...baseDecision, ok: false, error: error.message || 'ai_helper_failed' }
+        }
+      } else {
+        return { ...baseDecision, ok: false, error: error.message || 'ai_helper_failed' }
+      }
+    }
+    if (!payload.ok) return { ...baseDecision, ok: false, error: payload.error || 'ai_helper_failed' }
+    return {
+      ...baseDecision,
+      provider: payload.provider || provider,
+      model: payload.model || model,
+      draftText: String(payload.draftText || baseDecision.draftText || '').trim(),
+      confidence: Number(payload.confidence || baseDecision.confidence || 0.74),
+      reason: payload.reason || baseDecision.reason,
+    }
+  }
+
   return {
     provider,
     model,
-    draft({ thread, snapshot, policy }) {
+    async draft({ thread, snapshot, policy }) {
       if (!thread) return { ok: false, error: 'thread_required' }
       const inbound = latestInboundMessage(thread, snapshot)
       const intent = classifyIntent(inbound?.text || '')
       const risk = riskForIntent(intent, policy)
-      const allowed = Boolean(policy?.autoSend?.[intent]) && risk === 'low'
+      const allowed = AUTO_SEND_ALL || (Boolean(policy?.autoSend?.[intent]) && risk === 'low')
       const knowledge = relevantKnowledge(intent, snapshot)
 
-      return {
+      const baseDecision = {
         ok: true,
         provider,
         model,
@@ -75,6 +141,9 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
         sourceIds: knowledge.map((source) => source.id),
         evidenceIds: inbound?.id ? [inbound.id] : [],
       }
+
+      if (provider === 'local_rules') return baseDecision
+      return draftWithHelper({ thread, snapshot, policy, baseDecision })
     },
   }
 }

@@ -2,18 +2,56 @@ export function filterThreads(threads, filters = {}) {
   return threads
     .filter((thread) => !filters.pageId || filters.pageId === 'all' || thread.pageId === filters.pageId)
     .filter((thread) => !filters.status || filters.status === 'all' || thread.status === filters.status)
+    .slice()
+    .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
 }
 
 export function statusLabel(status) {
   const labels = {
-    open: 'Open',
-    draft_ready: 'Draft ready',
-    needs_approval: 'Needs approval',
-    needs_data: 'Needs data',
-    auto_sent: 'Auto sent',
-    escalated: 'Escalated',
+    open: 'ต้องตอบ',
+    draft_ready: 'AI ร่างแล้ว',
+    needs_approval: 'รออนุมัติ',
+    needs_data: 'รอข้อมูล',
+    auto_sent: 'ส่งแล้ว',
+    escalated: 'ส่งต่อ',
   }
   return labels[status] || status
+}
+
+export function pageForThread(pages = [], thread) {
+  return pages.find((page) => page.id === thread?.pageId) || null
+}
+
+export function customerForThread(customers = [], thread) {
+  return customers.find((customer) => customer.id === thread?.customerId) || null
+}
+
+export function latestMessageForThread(messages = [], threadId) {
+  return messages
+    .filter((message) => message.threadId === threadId)
+    .slice()
+    .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))[0] || null
+}
+
+export function formatShortTime(value) {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return new Intl.DateTimeFormat('th-TH', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(date)
+}
+
+export function sourceLabel(sourceRef = '') {
+  if (sourceRef.startsWith('meta_webhook:')) return 'Webhook'
+  if (sourceRef.startsWith('meta_send:')) return 'AI ส่ง'
+  if (sourceRef.startsWith('meta_thread:')) return 'Meta'
+  if (sourceRef.startsWith('tiktok_business_messaging:')) return 'TikTok'
+  if (sourceRef.startsWith('ai_auto_reply')) return 'AI'
+  if (sourceRef.startsWith('manual_draft')) return 'Draft'
+  return 'Omni'
 }
 
 export function riskClass(risk) {

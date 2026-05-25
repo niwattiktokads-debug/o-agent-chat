@@ -59,6 +59,9 @@ CREATE TABLE IF NOT EXISTS customers (
   platform TEXT,
   provider_customer_id TEXT,
   phone TEXT,
+  address TEXT,
+  contact_json TEXT NOT NULL DEFAULT '{}',
+  important_contact_updated_at TEXT,
   note TEXT,
   match_confidence REAL NOT NULL DEFAULT 0,
   source_ref TEXT,
@@ -90,6 +93,34 @@ CREATE TABLE IF NOT EXISTS messages (
   provider_message_id TEXT,
   source_ref TEXT,
   created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS retention_policies (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  target TEXT NOT NULL CHECK (target IN ('chat_messages')),
+  enabled INTEGER NOT NULL DEFAULT 1,
+  delete_after_days INTEGER NOT NULL DEFAULT 180,
+  preserve_customer_profile INTEGER NOT NULL DEFAULT 1,
+  preserve_fields_json TEXT NOT NULL DEFAULT '[]',
+  mode TEXT NOT NULL CHECK (mode IN ('delete_messages_keep_customer_profile')),
+  source_ref TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS retention_runs (
+  id TEXT PRIMARY KEY,
+  policy_id TEXT NOT NULL REFERENCES retention_policies(id),
+  target TEXT NOT NULL,
+  dry_run INTEGER NOT NULL DEFAULT 1,
+  cutoff_at TEXT NOT NULL,
+  delete_after_days INTEGER NOT NULL,
+  messages_deleted INTEGER NOT NULL DEFAULT 0,
+  threads_touched INTEGER NOT NULL DEFAULT 0,
+  customers_updated INTEGER NOT NULL DEFAULT 0,
+  source_ref TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS orders (
@@ -210,6 +241,8 @@ CREATE TABLE IF NOT EXISTS knowledge_sources (
 CREATE INDEX IF NOT EXISTS idx_threads_page_status ON threads(page_id, status);
 CREATE INDEX IF NOT EXISTS idx_threads_customer ON threads(customer_id);
 CREATE INDEX IF NOT EXISTS idx_messages_thread_created ON messages(thread_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at);
+CREATE INDEX IF NOT EXISTS idx_retention_runs_policy_created ON retention_runs(policy_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_orders_customer ON orders(customer_id);
 CREATE INDEX IF NOT EXISTS idx_payment_requests_thread ON payment_requests(thread_id);
 CREATE INDEX IF NOT EXISTS idx_ai_decisions_thread ON ai_decisions(thread_id);

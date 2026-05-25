@@ -8,6 +8,7 @@ const schemaPath = fileURLToPath(new URL('./schema.sql', import.meta.url))
 
 const COLLECTIONS = [
   'pages',
+  'pageRuntimeSettings',
   'platformAccounts',
   'brandGroups',
   'policySets',
@@ -25,6 +26,8 @@ const COLLECTIONS = [
   'approvalTasks',
   'connectorHealth',
   'knowledgeSources',
+  'retentionPolicies',
+  'retentionRuns',
 ]
 
 const SEED_BACKED_COLLECTIONS = [

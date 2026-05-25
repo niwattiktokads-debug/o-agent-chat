@@ -12,6 +12,8 @@ export const REQUIRED_OMNI_TABLES = [
   'customers',
   'threads',
   'messages',
+  'retention_policies',
+  'retention_runs',
   'orders',
   'order_links',
   'inventory_snapshots',
@@ -37,5 +39,7 @@ export function getOmniSchemaSummary() {
     hasPaymentApprovalGuard: /approval_required\s+INTEGER\s+NOT NULL\s+DEFAULT\s+1/.test(sql),
     hasAuditLog: /CREATE TABLE IF NOT EXISTS action_audits/.test(sql),
     hasSourceRefs: /source_ref/.test(sql),
+    hasChatRetention: /CREATE TABLE IF NOT EXISTS retention_policies/.test(sql) && /idx_messages_created/.test(sql),
+    preservesCustomerContacts: /address\s+TEXT/.test(sql) && /contact_json/.test(sql),
   }
 }

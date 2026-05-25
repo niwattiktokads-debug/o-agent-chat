@@ -4,8 +4,8 @@ import Avatar from './Avatar.jsx'
 
 const Row = ({ label, value }) => (
   <div className="flex gap-3 text-sm">
-    <span className="w-24 shrink-0 text-slate-400">{label}</span>
-    <span className="text-slate-100">{value || '—'}</span>
+    <span className="w-24 shrink-0 text-[var(--color-muted)]">{label}</span>
+    <span className="text-[var(--color-ink)]">{value || '—'}</span>
   </div>
 )
 
@@ -25,12 +25,12 @@ function EditableField({ label, value, onSave }) {
   if (!editing) {
     return (
       <div className="flex gap-3 text-sm group">
-        <span className="w-24 shrink-0 text-slate-400">{label}</span>
-        <span className="text-slate-100 flex-1 break-words">{value || '—'}</span>
+        <span className="w-24 shrink-0 text-[var(--color-muted)]">{label}</span>
+        <span className="flex-1 break-words text-[var(--color-ink)]">{value || '—'}</span>
         <button
           type="button"
           onClick={start}
-          className="text-[10px] text-slate-500 opacity-0 group-hover:opacity-100 hover:text-slate-300"
+          className="text-[10px] font-semibold text-[var(--color-muted)] opacity-0 hover:text-[var(--color-ink)] group-hover:opacity-100"
         >
           แก้
         </button>
@@ -39,7 +39,7 @@ function EditableField({ label, value, onSave }) {
   }
   return (
     <div className="flex gap-3 text-sm">
-      <span className="w-24 shrink-0 text-slate-400">{label}</span>
+      <span className="w-24 shrink-0 text-[var(--color-muted)]">{label}</span>
       <input
         autoFocus
         value={draft}
@@ -49,7 +49,7 @@ function EditableField({ label, value, onSave }) {
           if (e.key === 'Enter') save()
           if (e.key === 'Escape') setEditing(false)
         }}
-        className="flex-1 rounded bg-slate-800 px-2 py-1 text-slate-100 outline-none focus:ring-1 focus:ring-emerald-600"
+        className="flex-1 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-2 py-1 text-[var(--color-ink)] outline-none focus:ring-2 focus:ring-[var(--color-focus)]"
       />
     </div>
   )
@@ -67,16 +67,16 @@ export default function StatusPanel({ state, onSetLeader, onSetField }) {
   const handleField = onSetField || (() => {})
 
   return (
-    <aside className="w-full sm:w-80 sm:shrink-0 border-r border-slate-800 bg-slate-900/60 p-5 flex flex-col gap-5">
+    <aside className="flex w-full flex-col gap-5 border-r border-[var(--color-rule)] bg-[var(--color-panel)] p-5 sm:w-80 sm:shrink-0">
       <div>
-        <h2 className="text-xs uppercase tracking-wider text-slate-500 mb-3">ผู้ร่วมห้อง</h2>
+        <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">ผู้ร่วมห้อง</h2>
         <div className="space-y-1.5 text-sm">
           {ROLES.map(({ key, label, sub }) => (
-            <div key={key} className="flex items-center gap-2.5">
+            <div key={key} className="flex items-center gap-2.5 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] px-3 py-2">
               <Avatar sender={key} size={28} />
               <div className="flex-1 leading-tight">
-                <div className="text-slate-100">{label}</div>
-                <div className="text-[10px] text-slate-500">{sub}</div>
+                <div className="font-semibold text-[var(--color-ink)]">{label}</div>
+                <div className="text-[10px] text-[var(--color-muted)]">{sub}</div>
               </div>
               <PresenceDot online={presence[key]} />
             </div>
@@ -85,8 +85,8 @@ export default function StatusPanel({ state, onSetLeader, onSetField }) {
       </div>
 
       <div>
-        <h2 className="text-xs uppercase tracking-wider text-slate-500 mb-3">รอบงานปัจจุบัน</h2>
-        <div className="space-y-2">
+        <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">รอบงานปัจจุบัน</h2>
+        <div className="space-y-2 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] p-3">
           <Row label="หัวหน้า" value={state.leader} />
           <Row label="ผู้ปฏิบัติ" value={state.operator} />
           <EditableField label="เป้าหมาย" value={state.goal} onSave={(v) => handleField('goal', v)} />
@@ -96,7 +96,7 @@ export default function StatusPanel({ state, onSetLeader, onSetField }) {
       </div>
 
       <div>
-        <h2 className="text-xs uppercase tracking-wider text-slate-500 mb-2">ตั้งหัวหน้า</h2>
+        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">ตั้งหัวหน้า</h2>
         <div className="grid grid-cols-2 gap-2">
           {['Code', 'Codex'].map((name) => (
             <button
@@ -105,8 +105,8 @@ export default function StatusPanel({ state, onSetLeader, onSetField }) {
               onClick={() => onSetLeader(name)}
               className={`rounded-md px-3 py-2 text-sm font-medium transition ${
                 state.leader === name
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                  ? 'bg-[var(--color-accent)] text-[var(--color-accent-ink)]'
+                  : 'border border-[var(--color-rule)] bg-[var(--color-panel-2)] text-[var(--color-ink-2)] hover:bg-[var(--color-panel)]'
               }`}
             >
               {name}

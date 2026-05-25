@@ -11,7 +11,7 @@ describe('omniModel', () => {
   })
 
   it('returns human status labels', () => {
-    expect(statusLabel('needs_approval')).toBe('Needs approval')
+    expect(statusLabel('needs_approval')).toBe('รออนุมัติ')
     expect(statusLabel('unknown')).toBe('unknown')
   })
 })

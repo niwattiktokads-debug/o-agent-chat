@@ -9,6 +9,7 @@ import { listFacebookConversations, normalizeMetaConversations } from '../src/om
 import { createAiReplyEngine } from '../src/omni/aiReplyEngine.js'
 import { normalizeMetaWebhookPayload } from '../src/omni/metaWebhook.js'
 import { listTikTokOrders, normalizeTikTokOrders } from '../src/omni/tiktokOrderClient.js'
+import { normalizeTikTokMessagingWebhookPayload } from '../src/omni/tiktokMessagingClient.js'
 import { getOmniSchemaSummary, loadOmniSchemaSql, REQUIRED_OMNI_TABLES } from '../src/omni/db/schema.js'
 import { createSqliteOmniStore } from '../src/omni/db/sqliteStore.js'
 import { mountRoutes } from '../src/routes.js'
@@ -20,8 +21,9 @@ test('omni seed starts with configured production page data', () => {
   assert.equal(seed.pages.find((page) => page.id === 'page_annalynn_tiktok').name, 'AnnaLynn')
   assert.equal(seed.platformAccounts.find((account) => account.id === 'acct_fb_annalynn').pageId, 'page_annalynn')
   assert.equal(seed.platformAccounts.find((account) => account.id === 'acct_tt_shop').pageId, 'page_annalynn_tiktok')
+  assert.equal(seed.platformAccounts.find((account) => account.id === 'acct_tt_annalynn_dm').provider, 'tiktok_business_messaging')
   assert.ok(seed.pages.find((page) => page.id === 'page_fb_112154661515664'))
-  assert.equal(seed.pages.find((page) => page.id === 'page_fb_112154661515664').name, 'VZ')
+  assert.equal(seed.pages.find((page) => page.id === 'page_fb_112154661515664').name, 'Viris Zamara')
   assert.equal(seed.pages.some((page) => page.id === 'page_shop_4'), false)
   assert.equal(seed.pages.some((page) => page.id === 'page_shop_5'), false)
   assert.equal(seed.pages.every((page) => page.status === 'active'), true)
@@ -29,6 +31,22 @@ test('omni seed starts with configured production page data', () => {
   assert.equal(seed.pages.every((page) => page.agentProfileId), true)
   assert.equal(seed.knowledgeSources.length, 3)
   assert.equal(seed.knowledgeSources.every((source) => source.content), true)
+})
+
+test('normalizes TikTok Business Messaging webhook payload into Omni threads', () => {
+  const normalized = normalizeTikTokMessagingWebhookPayload({
+    events: [{
+      conversation_id: 'conv_anna_1',
+      sender: { id: 'tt_user_1', display_name: 'ลูกค้า TikTok' },
+      message: { message_id: 'msg_1', text: 'มีไซซ์ไหม', timestamp: 1779470400000 },
+    }],
+  })
+
+  assert.equal(normalized.source, 'tiktok_business_messaging')
+  assert.equal(normalized.customers[0].id, 'ttbm_customer_tt_user_1')
+  assert.equal(normalized.threads[0].id, 'ttbm_conv_anna_1')
+  assert.equal(normalized.threads[0].pageId, 'page_annalynn_tiktok')
+  assert.equal(normalized.messages[0].text, 'มีไซซ์ไหม')
 })
 
 test('page validation accepts active, paused, and archived statuses', () => {
@@ -48,7 +66,72 @@ test('omni service filters threads by page and blocks unsafe auto-send', () => {
   assert.equal(service.listThreads({ pageId: 'page_mankynd' }).length, 1)
   const blocked = service.evaluateAutoSend({ threadId: 'thread_2' })
   assert.equal(blocked.allowed, false)
-  assert.equal(blocked.reason, 'intent_requires_approval')
+  assert.equal(blocked.reason, 'risk_not_low')
+})
+
+test('chat retention deletes old message text while preserving customer phone and address', () => {
+  const seed = createOmniSeed()
+  seed.customers = [{ id: 'cust_retain', displayName: 'Retain Customer', matchConfidence: 1 }]
+  seed.threads = [{
+    id: 'thread_retain',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'cust_retain',
+    status: 'open',
+    intent: 'unknown',
+    risk: 'low',
+    unreadCount: 2,
+    messageCount: 2,
+    updatedAt: '2026-05-23T00:00:00.000Z',
+  }]
+  seed.messages = [
+    {
+      id: 'msg_old_contact',
+      threadId: 'thread_retain',
+      direction: 'inbound',
+      authorName: 'Retain Customer',
+      text: 'เบอร์ 081-234-5678 ที่อยู่ 99/1 ถนนสุขุมวิท แขวงคลองตัน เขตวัฒนา กรุงเทพ 10110',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    },
+    {
+      id: 'msg_recent',
+      threadId: 'thread_retain',
+      direction: 'inbound',
+      authorName: 'Retain Customer',
+      text: 'ล่าสุดยังอยู่ไหม',
+      createdAt: '2026-05-23T00:00:00.000Z',
+    },
+  ]
+  const service = createOmniService(seed)
+
+  const dryRun = service.runChatRetention({
+    now: '2026-05-24T00:00:00.000Z',
+    deleteAfterDays: 30,
+    dryRun: true,
+  })
+
+  assert.equal(dryRun.dryRun, true)
+  assert.equal(dryRun.counts.messagesDeleted, 1)
+  assert.equal(service.getThread('thread_retain').messages.length, 2)
+
+  const result = service.runChatRetention({
+    now: '2026-05-24T00:00:00.000Z',
+    deleteAfterDays: 30,
+    dryRun: false,
+  })
+  const thread = service.getThread('thread_retain')
+  const customer = service.snapshot().customers.find((item) => item.id === 'cust_retain')
+
+  assert.equal(result.counts.messagesDeleted, 1)
+  assert.equal(result.counts.customersUpdated, 1)
+  assert.equal(thread.messages.length, 1)
+  assert.equal(thread.messages[0].id, 'msg_recent')
+  assert.equal(thread.messageCount, 1)
+  assert.equal(thread.unreadCount, 1)
+  assert.equal(customer.phone, '0812345678')
+  assert.match(customer.address, /สุขุมวิท/)
+  assert.equal(customer.contactJson.sourceMessageIds[0], 'msg_old_contact')
+  assert.equal(service.listRetentionRuns().length, 1)
 })
 
 test('omni routes are mounted under api', async () => {
@@ -116,6 +199,41 @@ test('knowledge source routes persist searchable training sources', async () => 
     const deleted = await deleteResponse.json()
     assert.equal(deleteResponse.status, 200)
     assert.equal(deleted.deletedId, created.source.id)
+  } finally {
+    server.close()
+  }
+})
+
+test('retention route dry-runs chat cleanup by default', async () => {
+  const seed = createOmniSeed()
+  seed.messages = [
+    { id: 'msg_route_old', threadId: 'thread_1', direction: 'inbound', authorName: 'ลูกค้า A', text: 'เก่ามาก', createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'msg_route_new', threadId: 'thread_1', direction: 'inbound', authorName: 'ลูกค้า A', text: 'ใหม่', createdAt: '2026-05-23T00:00:00.000Z' },
+  ]
+  seed.threads = seed.threads.map((thread) => thread.id === 'thread_1' ? { ...thread, messageCount: 2, unreadCount: 2 } : thread)
+  const app = express()
+  app.use(express.json())
+  const service = createOmniService(seed)
+  mountRoutes(app, { broadcast() {} }, { snapshot() { return {} } }, { omni: service })
+
+  const server = app.listen(0)
+  try {
+    const baseUrl = `http://127.0.0.1:${server.address().port}`
+    const response = await fetch(`${baseUrl}/api/omni/retention/chat-messages/run`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        deleteAfterDays: 30,
+        now: '2026-05-24T00:00:00.000Z',
+      }),
+    })
+    const body = await response.json()
+
+    assert.equal(response.status, 200)
+    assert.equal(body.ok, true)
+    assert.equal(body.dryRun, true)
+    assert.equal(body.counts.messagesDeleted, 1)
+    assert.equal(service.getThread('thread_1').messages.length, 2)
   } finally {
     server.close()
   }
@@ -235,6 +353,66 @@ test('Facebook connector accepts configured extra page profile', async () => {
   assert.equal(result.page.omniPageId, 'page_fb_112154661515664')
 })
 
+test('Facebook connector reads thread messages beyond conversation snippets', async () => {
+  const calls = []
+  const result = await listFacebookConversations({
+    pageProfile: 'anna_lynn',
+    runner: async (args) => {
+      calls.push(args)
+      if (args[0] === 'list-conversations') {
+        return {
+          ok: true,
+          response: {
+            data: [{
+              id: 't_history_1',
+              updated_time: '2026-05-23T17:14:24+0000',
+              unread_count: 2,
+              message_count: 3,
+              snippet: 'latest preview',
+              senders: { data: [
+                { id: 'customer_1', name: 'Customer One' },
+                { id: '122106446570001676', name: 'Anna Lynn' },
+              ] },
+            }],
+          },
+        }
+      }
+      if (args[0] === 'read-thread') {
+        return {
+          ok: true,
+          response: {
+            data: [
+              {
+                id: 'mid_out_1',
+                created_time: '2026-05-23T17:14:24+0000',
+                from: { id: '122106446570001676', name: 'Anna Lynn' },
+                message: 'รับทราบค่ะ',
+              },
+              {
+                id: 'mid_in_1',
+                created_time: '2026-05-23T17:14:22+0000',
+                from: { id: 'customer_1', name: 'Customer One' },
+                message: 'ที่อยู่',
+              },
+            ],
+          },
+        }
+      }
+      return { ok: false, error: 'unexpected_call' }
+    },
+  })
+
+  assert.deepEqual(calls[0], ['list-conversations', '--page=anna_lynn'])
+  assert.deepEqual(calls[1], ['read-thread', '--page=anna_lynn', '--conversation-id=t_history_1', '--limit=20'])
+  assert.equal(result.messages.length, 2)
+  assert.equal(result.messages[0].id, 'fb_msg_mid_out_1')
+  assert.equal(result.messages[0].direction, 'outbound')
+  assert.equal(result.messages[0].authorName, 'Anna Lynn')
+  assert.equal(result.messages[1].id, 'fb_msg_mid_in_1')
+  assert.equal(result.messages[1].direction, 'inbound')
+  assert.equal(result.messages[1].text, 'ที่อยู่')
+})
+
 test('omni service syncs normalized Facebook conversations into memory store', () => {
   const service = createOmniService()
   const result = service.syncFacebookConversations({
@@ -257,6 +435,28 @@ test('omni service syncs normalized Facebook conversations into memory store', (
   assert.equal(second.threads.updated, 1)
   assert.equal(service.getThread('fb_thread_1').status, 'draft_ready')
   assert.equal(service.getThread('fb_thread_1').messages[0].text, 'updated')
+})
+
+test('omni service removes stale Facebook snippet previews when detailed messages arrive', () => {
+  const service = createOmniService()
+  service.syncFacebookConversations({
+    page: { pageId: '122106446570001676', pageName: 'Anna Lynn', omniPageId: 'page_annalynn' },
+    customers: [{ id: 'fb_customer_1', displayName: 'Customer One', platform: 'facebook', providerCustomerId: '1', matchConfidence: 1 }],
+    threads: [{ id: 'fb_t_stale', providerThreadId: 't_stale', pageId: 'page_annalynn', platform: 'facebook', customerId: 'fb_customer_1', status: 'open', intent: 'unknown', risk: 'medium', unreadCount: 1, messageCount: 1, updatedAt: '2026-05-23T00:00:00+0000' }],
+    messages: [{ id: 'fb_preview_t_stale', threadId: 'fb_t_stale', direction: 'inbound', authorName: 'Customer One', text: 'preview text', createdAt: '2026-05-23T00:00:00+0000', providerMessageId: 't_stale:snippet', sourceRef: 'meta_conversation:t_stale' }],
+  })
+
+  service.syncFacebookConversations({
+    page: { pageId: '122106446570001676', pageName: 'Anna Lynn', omniPageId: 'page_annalynn' },
+    customers: [{ id: 'fb_customer_1', displayName: 'Customer One', platform: 'facebook', providerCustomerId: '1', matchConfidence: 1 }],
+    threads: [{ id: 'fb_t_stale', providerThreadId: 't_stale', pageId: 'page_annalynn', platform: 'facebook', customerId: 'fb_customer_1', status: 'open', intent: 'unknown', risk: 'medium', unreadCount: 1, messageCount: 2, updatedAt: '2026-05-23T00:01:00+0000' }],
+    messages: [{ id: 'fb_msg_mid_stale_1', threadId: 'fb_t_stale', direction: 'outbound', authorName: 'Anna Lynn', text: 'real message', createdAt: '2026-05-23T00:01:00+0000', providerMessageId: 'mid_stale_1', sourceRef: 'meta_thread:t_stale' }],
+  })
+
+  const messages = service.getThread('fb_t_stale').messages
+  assert.equal(messages.some((message) => message.id === 'fb_preview_t_stale'), false)
+  assert.equal(messages.length, 1)
+  assert.equal(messages[0].text, 'real message')
 })
 
 test('normalizes Meta webhook messages into Omni memory rows', () => {
@@ -297,11 +497,40 @@ test('omni service syncs Meta webhook messages into memory store', () => {
   assert.equal(result.messages.inserted, 1)
 })
 
-test('AI reply engine drafts guarded replies from thread memory', () => {
+test('omni service merges Meta webhook messages into existing conversation thread', () => {
+  const service = createOmniService()
+  service.syncFacebookConversations({
+    page: { pageId: '122106446570001676', pageName: 'Anna Lynn', omniPageId: 'page_annalynn' },
+    customers: [{ id: 'fb_customer_customer_1', displayName: 'Customer One', platform: 'facebook', providerCustomerId: 'customer_1', matchConfidence: 1 }],
+    threads: [{ id: 'fb_t_conversation_1', providerThreadId: 't_conversation_1', pageId: 'page_annalynn', platform: 'facebook', customerId: 'fb_customer_customer_1', status: 'draft_ready', intent: 'unknown', risk: 'medium', unreadCount: 0, messageCount: 2, updatedAt: '2026-05-23T17:00:00+0000' }],
+    messages: [{ id: 'fb_msg_existing_1', threadId: 'fb_t_conversation_1', direction: 'inbound', authorName: 'Customer One', text: 'old message', createdAt: '2026-05-23T17:00:00+0000', providerMessageId: 'existing_1', sourceRef: 'meta_thread:t_conversation_1' }],
+  })
+
+  service.syncFacebookWebhookEvents(normalizeMetaWebhookPayload({
+    object: 'page',
+    entry: [{
+      id: '122106446570001676',
+      messaging: [{
+        sender: { id: 'customer_1' },
+        recipient: { id: '122106446570001676' },
+        timestamp: Date.parse('2026-05-23T18:00:00.000Z'),
+        message: { mid: 'webhook_mid_1', text: 'new realtime message' },
+      }],
+    }],
+  }))
+
+  const existing = service.getThread('fb_t_conversation_1')
+  assert.equal(existing.messages.some((message) => message.providerMessageId === 'webhook_mid_1'), true)
+  assert.equal(existing.messageCount, 3)
+  assert.equal(existing.unreadCount, 1)
+  assert.equal(service.listThreads().some((thread) => thread.id.startsWith('fb_webhook_') && thread.customerId === 'fb_customer_customer_1'), false)
+})
+
+test('AI reply engine drafts guarded replies from thread memory', async () => {
   const service = createOmniService()
   const thread = service.getThread('thread_1')
   const ai = createAiReplyEngine({ provider: 'local_rules', model: 'test' })
-  const decision = ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
+  const decision = await ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
 
   assert.equal(decision.ok, true)
   assert.equal(decision.intent, 'stock')
@@ -373,7 +602,7 @@ test('SQLite Omni store removes deprecated seed pages and updates seed names', (
 
   assert.equal(pages.some((page) => page.id === 'page_shop_4'), false)
   assert.equal(pages.some((page) => page.id === 'page_shop_5'), false)
-  assert.equal(pages.find((page) => page.id === 'page_fb_112154661515664').name, 'VZ')
+  assert.equal(pages.find((page) => page.id === 'page_fb_112154661515664').name, 'Viris Zamara')
   migratedStore.close()
 })
 
@@ -398,6 +627,22 @@ test('SQLite Omni store separates Anna Lynn Facebook and AnnaLynn TikTok source 
   assert.equal(snapshot.platformAccounts.find((account) => account.id === 'acct_tt_shop').pageId, 'page_annalynn_tiktok')
   assert.equal(snapshot.threads.find((thread) => thread.id === 'thread_2').pageId, 'page_annalynn_tiktok')
   migratedStore.close()
+})
+
+test('SQLite Omni store preserves customized chat retention policy across restarts', () => {
+  const dbPath = `${process.cwd()}/.tmp-test/omni-${Date.now()}-${Math.random().toString(16).slice(2)}.sqlite`
+  const firstStore = createSqliteOmniStore({ dbPath })
+  const firstService = createOmniService({ store: firstStore })
+  firstService.upsertRetentionPolicy({ deleteAfterDays: 90, enabled: false })
+  firstStore.close()
+
+  const secondStore = createSqliteOmniStore({ dbPath })
+  const secondService = createOmniService({ store: secondStore })
+  const policy = secondService.listRetentionPolicies().find((item) => item.id === 'retention_chat_messages')
+
+  assert.equal(policy.deleteAfterDays, 90)
+  assert.equal(policy.enabled, false)
+  secondStore.close()
 })
 
 test('normalizes TikTok orders into Omni customers and orders', () => {
@@ -495,5 +740,8 @@ test('omni database schema includes durable memory tables and guards', () => {
   assert.equal(summary.hasPaymentApprovalGuard, true)
   assert.equal(summary.hasAuditLog, true)
   assert.equal(summary.hasSourceRefs, true)
+  assert.equal(summary.hasChatRetention, true)
+  assert.equal(summary.preservesCustomerContacts, true)
   assert.match(sql, /CREATE INDEX IF NOT EXISTS idx_messages_thread_created/)
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS retention_policies/)
 })
