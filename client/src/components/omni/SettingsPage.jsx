@@ -8,6 +8,7 @@ import ConnectorHealth from './ConnectorHealth.jsx'
 import FacebookLivePreview from './FacebookLivePreview.jsx'
 import PageManagement from './PageManagement.jsx'
 import TikTokOrderSync from './TikTokOrderSync.jsx'
+import ConnectionsPage from '../connections/ConnectionsPage.jsx'
 
 const DEFAULT_SETTINGS = {
   postCf: { enabled: true, autoCreateDrafts: true },
@@ -28,11 +29,23 @@ const REPORT_TIMEZONES = [
   { value: 'UTC', label: 'UTC' },
 ]
 
-export default function SettingsPage({ snapshot, onSnapshot, onOpenChat }) {
+const SETTINGS_SECTIONS = [
+  { id: 'settings', label: 'พื้นฐาน' },
+  { id: 'connections', label: 'การเชื่อมต่อ' },
+]
+
+export default function SettingsPage({
+  snapshot,
+  onSnapshot,
+  onOpenChat,
+  activeSection,
+  onSectionChange,
+}) {
   const [localSnapshot, setLocalSnapshot] = useState(snapshot || null)
   const [settings, setSettings] = useState(DEFAULT_SETTINGS)
   const [status, setStatus] = useState('')
   const [snapshotStatus, setSnapshotStatus] = useState('')
+  const [localSection, setLocalSection] = useState(activeSection || 'settings')
 
   useEffect(() => {
     if (snapshot) setLocalSnapshot(snapshot)
@@ -88,6 +101,12 @@ export default function SettingsPage({ snapshot, onSnapshot, onOpenChat }) {
     onSnapshot?.(nextSnapshot)
   }
 
+  function selectSection(sectionId) {
+    setLocalSection(sectionId)
+    onSectionChange?.(sectionId)
+  }
+
+  const section = activeSection || localSection
   const pages = localSnapshot?.pages || []
   const connectorHealth = localSnapshot?.connectorHealth || []
 
@@ -117,58 +136,81 @@ export default function SettingsPage({ snapshot, onSnapshot, onOpenChat }) {
           </button>
         </div>
       </header>
+      <nav className="mt-4 flex flex-wrap gap-2" aria-label="Settings sections">
+        {SETTINGS_SECTIONS.map((item) => {
+          const active = section === item.id
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => selectSection(item.id)}
+              className={`rounded-[var(--radius-md)] border px-3 py-2 text-sm font-semibold transition ${active ? 'border-[var(--color-accent)] bg-[var(--color-accent)] text-[var(--color-accent-ink)]' : 'border-[var(--color-rule)] bg-[var(--color-panel)] text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)]'}`}
+            >
+              {item.label}
+            </button>
+          )
+        })}
+      </nav>
       <StatusLine value={status || snapshotStatus} />
-      <section className="mt-4 grid gap-4 lg:grid-cols-2">
-        <SettingsCard
-          title="Post / Live CF"
-          rows={[
-            { label: 'Post CF enabled', checked: settings.postCf.enabled, onChange: () => updateSetting(['postCf', 'enabled'], (value) => !value) },
-            { label: 'Post auto-create draft', checked: settings.postCf.autoCreateDrafts, onChange: () => updateSetting(['postCf', 'autoCreateDrafts'], (value) => !value) },
-            { label: 'Live CF enabled', checked: settings.liveCf.enabled, onChange: () => updateSetting(['liveCf', 'enabled'], (value) => !value) },
-          ]}
-        >
-          <SelectRow
-            label="Live comment mode"
-            value={settings.liveCf.mode}
-            options={LIVE_CF_MODES}
-            onChange={(value) => updateSetting(['liveCf', 'mode'], value)}
-          />
-        </SettingsCard>
-        <SettingsCard
-          title="AI / Order"
-          rows={[
-            { label: 'AI enabled', checked: settings.ai.enabled, onChange: () => updateSetting(['ai', 'enabled'], (value) => !value) },
-            { label: 'Order draft enabled', checked: settings.orderDraft.enabled, onChange: () => updateSetting(['orderDraft', 'enabled'], (value) => !value) },
-            { label: 'Order approval required', checked: settings.orderDraft.approvalRequired, onChange: () => updateSetting(['orderDraft', 'approvalRequired'], (value) => !value) },
-            { label: 'Create ZORT on approve', checked: settings.orderDraft.createZortOrderOnApprove, onChange: () => updateSetting(['orderDraft', 'createZortOrderOnApprove'], (value) => !value) },
-            { label: 'Address intake enabled', checked: settings.orderAddressIntake.enabled, onChange: () => updateSetting(['orderAddressIntake', 'enabled'], (value) => !value) },
-            { label: 'Create address confirmation draft', checked: settings.orderAddressIntake.createConfirmationDraft, onChange: () => updateSetting(['orderAddressIntake', 'createConfirmationDraft'], (value) => !value) },
-          ]}
-        >
-          <SelectRow
-            label="Report timezone"
-            value={settings.report.timezone}
-            options={REPORT_TIMEZONES}
-            onChange={(value) => updateSetting(['report', 'timezone'], value)}
-          />
-        </SettingsCard>
-      </section>
-      <section className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <div className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)]">
-          <PageManagement pages={pages} onSnapshot={handleSnapshot} />
+      {section === 'connections' ? (
+        <div className="mt-4">
+          <ConnectionsPage embedded showPageNav={false} />
         </div>
-        <div className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)]">
-          <ConnectorHealth health={connectorHealth} />
-        </div>
-      </section>
-      <section className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <div className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)]">
-          <FacebookLivePreview onSynced={handleSnapshot} />
-        </div>
-        <div className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)]">
-          <TikTokOrderSync onSynced={handleSnapshot} />
-        </div>
-      </section>
+      ) : (
+        <>
+          <section className="mt-4 grid gap-4 lg:grid-cols-2">
+            <SettingsCard
+              title="Post / Live CF"
+              rows={[
+                { label: 'Post CF enabled', checked: settings.postCf.enabled, onChange: () => updateSetting(['postCf', 'enabled'], (value) => !value) },
+                { label: 'Post auto-create draft', checked: settings.postCf.autoCreateDrafts, onChange: () => updateSetting(['postCf', 'autoCreateDrafts'], (value) => !value) },
+                { label: 'Live CF enabled', checked: settings.liveCf.enabled, onChange: () => updateSetting(['liveCf', 'enabled'], (value) => !value) },
+              ]}
+            >
+              <SelectRow
+                label="Live comment mode"
+                value={settings.liveCf.mode}
+                options={LIVE_CF_MODES}
+                onChange={(value) => updateSetting(['liveCf', 'mode'], value)}
+              />
+            </SettingsCard>
+            <SettingsCard
+              title="AI / Order"
+              rows={[
+                { label: 'AI enabled', checked: settings.ai.enabled, onChange: () => updateSetting(['ai', 'enabled'], (value) => !value) },
+                { label: 'Order draft enabled', checked: settings.orderDraft.enabled, onChange: () => updateSetting(['orderDraft', 'enabled'], (value) => !value) },
+                { label: 'Order approval required', checked: settings.orderDraft.approvalRequired, onChange: () => updateSetting(['orderDraft', 'approvalRequired'], (value) => !value) },
+                { label: 'Create ZORT on approve', checked: settings.orderDraft.createZortOrderOnApprove, onChange: () => updateSetting(['orderDraft', 'createZortOrderOnApprove'], (value) => !value) },
+                { label: 'Address intake enabled', checked: settings.orderAddressIntake.enabled, onChange: () => updateSetting(['orderAddressIntake', 'enabled'], (value) => !value) },
+                { label: 'Create address confirmation draft', checked: settings.orderAddressIntake.createConfirmationDraft, onChange: () => updateSetting(['orderAddressIntake', 'createConfirmationDraft'], (value) => !value) },
+              ]}
+            >
+              <SelectRow
+                label="Report timezone"
+                value={settings.report.timezone}
+                options={REPORT_TIMEZONES}
+                onChange={(value) => updateSetting(['report', 'timezone'], value)}
+              />
+            </SettingsCard>
+          </section>
+          <section className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <div className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)]">
+              <PageManagement pages={pages} onSnapshot={handleSnapshot} />
+            </div>
+            <div className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)]">
+              <ConnectorHealth health={connectorHealth} />
+            </div>
+          </section>
+          <section className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <div className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)]">
+              <FacebookLivePreview onSynced={handleSnapshot} />
+            </div>
+            <div className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)]">
+              <TikTokOrderSync onSynced={handleSnapshot} />
+            </div>
+          </section>
+        </>
+      )}
     </main>
   )
 }

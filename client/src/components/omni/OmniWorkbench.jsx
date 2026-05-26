@@ -6,21 +6,39 @@ import ThreadList from './ThreadList.jsx'
 import ThreadDetail from './ThreadDetail.jsx'
 import ContextPanel from './ContextPanel.jsx'
 import SocialOpsBoard from './SocialOpsBoard.jsx'
-import SettingsPage from './SettingsPage.jsx'
 
-const OPERATION_MODES = [
+export const OMNI_OPERATION_MODES = [
   { id: 'chat', label: 'แชท', shortLabel: 'Chat' },
   { id: 'post', label: 'โพสต์', shortLabel: 'Post' },
   { id: 'live', label: 'ไลฟ์', shortLabel: 'Live' },
   { id: 'report', label: 'รายงาน', shortLabel: 'Report' },
-  { id: 'settings', label: 'ตั้งค่า', shortLabel: 'Set' },
 ]
 
-export default function OmniWorkbench() {
+export default function OmniWorkbench({
+  operationMode: controlledOperationMode,
+  onOperationModeChange,
+  showOperationRail = true,
+}) {
   const [snapshot, setSnapshot] = useState(null)
   const [pageId, setPageId] = useState('all')
   const [threadId, setThreadId] = useState(null)
-  const [operationMode, setOperationMode] = useState('chat')
+  const [localOperationMode, setLocalOperationMode] = useState('chat')
+  const operationMode = controlledOperationMode || localOperationMode
+  const gridClass = operationMode === 'chat'
+    ? showOperationRail
+      ? 'lg:grid lg:grid-cols-[64px_76px_minmax(300px,370px)_minmax(0,1fr)] xl:grid-cols-[64px_76px_minmax(310px,380px)_minmax(0,1fr)_360px]'
+      : 'lg:grid lg:grid-cols-[76px_minmax(300px,370px)_minmax(0,1fr)] xl:grid-cols-[76px_minmax(310px,380px)_minmax(0,1fr)_360px]'
+    : showOperationRail
+      ? 'lg:grid lg:grid-cols-[64px_minmax(0,1fr)]'
+      : 'lg:grid lg:grid-cols-[minmax(0,1fr)]'
+
+  function selectOperationMode(nextMode) {
+    if (onOperationModeChange) {
+      onOperationModeChange(nextMode)
+      return
+    }
+    setLocalOperationMode(nextMode)
+  }
 
   useEffect(() => {
     fetchOmniSnapshot().then((data) => {
@@ -41,8 +59,8 @@ export default function OmniWorkbench() {
   if (!snapshot) return <div className="bg-[var(--color-paper)] p-6 text-[var(--color-muted)]">Loading omnichannel workbench...</div>
 
   return (
-    <div className={`flex h-full min-h-0 flex-col bg-[var(--color-paper)] text-[var(--color-ink)] ${operationMode === 'chat' ? 'lg:grid lg:grid-cols-[64px_76px_minmax(300px,370px)_minmax(0,1fr)] xl:grid-cols-[64px_76px_minmax(310px,380px)_minmax(0,1fr)_360px]' : 'lg:grid lg:grid-cols-[64px_minmax(0,1fr)]'}`}>
-      <OperationRail activeMode={operationMode} modes={OPERATION_MODES} onSelect={setOperationMode} />
+    <div className={`flex h-full min-h-0 flex-col bg-[var(--color-paper)] text-[var(--color-ink)] ${gridClass}`}>
+      {showOperationRail ? <OperationRail activeMode={operationMode} modes={OMNI_OPERATION_MODES} onSelect={selectOperationMode} /> : null}
       {operationMode === 'chat' ? (
         <>
       <PageRail
@@ -76,10 +94,8 @@ export default function OmniWorkbench() {
         <ContextPanel snapshot={snapshot} thread={selectedThread} onSnapshot={setSnapshot} />
       </div>
         </>
-      ) : operationMode === 'settings' ? (
-        <SettingsPage snapshot={snapshot} onSnapshot={setSnapshot} onOpenChat={() => setOperationMode('chat')} />
       ) : (
-        <SocialOpsBoard mode={operationMode} snapshot={snapshot} onSnapshot={setSnapshot} onOpenChat={() => setOperationMode('chat')} />
+        <SocialOpsBoard mode={operationMode} snapshot={snapshot} onSnapshot={setSnapshot} onOpenChat={() => selectOperationMode('chat')} />
       )}
     </div>
   )
@@ -87,7 +103,7 @@ export default function OmniWorkbench() {
 
 function OperationRail({ activeMode, modes, onSelect }) {
   return (
-    <nav className="order-0 grid shrink-0 grid-cols-5 gap-2 overflow-hidden border-b border-[var(--color-rule)] bg-[var(--color-panel)] p-2 lg:flex lg:h-full lg:flex-col lg:overflow-x-visible lg:border-b-0 lg:border-r" aria-label="Omni operations">
+    <nav className="order-0 grid shrink-0 grid-cols-4 gap-2 overflow-hidden border-b border-[var(--color-rule)] bg-[var(--color-panel)] p-2 lg:flex lg:h-full lg:flex-col lg:overflow-x-visible lg:border-b-0 lg:border-r" aria-label="Omni operations">
       {modes.map((mode) => (
         <button
           key={mode.id}

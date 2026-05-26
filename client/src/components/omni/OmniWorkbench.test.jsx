@@ -280,10 +280,11 @@ describe('OmniWorkbench', () => {
     expect(screen.queryByText('Facebook Live Preview')).not.toBeInTheDocument()
   })
 
-  it('lets the operator switch through ZORT-style chat, post, live, report, and setting workflows', async () => {
+  it('lets the operator switch through ZORT-style chat, post, live, and report workflows', async () => {
     render(<OmniWorkbench />)
 
     expect(await screen.findByRole('button', { name: 'แชท' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'ตั้งค่า' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'โพสต์' }))
 
     expect(await screen.findByRole('heading', { name: 'โพสต์' })).toBeInTheDocument()
@@ -300,21 +301,6 @@ describe('OmniWorkbench', () => {
     expect(await screen.findByText('รวมทั้งหมด')).toBeInTheDocument()
     expect(screen.getByText('3')).toBeInTheDocument()
     expect(screen.getByText('Export CSV')).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'ตั้งค่า' }))
-    expect(await screen.findByRole('heading', { name: 'ตั้งค่าระบบ' })).toBeInTheDocument()
-    expect(await screen.findByLabelText('Post CF enabled')).toBeChecked()
-    expect(await screen.findByLabelText('Address intake enabled')).toBeChecked()
-    expect(await screen.findByLabelText('Create address confirmation draft')).toBeChecked()
-    expect(await screen.findByLabelText('Live comment mode')).toHaveValue('fallback_post_comment_capture')
-    expect(await screen.findByLabelText('Report timezone')).toHaveValue('Asia/Bangkok')
-    expect(await screen.findByText('Page auto-reply')).toBeInTheDocument()
-    expect(await screen.findByText('Connector Health')).toBeInTheDocument()
-    expect(await screen.findByText('Facebook Live Preview')).toBeInTheDocument()
-    expect(await screen.findByText('TikTok Order Sync')).toBeInTheDocument()
-    fireEvent.click(screen.getByLabelText('Post CF enabled'))
-    fireEvent.click(screen.getByRole('button', { name: 'บันทึก setting' }))
-    expect(await screen.findByText('บันทึก setting แล้ว')).toBeInTheDocument()
   })
 
   it('shows a guarded order draft workflow beside the active chat', async () => {

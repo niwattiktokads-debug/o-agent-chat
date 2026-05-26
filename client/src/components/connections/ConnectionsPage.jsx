@@ -454,7 +454,7 @@ function ConnectionCard({
   )
 }
 
-export default function ConnectionsPage({ onOpenInbox, onOpenChat, onOpenAiTrain, showPageNav = true }) {
+export default function ConnectionsPage({ onOpenInbox, onOpenChat, onOpenAiTrain, showPageNav = true, embedded = false }) {
   const [payload, setPayload] = useState(null)
   const [activeGroup, setActiveGroup] = useState('all')
   const [showAddForm, setShowAddForm] = useState(false)
@@ -728,22 +728,24 @@ export default function ConnectionsPage({ onOpenInbox, onOpenChat, onOpenAiTrain
   }
 
   return (
-    <div className="h-full min-h-0 overflow-y-auto overflow-x-clip bg-[var(--color-paper)] p-4 text-[var(--color-ink)] lg:p-6">
-      <header className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--color-rule)] pb-4">
-        <div>
-          <h1 className="text-xl font-bold text-[var(--color-ink)]">การเชื่อมต่อและ API</h1>
-          <p className="mt-1 text-sm text-[var(--color-ink-2)]">ตั้งค่า provider, ตรวจ health และเชื่อม flow จริงในดีไซน์เดียวกับ Settings</p>
-        </div>
-        {showPageNav ? (
-          <nav className="flex flex-wrap gap-2" aria-label="Omni pages">
-            <button type="button" className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]" onClick={onOpenInbox}>กล่องรวม</button>
-            <button type="button" className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]" onClick={onOpenAiTrain}>สอน AI</button>
-            <button type="button" className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]" onClick={onOpenChat}>แชททีม</button>
-          </nav>
-        ) : null}
-      </header>
+    <div className={embedded ? 'min-w-0 bg-[var(--color-paper)] text-[var(--color-ink)]' : 'h-full min-h-0 overflow-y-auto overflow-x-clip bg-[var(--color-paper)] p-4 text-[var(--color-ink)] lg:p-6'}>
+      {!embedded ? (
+        <header className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--color-rule)] pb-4">
+          <div>
+            <h1 className="text-xl font-bold text-[var(--color-ink)]">การเชื่อมต่อและ API</h1>
+            <p className="mt-1 text-sm text-[var(--color-ink-2)]">ตั้งค่า provider, ตรวจ health และเชื่อม flow จริงในดีไซน์เดียวกับ Settings</p>
+          </div>
+          {showPageNav ? (
+            <nav className="flex flex-wrap gap-2" aria-label="Omni pages">
+              <button type="button" className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]" onClick={onOpenInbox}>กล่องรวม</button>
+              <button type="button" className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]" onClick={onOpenAiTrain}>สอน AI</button>
+              <button type="button" className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]" onClick={onOpenChat}>แชททีม</button>
+            </nav>
+          ) : null}
+        </header>
+      ) : null}
 
-      <main className="mt-4 grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)]">
+      <main className={`${embedded ? 'mt-0' : 'mt-4'} grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)]`}>
         <aside className="min-w-0">
           <div className="sticky top-4 space-y-4">
             <section className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] p-4">
