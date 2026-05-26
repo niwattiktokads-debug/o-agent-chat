@@ -104,6 +104,18 @@ export async function searchZortProducts(query, limit = 8) {
   return getJson(`/api/omni/zort/products?${params.toString()}`)
 }
 
+export async function lookupThaiAddressByPostcode(postcode) {
+  return getJson(`/api/omni/thai-address/postcodes/${encodeURIComponent(postcode)}`)
+}
+
+export async function extractOrderAddressFromThread(threadId, { text = '', createConfirmationDraft = true } = {}) {
+  return postJson(`/api/omni/threads/${encodeURIComponent(threadId)}/order-address-intake`, {
+    text,
+    createConfirmationDraft,
+    authorName: 'AI',
+  })
+}
+
 export async function createOrderDraft(input) {
   return postJson('/api/omni/order-drafts', { ...input, createdBy: 'boss' })
 }

@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "express": "^4.21.2",
+    "thai-address-universal": "^2.1.3",
     "ws": "^8.18.0"
   }
 }

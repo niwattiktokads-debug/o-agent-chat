@@ -257,7 +257,7 @@ function LiveInboxPanel({
                 </div>
                 <div className="mt-3 max-h-[320px] space-y-2 overflow-y-auto pr-1">
                   {messages.length ? messages.map((message) => (
-                    <div key={message.id} className={`rounded-[var(--radius-sm)] border border-[var(--color-rule)] p-3 ${message.direction === 'outbound' ? 'bg-[var(--color-panel)]' : 'bg-white'}`}>
+                    <div key={message.id} className={`rounded-[var(--radius-sm)] border border-[var(--color-rule)] p-3 ${message.direction === 'outbound' ? 'bg-[var(--color-panel)]' : 'bg-[var(--color-panel-2)]'}`}>
                       <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-[var(--color-muted)]">
                         <span className="font-semibold">{message.authorName}</span>
                         <span>{message.direction}</span>
@@ -454,7 +454,7 @@ function ConnectionCard({
   )
 }
 
-export default function ConnectionsPage({ onOpenInbox, onOpenChat, onOpenAiTrain }) {
+export default function ConnectionsPage({ onOpenInbox, onOpenChat, onOpenAiTrain, showPageNav = true }) {
   const [payload, setPayload] = useState(null)
   const [activeGroup, setActiveGroup] = useState('all')
   const [showAddForm, setShowAddForm] = useState(false)
@@ -728,22 +728,22 @@ export default function ConnectionsPage({ onOpenInbox, onOpenChat, onOpenAiTrain
   }
 
   return (
-    <div className="min-h-full overflow-x-clip bg-[var(--color-paper)] text-[var(--color-ink)]">
-      <header className="border-b border-[var(--color-rule)] bg-[var(--color-panel)] px-4 py-3">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-xs font-semibold text-[var(--color-muted)]">Omni Connections</p>
-            <h1 className="text-xl font-bold text-[var(--color-ink)]">การเชื่อมต่อและ API</h1>
-          </div>
-          <nav className="flex flex-wrap gap-2" aria-label="Omni pages">
-            <button type="button" className="rounded-[var(--radius-md)] border border-[var(--color-rule)] px-3 py-2 text-sm font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]" onClick={onOpenInbox}>กล่องรวม</button>
-            <button type="button" className="rounded-[var(--radius-md)] border border-[var(--color-rule)] px-3 py-2 text-sm font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]" onClick={onOpenAiTrain}>สอน AI</button>
-            <button type="button" className="rounded-[var(--radius-md)] border border-[var(--color-rule)] px-3 py-2 text-sm font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]" onClick={onOpenChat}>แชททีม</button>
-          </nav>
+    <div className="h-full min-h-0 overflow-y-auto overflow-x-clip bg-[var(--color-paper)] p-4 text-[var(--color-ink)] lg:p-6">
+      <header className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--color-rule)] pb-4">
+        <div>
+          <h1 className="text-xl font-bold text-[var(--color-ink)]">การเชื่อมต่อและ API</h1>
+          <p className="mt-1 text-sm text-[var(--color-ink-2)]">ตั้งค่า provider, ตรวจ health และเชื่อม flow จริงในดีไซน์เดียวกับ Settings</p>
         </div>
+        {showPageNav ? (
+          <nav className="flex flex-wrap gap-2" aria-label="Omni pages">
+            <button type="button" className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]" onClick={onOpenInbox}>กล่องรวม</button>
+            <button type="button" className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]" onClick={onOpenAiTrain}>สอน AI</button>
+            <button type="button" className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]" onClick={onOpenChat}>แชททีม</button>
+          </nav>
+        ) : null}
       </header>
 
-      <main className="mx-auto grid max-w-7xl gap-5 px-4 py-5 xl:grid-cols-[260px_minmax(0,1fr)]">
+      <main className="mt-4 grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)]">
         <aside className="min-w-0">
           <div className="sticky top-4 space-y-4">
             <section className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] p-4">
@@ -825,28 +825,30 @@ export default function ConnectionsPage({ onOpenInbox, onOpenChat, onOpenAiTrain
               onSubmit={onAddConnection}
             />
           ) : null}
-          {connections.map((connection) => (
-            <ConnectionCard
-              key={connection.id}
-              connection={connection}
-              draftValues={draftValues}
-              result={results[connection.id]}
-              busy={busyById[connection.id]}
-              expanded={Boolean(expandedById[connection.id])}
-              inbox={inboxById}
-              selectedConversationId={selectedConversationById[connection.id]}
-              onToggle={toggleConnection}
-              onFieldChange={onFieldChange}
-              onSave={onSave}
-              onVerify={onVerify}
-              onDelete={onDeleteConnection}
-              onLoadConversations={onLoadConversations}
-              onOpenThread={onOpenThread}
-              onDraftReply={onDraftReply}
-              onDraftTextChange={onDraftTextChange}
-              onSendReply={onSendReply}
-            />
-          ))}
+          <div className="grid gap-3">
+            {connections.map((connection) => (
+              <ConnectionCard
+                key={connection.id}
+                connection={connection}
+                draftValues={draftValues}
+                result={results[connection.id]}
+                busy={busyById[connection.id]}
+                expanded={Boolean(expandedById[connection.id])}
+                inbox={inboxById}
+                selectedConversationId={selectedConversationById[connection.id]}
+                onToggle={toggleConnection}
+                onFieldChange={onFieldChange}
+                onSave={onSave}
+                onVerify={onVerify}
+                onDelete={onDeleteConnection}
+                onLoadConversations={onLoadConversations}
+                onOpenThread={onOpenThread}
+                onDraftReply={onDraftReply}
+                onDraftTextChange={onDraftTextChange}
+                onSendReply={onSendReply}
+              />
+            ))}
+          </div>
         </section>
       </main>
     </div>

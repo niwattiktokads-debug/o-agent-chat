@@ -61,6 +61,13 @@ Omni Chat มี endpoint สำหรับแจ้งงานวินเข
 
 Draft นี้ยังเป็นโหมด manual ภายในหน้า Omni ส่วน webhook auto-send ใช้ flow แยกตาม env ด้านบน
 
+## Omni Order Address + ZORT Pointer
+งานออเดอร์ที่เกี่ยวกับ AI ดึงที่อยู่จากแชท, Thai postcode autofill, order draft, customer confirmation draft, และ ZORT approval guard ต้องอ่าน pointer นี้ก่อนแก้:
+
+`docs/omni-order-address-zort-readme.md`
+
+ไฟล์นี้มีรายการ post-install checklist, สิ่งที่ยังติดหลังติดตั้ง, endpoint, test, และ line pointer ของทุกฟังก์ชันเพื่อไม่ให้แก้ตกหล่น
+
 ## API Contract (freeze)
 ```
 GET  /api/state                                    → { roomName, leader, operator, executor, goal, scope, dod, doneDefinition, messages[], presence, updatedAt }

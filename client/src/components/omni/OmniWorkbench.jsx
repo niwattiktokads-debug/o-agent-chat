@@ -6,13 +6,14 @@ import ThreadList from './ThreadList.jsx'
 import ThreadDetail from './ThreadDetail.jsx'
 import ContextPanel from './ContextPanel.jsx'
 import SocialOpsBoard from './SocialOpsBoard.jsx'
+import SettingsPage from './SettingsPage.jsx'
 
 const OPERATION_MODES = [
   { id: 'chat', label: 'แชท', shortLabel: 'Chat' },
   { id: 'post', label: 'โพสต์', shortLabel: 'Post' },
   { id: 'live', label: 'ไลฟ์', shortLabel: 'Live' },
   { id: 'report', label: 'รายงาน', shortLabel: 'Report' },
-  { id: 'setting', label: 'ตั้งค่า', shortLabel: 'Set' },
+  { id: 'settings', label: 'ตั้งค่า', shortLabel: 'Set' },
 ]
 
 export default function OmniWorkbench() {
@@ -75,6 +76,8 @@ export default function OmniWorkbench() {
         <ContextPanel snapshot={snapshot} thread={selectedThread} onSnapshot={setSnapshot} />
       </div>
         </>
+      ) : operationMode === 'settings' ? (
+        <SettingsPage snapshot={snapshot} onSnapshot={setSnapshot} onOpenChat={() => setOperationMode('chat')} />
       ) : (
         <SocialOpsBoard mode={operationMode} snapshot={snapshot} onSnapshot={setSnapshot} onOpenChat={() => setOperationMode('chat')} />
       )}

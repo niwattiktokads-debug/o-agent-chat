@@ -2,10 +2,6 @@ import React, { useState } from 'react'
 import AiDecisionPanel from './AiDecisionPanel.jsx'
 import OrderDesk from './OrderDesk.jsx'
 import PaymentDesk from './PaymentDesk.jsx'
-import ConnectorHealth from './ConnectorHealth.jsx'
-import FacebookLivePreview from './FacebookLivePreview.jsx'
-import TikTokOrderSync from './TikTokOrderSync.jsx'
-import PageManagement from './PageManagement.jsx'
 import ProfilePanel from './ProfilePanel.jsx'
 
 const TABS = [
@@ -37,15 +33,6 @@ export default function ContextPanel({ snapshot, thread, onSnapshot }) {
       {tab === 'profiles' ? <ProfilePanel snapshot={snapshot} /> : null}
       {tab === 'orders' ? <OrderDesk snapshot={snapshot} thread={thread} onSnapshot={onSnapshot} /> : null}
       {tab === 'payment' ? <PaymentDesk snapshot={snapshot} thread={thread} /> : null}
-      <details className="border-t border-[var(--color-rule)] p-4">
-        <summary className="cursor-pointer text-sm font-bold text-[var(--color-ink)]">เครื่องมือระบบ</summary>
-        <div className="mt-3 space-y-3">
-          <TikTokOrderSync onSynced={onSnapshot} />
-          <FacebookLivePreview onSynced={onSnapshot} />
-          <ConnectorHealth health={snapshot.connectorHealth} />
-          <PageManagement pages={snapshot.pages} onSnapshot={onSnapshot} />
-        </div>
-      </details>
     </aside>
   )
 }

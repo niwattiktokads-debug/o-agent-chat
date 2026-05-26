@@ -149,26 +149,100 @@ vi.mock('../../lib/omniApi.js', () => ({
   }),
   fetchOmniSettings: async () => ({
     postCf: { enabled: true, autoCreateDrafts: true },
-    liveCf: { enabled: true },
+    liveCf: { enabled: true, mode: 'fallback_post_comment_capture' },
+    report: { timezone: 'Asia/Bangkok' },
     orderDraft: { enabled: true, approvalRequired: true, createZortOrderOnApprove: true },
+    orderAddressIntake: { enabled: true, createConfirmationDraft: true },
     ai: { enabled: true },
   }),
-  saveOmniSettings: async ({ postCf }) => ({
+  saveOmniSettings: async (settings) => ({
     ok: true,
-    settings: {
-      postCf,
-      liveCf: { enabled: true },
-      orderDraft: { enabled: true, approvalRequired: true, createZortOrderOnApprove: true },
-      ai: { enabled: true },
-    },
+    settings,
   }),
   searchZortProducts: async () => ({
     ok: true,
     products: [{ id: '637', sku: 'BLACK-M', name: 'Black Shirt M', sellPrice: 590, availableStock: 7 }],
   }),
-  createOrderDraft: async () => ({
+  lookupThaiAddressByPostcode: async () => ({
     ok: true,
-    order: { id: 'order_draft_1', status: 'draft', totalAmount: 590, items: [{ sku: 'BLACK-M', quantity: 1 }] },
+    postalCode: '10110',
+    count: 1,
+    suggestions: [{
+      key: '10110|กรุงเทพมหานคร|คลองเตย|คลองตัน',
+      postalCode: '10110',
+      province: 'กรุงเทพมหานคร',
+      district: 'คลองเตย',
+      subDistrict: 'คลองตัน',
+    }],
+    source: { package: 'thai-address-universal', provinceCount: 77 },
+  }),
+  extractOrderAddressFromThread: async () => ({
+    ok: true,
+    extracted: {
+      recipientName: 'ลูกค้า A',
+      recipientPhone: '0812345678',
+      addressLine: '99/1 ถนนสุขุมวิท',
+      postalCode: '10110',
+      selectedAddressKey: '10110|กรุงเทพมหานคร|คลองเตย|คลองตัน',
+      selectedAddress: {
+        key: '10110|กรุงเทพมหานคร|คลองเตย|คลองตัน',
+        postalCode: '10110',
+        province: 'กรุงเทพมหานคร',
+        district: 'คลองเตย',
+        subDistrict: 'คลองตัน',
+      },
+      formattedAddress: '99/1 ถนนสุขุมวิท แขวงคลองตัน เขตคลองเตย กรุงเทพมหานคร 10110',
+      readyForDraft: true,
+      confidence: 0.95,
+      missingFields: [],
+    },
+    addressLookup: {
+      ok: true,
+      suggestions: [{
+        key: '10110|กรุงเทพมหานคร|คลองเตย|คลองตัน',
+        postalCode: '10110',
+        province: 'กรุงเทพมหานคร',
+        district: 'คลองเตย',
+        subDistrict: 'คลองตัน',
+      }],
+      source: { package: 'thai-address-universal', provinceCount: 77 },
+    },
+    confirmationText: 'รบกวนตรวจสอบที่อยู่จัดส่งนี้ให้หน่อยค่ะ\nชื่อผู้รับ: ลูกค้า A\nโทร: 0812345678\nที่อยู่: 99/1 ถนนสุขุมวิท แขวงคลองตัน เขตคลองเตย กรุงเทพมหานคร 10110',
+    confirmationDraft: {
+      message: {
+        id: 'draft_address_confirm',
+        text: 'รบกวนตรวจสอบที่อยู่จัดส่งนี้ให้หน่อยค่ะ\nชื่อผู้รับ: ลูกค้า A\nโทร: 0812345678\nที่อยู่: 99/1 ถนนสุขุมวิท แขวงคลองตัน เขตคลองเตย กรุงเทพมหานคร 10110',
+      },
+    },
+    snapshot: {
+      pages: [{ id: 'page_mankynd', name: 'MAN KYND', status: 'active' }],
+      platformAccounts: [{ id: 'acct_fb_mankynd', pageId: 'page_mankynd', platform: 'facebook' }],
+      threads: [{ id: 'thread_1', pageId: 'page_mankynd', platform: 'facebook', status: 'draft_ready', intent: 'stock', risk: 'low' }],
+      messages: [
+        { id: 'msg_1', threadId: 'thread_1', direction: 'inbound', authorName: 'ลูกค้า A', text: 'มีไซซ์ M สีดำไหม' },
+        { id: 'draft_address_confirm', threadId: 'thread_1', direction: 'outbound', authorName: 'AI', text: 'รบกวนตรวจสอบที่อยู่จัดส่งนี้ให้หน่อยค่ะ', sourceRef: 'ai_address_confirmation_draft' },
+      ],
+      customers: [{ id: 'cust_1', displayName: 'ลูกค้า A' }],
+      orders: [],
+      aiDecisions: [],
+      paymentRequests: [],
+      connectorHealth: [],
+    },
+  }),
+  createOrderDraft: async (input) => ({
+    ok: true,
+    order: {
+      id: 'order_draft_1',
+      status: 'draft',
+      totalAmount: 590,
+      items: [{ sku: 'BLACK-M', quantity: 1 }],
+      shippingMethod: input.shippingMethod,
+      paymentMethod: input.paymentMethod,
+      shippingAddress: {
+        ...input.shippingAddress,
+        formattedAddress: `${input.shippingAddress.addressLine} แขวง${input.shippingAddress.subDistrict} เขต${input.shippingAddress.district} ${input.shippingAddress.province} ${input.shippingAddress.postalCode}`,
+      },
+    },
     snapshot: {
       pages: [{ id: 'page_mankynd', name: 'MAN KYND', status: 'active' }],
       platformAccounts: [{ id: 'acct_fb_mankynd', pageId: 'page_mankynd', platform: 'facebook' }],
@@ -188,23 +262,22 @@ vi.mock('../../lib/omniApi.js', () => ({
 }))
 
 describe('OmniWorkbench', () => {
-  it('renders inbox, AI panel, connector health, order desk, and payment desk', async () => {
+  it('renders inbox, AI panel, order desk, and payment desk without system tools in context', async () => {
     render(<OmniWorkbench />)
     expect(await screen.findByText('กล่องรวม')).toBeInTheDocument()
     expect((await screen.findAllByText('MAN KYND')).length).toBeGreaterThan(0)
     expect((await screen.findAllByText('AnnaLynn')).length).toBeGreaterThan(0)
     expect(await screen.findByText('tiktok')).toBeInTheDocument()
-    expect((await screen.findAllByText('Viris Zamara')).length).toBeGreaterThan(1)
+    expect((await screen.findAllByText('Viris Zamara')).length).toBeGreaterThan(0)
     expect(await screen.findByText('AI ทำอะไรอยู่')).toBeInTheDocument()
     expect(await screen.findByText('ให้ AI ร่าง')).toBeInTheDocument()
     expect(await screen.findByText('AI ร่างคำตอบแล้ว')).toBeInTheDocument()
     expect(await screen.findByText('มั่นใจ 94%')).toBeInTheDocument()
-    expect(await screen.findByText('Connector Health')).toBeInTheDocument()
     expect(await screen.findByText('ออเดอร์')).toBeInTheDocument()
     expect(await screen.findByText('ชำระเงิน')).toBeInTheDocument()
-    expect(await screen.findByText('TikTok Order Sync')).toBeInTheDocument()
-    expect(await screen.findByText('Facebook Live Preview')).toBeInTheDocument()
-    expect((await screen.findAllByText('Sync')).length).toBeGreaterThan(1)
+    expect(screen.queryByText('Connector Health')).not.toBeInTheDocument()
+    expect(screen.queryByText('TikTok Order Sync')).not.toBeInTheDocument()
+    expect(screen.queryByText('Facebook Live Preview')).not.toBeInTheDocument()
   })
 
   it('lets the operator switch through ZORT-style chat, post, live, report, and setting workflows', async () => {
@@ -231,6 +304,14 @@ describe('OmniWorkbench', () => {
     fireEvent.click(screen.getByRole('button', { name: 'ตั้งค่า' }))
     expect(await screen.findByRole('heading', { name: 'ตั้งค่าระบบ' })).toBeInTheDocument()
     expect(await screen.findByLabelText('Post CF enabled')).toBeChecked()
+    expect(await screen.findByLabelText('Address intake enabled')).toBeChecked()
+    expect(await screen.findByLabelText('Create address confirmation draft')).toBeChecked()
+    expect(await screen.findByLabelText('Live comment mode')).toHaveValue('fallback_post_comment_capture')
+    expect(await screen.findByLabelText('Report timezone')).toHaveValue('Asia/Bangkok')
+    expect(await screen.findByText('Page auto-reply')).toBeInTheDocument()
+    expect(await screen.findByText('Connector Health')).toBeInTheDocument()
+    expect(await screen.findByText('Facebook Live Preview')).toBeInTheDocument()
+    expect(await screen.findByText('TikTok Order Sync')).toBeInTheDocument()
     fireEvent.click(screen.getByLabelText('Post CF enabled'))
     fireEvent.click(screen.getByRole('button', { name: 'บันทึก setting' }))
     expect(await screen.findByText('บันทึก setting แล้ว')).toBeInTheDocument()
@@ -242,14 +323,25 @@ describe('OmniWorkbench', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'ออเดอร์' }))
 
     expect(await screen.findByRole('heading', { name: 'คำสั่งซื้อใหม่' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'AI ดึงที่อยู่จากแชท' }))
+    expect(await screen.findByText('เติมฟอร์มแล้ว และสร้าง draft ให้ลูกค้าตรวจที่อยู่แล้ว')).toBeInTheDocument()
+    expect(await screen.findByText('draft ให้ลูกค้าตรวจที่อยู่')).toBeInTheDocument()
+    expect(screen.getByLabelText('ชื่อผู้รับ')).toHaveValue('ลูกค้า A')
+    expect(screen.getByLabelText('เบอร์โทร')).toHaveValue('0812345678')
+    expect(screen.getByLabelText('บ้านเลขที่ / ถนน / หมู่บ้าน')).toHaveValue('99/1 ถนนสุขุมวิท')
+    expect(screen.getByLabelText('รหัสไปรษณีย์')).toHaveValue('10110')
     fireEvent.change(screen.getByLabelText('ค้นสินค้า ZORT'), { target: { value: 'BLACK-M' } })
     fireEvent.click(screen.getByRole('button', { name: 'ค้น ZORT' }))
     expect(await screen.findByText('Black Shirt M')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'เลือก BLACK-M' }))
+    expect(await screen.findByText('พบที่อยู่ 1 รายการ · ครอบคลุม 77 จังหวัด')).toBeInTheDocument()
+    expect(await screen.findByText('คลองตัน')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'บันทึก draft ออเดอร์' }))
     expect(await screen.findByText('draft: order_draft_1')).toBeInTheDocument()
+    expect((await screen.findAllByText(/99\/1 ถนนสุขุมวิท/)).length).toBeGreaterThan(0)
     fireEvent.click(screen.getByRole('button', { name: 'Approve ไป ZORT' }))
     expect(await screen.findByText('ยืนยัน approval ก่อนสร้าง ZORT order')).toBeInTheDocument()
+    expect((await screen.findAllByText(/ผู้รับ: ลูกค้า A/)).length).toBeGreaterThan(0)
     fireEvent.click(screen.getByRole('button', { name: 'ยืนยันสร้าง ZORT order' }))
     expect(await screen.findByText('สร้าง ZORT order แล้ว zort_1001')).toBeInTheDocument()
   })

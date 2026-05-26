@@ -7,6 +7,10 @@ import { promisify } from 'node:util'
 const execFileAsync = promisify(execFile)
 const DEFAULT_HELPER = process.env.ZORT_HELPER || '/Users/babycuca/.codex/bin/zort-api'
 
+function cleanText(value) {
+  return String(value || '').trim().replace(/\s+/g, ' ')
+}
+
 async function defaultRunner(args) {
   const { stdout } = await execFileAsync(DEFAULT_HELPER, args, {
     maxBuffer: 1024 * 1024 * 8,
@@ -30,6 +34,16 @@ function normalizeProduct(product = {}) {
 
 function buildZortOrderBody(order = {}) {
   const amount = Number(order.totalAmount ?? order.total ?? 0)
+  const shippingAddress = order.shippingAddress || {}
+  const shippingName = cleanText(shippingAddress.recipientName || order.shippingName || order.customerName || 'Omni Customer')
+  const shippingPhone = cleanText(shippingAddress.recipientPhone || order.shippingPhone || order.customerPhone)
+  const fullShippingAddress = cleanText(shippingAddress.formattedAddress || [
+    shippingAddress.addressLine,
+    shippingAddress.subDistrict,
+    shippingAddress.district,
+    shippingAddress.province,
+    shippingAddress.postalCode,
+  ].filter(Boolean).join(' '))
   return {
     number: order.number || order.id,
     amount,
@@ -38,6 +52,15 @@ function buildZortOrderBody(order = {}) {
     customername: order.customerName || 'Omni Customer',
     customerphone: order.customerPhone || '',
     customeremail: order.customerEmail || '',
+    customeraddress: fullShippingAddress,
+    shippingname: shippingName,
+    shippingphone: shippingPhone,
+    shippingemail: order.customerEmail || '',
+    shippingaddress: fullShippingAddress,
+    shippingchannel: order.shippingMethod || 'ไปรษณีย์ไทย',
+    paymentmethod: order.paymentMethod || 'bank_transfer',
+    paymentamount: amount,
+    saleschannel: order.platform || 'omni',
     description: `Created from Omni draft ${order.id}`,
     list: (order.items || []).map((item) => ({
       sku: item.sku,

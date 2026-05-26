@@ -23,6 +23,28 @@ const req = (method, path, body) => fetch(`http://localhost:${port}${path}`, {
   body: body && JSON.stringify(body),
 }).then(async (r) => ({ status: r.status, body: await r.json() }))
 
+function zortReadyDraftPayload(overrides = {}) {
+  return {
+    threadId: 'thread_1',
+    customerName: 'ลูกค้า A',
+    customerPhone: '0812345678',
+    shippingMethod: 'ไปรษณีย์ไทย',
+    paymentMethod: 'bank_transfer',
+    shippingAddress: {
+      recipientName: 'ลูกค้า A',
+      recipientPhone: '0812345678',
+      addressLine: '99/1 ถนนสุขุมวิท',
+      postalCode: '10110',
+      province: 'กรุงเทพมหานคร',
+      district: 'คลองเตย',
+      subDistrict: 'คลองตัน',
+      country: 'ไทย',
+    },
+    items: [{ sku: 'BLACK-M', name: 'Black Shirt M', quantity: 1, unitPrice: 590, zortProductId: '637' }],
+    ...overrides,
+  }
+}
+
 test('GET /api/state returns snapshot', async () => {
   const { body } = await req('GET', '/api/state')
   assert.equal(body.leader, '—')
@@ -529,7 +551,7 @@ test('Order draft searches ZORT products, creates draft, and requires approval b
       return { ok: true, products: [{ id: '637', sku: 'BLACK-M', name: 'Black Shirt M', sellPrice: 590, availableStock: 7 }] }
     },
     createOrder: async ({ order, uniquenumber, approved }) => {
-      calls.push({ action: 'createOrder', orderId: order.id, uniquenumber, approved })
+      calls.push({ action: 'createOrder', orderId: order.id, uniquenumber, approved, shippingAddress: order.shippingAddress })
       return { ok: true, providerOrderId: 'zort_1001', response: { res: { resCode: '200' } } }
     },
   }
@@ -545,10 +567,7 @@ test('Order draft searches ZORT products, creates draft, and requires approval b
     const draftResponse = await fetch(`http://localhost:${localPort}/api/omni/order-drafts`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        threadId: 'thread_1',
-        items: [{ sku: 'BLACK-M', name: 'Black Shirt M', quantity: 1, unitPrice: 590, zortProductId: '637' }],
-      }),
+      body: JSON.stringify(zortReadyDraftPayload()),
     })
     const draftBody = await draftResponse.json()
     assert.equal(draftResponse.status, 200)
@@ -573,6 +592,109 @@ test('Order draft searches ZORT products, creates draft, and requires approval b
     assert.equal(approveBody.order.status, 'zort_created')
     assert.equal(approveBody.order.providerOrderId, 'zort_1001')
     assert.equal(calls.some((call) => call.action === 'createOrder' && call.approved === true), true)
+    assert.match(calls.find((call) => call.action === 'createOrder').shippingAddress.formattedAddress, /สุขุมวิท/)
+  } finally {
+    localServer.close()
+  }
+})
+
+test('Order draft approval blocks ZORT create until Thai shipping address is complete', async () => {
+  const localApp = express()
+  localApp.use(express.json())
+  const localOmni = createOmniService()
+  const calls = []
+  const fakeCommerce = {
+    createOrder: async () => {
+      calls.push({ action: 'createOrder' })
+      return { ok: true, providerOrderId: 'zort_should_not_create' }
+    },
+  }
+  mountRoutes(localApp, { broadcast: () => {} }, createState(), { omni: localOmni, commerce: fakeCommerce })
+  const localServer = localApp.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const draftResponse = await fetch(`http://localhost:${localPort}/api/omni/order-drafts`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        threadId: 'thread_1',
+        customerName: 'ลูกค้า A',
+        customerPhone: '0812345678',
+        items: [{ sku: 'BLACK-M', name: 'Black Shirt M', quantity: 1, unitPrice: 590, zortProductId: '637' }],
+      }),
+    })
+    const draftBody = await draftResponse.json()
+    assert.equal(draftResponse.status, 200)
+
+    const approveResponse = await fetch(`http://localhost:${localPort}/api/omni/order-drafts/${draftBody.order.id}/approve`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ approved: true, approvedBy: 'boss' }),
+    })
+    const approveBody = await approveResponse.json()
+    assert.equal(approveResponse.status, 400)
+    assert.equal(approveBody.error, 'shipping_address_incomplete')
+    assert.ok(approveBody.missingFields.includes('addressLine'))
+    assert.equal(calls.length, 0)
+    assert.equal(localOmni.snapshot().orders.find((order) => order.id === draftBody.order.id).status, 'draft')
+  } finally {
+    localServer.close()
+  }
+})
+
+test('Thai postcode lookup returns province/district/subdistrict suggestions', async () => {
+  const { body, status } = await req('GET', '/api/omni/thai-address/postcodes/10110')
+
+  assert.equal(status, 200)
+  assert.equal(body.ok, true)
+  assert.equal(body.postalCode, '10110')
+  assert.equal(body.source.package, 'thai-address-universal')
+  assert.equal(body.source.provinceCount, 77)
+  assert.equal(body.suggestions.some((item) => item.province === 'กรุงเทพมหานคร' && item.district === 'คลองเตย'), true)
+})
+
+test('Order address intake extracts name phone address from chat and drafts customer confirmation', async () => {
+  const localApp = express()
+  localApp.use(express.json())
+  const seed = createOmniService().snapshot()
+  seed.messages.push({
+    id: 'msg_address_1',
+    threadId: 'thread_1',
+    direction: 'inbound',
+    authorName: 'ลูกค้า A',
+    text: 'ชื่อผู้รับ: คุณแพรว\nเบอร์ 081-234-5678\nที่อยู่ 99/1 ถนนสุขุมวิท แขวงคลองตัน เขตคลองเตย กรุงเทพมหานคร 10110',
+    createdAt: '2026-05-26T04:00:00.000Z',
+  })
+  const localOmni = createOmniService(seed)
+  const localEvents = []
+  mountRoutes(localApp, { broadcast: (event, payload) => localEvents.push({ event, payload }) }, createState(), { omni: localOmni })
+  const localServer = localApp.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const response = await fetch(`http://localhost:${localPort}/api/omni/threads/thread_1/order-address-intake`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ createConfirmationDraft: true }),
+    })
+    const body = await response.json()
+
+    assert.equal(response.status, 200)
+    assert.equal(body.ok, true)
+    assert.equal(body.extracted.recipientName, 'คุณแพรว')
+    assert.equal(body.extracted.recipientPhone, '0812345678')
+    assert.equal(body.extracted.postalCode, '10110')
+    assert.equal(body.extracted.selectedAddress.district, 'คลองเตย')
+    assert.equal(body.extracted.selectedAddress.subDistrict, 'คลองตัน')
+    assert.match(body.extracted.formattedAddress, /สุขุมวิท/)
+    assert.equal(body.extracted.readyForDraft, true)
+    assert.equal(body.extracted.requiresCustomerConfirmation, true)
+    assert.match(body.confirmationText, /ยืนยันที่อยู่/)
+    assert.equal(body.confirmationDraft.message.deliveryStatus, 'draft_only')
+    assert.equal(body.confirmationDraft.message.sourceRef, 'ai_address_confirmation_draft')
+    assert.equal(body.confirmationDraft.audit.actorType, 'ai')
+    assert.equal(body.confirmationDraft.audit.action, 'address_confirmation_draft_created')
+    assert.equal(localOmni.getThread('thread_1').messages.some((message) => message.sourceRef === 'ai_address_confirmation_draft'), true)
+    assert.equal(localEvents.at(-1).event, 'omni')
   } finally {
     localServer.close()
   }
@@ -595,10 +717,7 @@ test('Order draft approval respects createZortOrderOnApprove setting', async () 
     const draftResponse = await fetch(`http://localhost:${localPort}/api/omni/order-drafts`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        threadId: 'thread_1',
-        items: [{ sku: 'BLACK-M', name: 'Black Shirt M', quantity: 1, unitPrice: 590, zortProductId: '637' }],
-      }),
+      body: JSON.stringify(zortReadyDraftPayload()),
     })
     const draftBody = await draftResponse.json()
     assert.equal(draftResponse.status, 200)
@@ -633,10 +752,7 @@ test('Order draft approval returns guarded JSON when ZORT order create fails', a
     const draftResponse = await fetch(`http://localhost:${localPort}/api/omni/order-drafts`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        threadId: 'thread_1',
-        items: [{ sku: 'BLACK-M', name: 'Black Shirt M', quantity: 1, unitPrice: 590, zortProductId: '637' }],
-      }),
+      body: JSON.stringify(zortReadyDraftPayload()),
     })
     const draftBody = await draftResponse.json()
     assert.equal(draftResponse.status, 200)

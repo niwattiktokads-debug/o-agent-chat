@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import express from 'express'
+import { readFileSync } from 'node:fs'
 import { OMNI_STATUSES, validatePage } from '../src/omni/schema.js'
 import { createOmniSeed } from '../src/omni/seed.js'
 import { createAdapterRegistry } from '../src/omni/adapters.js'
@@ -14,6 +15,7 @@ import { normalizeTikTokMessagingWebhookPayload } from '../src/omni/tiktokMessag
 import { getOmniSchemaSummary, loadOmniSchemaSql, REQUIRED_OMNI_TABLES } from '../src/omni/db/schema.js'
 import { createSqliteOmniStore } from '../src/omni/db/sqliteStore.js'
 import { mountRoutes } from '../src/routes.js'
+import { createZortCommerceRuntime } from '../src/omni/zortCommerceRuntime.js'
 
 test('omni seed starts with configured production page data', () => {
   const seed = createOmniSeed()
@@ -32,6 +34,49 @@ test('omni seed starts with configured production page data', () => {
   assert.equal(seed.pages.every((page) => page.agentProfileId), true)
   assert.equal(seed.knowledgeSources.length, 3)
   assert.equal(seed.knowledgeSources.every((source) => source.content), true)
+})
+
+test('ZORT order body includes customer and Thai shipping address fields', async () => {
+  let body
+  const runtime = createZortCommerceRuntime({
+    runner: async (args) => {
+      const bodyFile = args[args.indexOf('--body-file') + 1]
+      body = JSON.parse(readFileSync(bodyFile, 'utf8'))
+      return { ok: true, response: { detail: { id: 'zort_1001' } } }
+    },
+  })
+
+  const result = await runtime.createOrder({
+    approved: true,
+    uniquenumber: 'order_draft_1',
+    order: {
+      id: 'order_draft_1',
+      customerName: 'ลูกค้า A',
+      customerPhone: '0812345678',
+      customerEmail: 'buyer@example.com',
+      platform: 'facebook',
+      sourceRef: 'omni_manual_draft:thread_1',
+      totalAmount: 590,
+      shippingMethod: 'ไปรษณีย์ไทย',
+      paymentMethod: 'bank_transfer',
+      shippingAddress: {
+        recipientName: 'ลูกค้า A',
+        recipientPhone: '0812345678',
+        formattedAddress: '99/1 ถนนสุขุมวิท แขวงคลองตัน เขตคลองเตย กรุงเทพมหานคร 10110',
+      },
+      items: [{ sku: 'BLACK-M', name: 'Black Shirt M', quantity: 1, unitPrice: 590 }],
+    },
+  })
+
+  assert.equal(result.ok, true)
+  assert.equal(body.customername, 'ลูกค้า A')
+  assert.equal(body.customerphone, '0812345678')
+  assert.match(body.customeraddress, /สุขุมวิท/)
+  assert.equal(body.shippingname, 'ลูกค้า A')
+  assert.equal(body.shippingphone, '0812345678')
+  assert.equal(body.shippingchannel, 'ไปรษณีย์ไทย')
+  assert.equal(body.paymentmethod, 'bank_transfer')
+  assert.equal(body.list[0].sku, 'BLACK-M')
 })
 
 test('normalizes TikTok Business Messaging webhook payload into Omni threads', () => {

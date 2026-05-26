@@ -7,6 +7,7 @@ import { listTikTokOrders } from './omni/tiktokOrderClient.js'
 import { createConnectionRuntime } from './omni/connections.js'
 import { parseCfComment } from './omni/cfParser.js'
 import { createMetaSocialRuntime } from './omni/metaSocialRuntime.js'
+import { lookupThaiAddressByPostcode } from './omni/thaiAddress.js'
 import { createZortCommerceRuntime } from './omni/zortCommerceRuntime.js'
 import { createLineSudaOagentNotifier } from './omni/lineSudaOagentNotifier.js'
 
@@ -21,6 +22,12 @@ function normalizeLeader(input) {
 function normalizePageSize(value) {
   const parsed = Number(value || 10)
   if (!Number.isInteger(parsed) || parsed < 1 || parsed > 50) return 10
+  return parsed
+}
+
+function normalizeAddressLimit(value) {
+  const parsed = Number(value || 200)
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 500) return 200
   return parsed
 }
 
@@ -192,6 +199,27 @@ export function mountRoutes(app, hub, room, options = {}) {
     res.json(result)
   })
 
+  app.post('/api/omni/threads/:threadId/order-address-intake', async (req, res) => {
+    try {
+      const result = await omni.createOrderAddressIntake({
+        threadId: req.params.threadId,
+        text: req.body?.text || '',
+        createConfirmationDraft: req.body?.createConfirmationDraft,
+        authorName: req.body?.authorName || 'AI',
+      })
+      if (!result.ok) {
+        const status = result.error === 'thread_not_found' ? 404
+          : result.error === 'order_address_intake_disabled' ? 409
+            : 400
+        return res.status(status).json(result)
+      }
+      if (result.snapshot) hub.broadcast('omni', result.snapshot)
+      res.json(result)
+    } catch (error) {
+      res.status(400).json({ ok: false, error: error.message || 'order_address_intake_failed' })
+    }
+  })
+
   app.get('/api/omni/connectors/health', async (_req, res) => {
     const providers = adapters.list()
     const health = await Promise.all(providers.map((provider) => adapters.get(provider).healthcheck()))
@@ -350,6 +378,21 @@ export function mountRoutes(app, hub, room, options = {}) {
       res.json(result)
     } catch (error) {
       res.status(400).json({ ok: false, error: error.message || 'zort_products_failed' })
+    }
+  })
+
+  app.get('/api/omni/thai-address/postcodes/:postcode', async (req, res) => {
+    try {
+      const result = await lookupThaiAddressByPostcode(req.params.postcode, {
+        limit: normalizeAddressLimit(req.query.limit),
+      })
+      if (!result.ok) {
+        const status = result.error === 'thai_postcode_not_found' ? 404 : 400
+        return res.status(status).json(result)
+      }
+      res.json(result)
+    } catch (error) {
+      res.status(400).json({ ok: false, error: error.message || 'thai_address_lookup_failed' })
     }
   })
 

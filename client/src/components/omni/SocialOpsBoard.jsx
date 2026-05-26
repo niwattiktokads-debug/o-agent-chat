@@ -4,9 +4,7 @@ import {
   fetchConnections,
   fetchLiveSources,
   fetchMessageVolumeReport,
-  fetchOmniSettings,
   fetchSocialPosts,
-  saveOmniSettings,
 } from '../../lib/omniApi.js'
 
 const FALLBACK_PAGE_PROFILES = [
@@ -15,13 +13,6 @@ const FALLBACK_PAGE_PROFILES = [
   { id: 'page_des', label: 'เพจเดส' },
   { id: 'fb_112154661515664', label: 'Facebook 112154661515664' },
 ]
-
-const DEFAULT_SETTINGS = {
-  postCf: { enabled: true, autoCreateDrafts: true },
-  liveCf: { enabled: true },
-  orderDraft: { enabled: true, approvalRequired: true, createZortOrderOnApprove: true },
-  ai: { enabled: true },
-}
 
 export default function SocialOpsBoard({ mode, snapshot, onSnapshot, onOpenChat }) {
   if (mode === 'post') {
@@ -50,10 +41,6 @@ export default function SocialOpsBoard({ mode, snapshot, onSnapshot, onOpenChat 
 
   if (mode === 'report') {
     return <MessageReport snapshot={snapshot} onOpenChat={onOpenChat} />
-  }
-
-  if (mode === 'setting') {
-    return <SettingsBoard onOpenChat={onOpenChat} />
   }
 
   return null
@@ -376,101 +363,6 @@ function MessageReport({ snapshot, onOpenChat }) {
   )
 }
 
-function SettingsBoard({ onOpenChat }) {
-  const [settings, setSettings] = useState(DEFAULT_SETTINGS)
-  const [status, setStatus] = useState('')
-
-  useEffect(() => {
-    fetchOmniSettings()
-      .then((data) => setSettings(mergeSettings(DEFAULT_SETTINGS, data || {})))
-      .catch((error) => setStatus(error.message))
-  }, [])
-
-  function toggle(path) {
-    setSettings((current) => {
-      const next = mergeSettings(DEFAULT_SETTINGS, current)
-      let target = next
-      for (const key of path.slice(0, -1)) target = target[key]
-      target[path[path.length - 1]] = !target[path[path.length - 1]]
-      return next
-    })
-  }
-
-  async function save() {
-    setStatus('กำลังบันทึก setting')
-    try {
-      const result = await saveOmniSettings(settings)
-      setSettings(mergeSettings(DEFAULT_SETTINGS, result.settings || settings))
-      setStatus('บันทึก setting แล้ว')
-    } catch (error) {
-      setStatus(error.message)
-    }
-  }
-
-  return (
-    <main className="order-1 min-h-0 overflow-y-auto bg-[var(--color-paper)] p-4 lg:order-none lg:h-full lg:p-6">
-      <header className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--color-rule)] pb-4">
-        <div>
-          <h1 className="text-xl font-bold text-[var(--color-ink)]">ตั้งค่าระบบ</h1>
-          <p className="mt-1 text-sm text-[var(--color-ink-2)]">Setting นี้บันทึกลง DB และ backend ใช้ gate Post/Live/AI/Order flow</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onOpenChat}
-            className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)]"
-          >
-            กลับแชท
-          </button>
-          <button
-            type="button"
-            onClick={save}
-            className="rounded-[var(--radius-md)] bg-[var(--color-accent)] px-3 py-2 text-sm font-semibold text-[var(--color-accent-ink)]"
-          >
-            บันทึก setting
-          </button>
-        </div>
-      </header>
-      <StatusLine value={status} />
-      <section className="mt-4 grid gap-4 lg:grid-cols-2">
-        <SettingsCard
-          title="Post / Live CF"
-          rows={[
-            { label: 'Post CF enabled', checked: settings.postCf.enabled, onChange: () => toggle(['postCf', 'enabled']) },
-            { label: 'Post auto-create draft', checked: settings.postCf.autoCreateDrafts, onChange: () => toggle(['postCf', 'autoCreateDrafts']) },
-            { label: 'Live CF enabled', checked: settings.liveCf.enabled, onChange: () => toggle(['liveCf', 'enabled']) },
-          ]}
-        />
-        <SettingsCard
-          title="AI / Order"
-          rows={[
-            { label: 'AI enabled', checked: settings.ai.enabled, onChange: () => toggle(['ai', 'enabled']) },
-            { label: 'Order draft enabled', checked: settings.orderDraft.enabled, onChange: () => toggle(['orderDraft', 'enabled']) },
-            { label: 'Order approval required', checked: settings.orderDraft.approvalRequired, onChange: () => toggle(['orderDraft', 'approvalRequired']) },
-            { label: 'Create ZORT on approve', checked: settings.orderDraft.createZortOrderOnApprove, onChange: () => toggle(['orderDraft', 'createZortOrderOnApprove']) },
-          ]}
-        />
-      </section>
-    </main>
-  )
-}
-
-function SettingsCard({ title, rows }) {
-  return (
-    <section className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] p-4">
-      <h2 className="text-sm font-bold text-[var(--color-ink)]">{title}</h2>
-      <div className="mt-3 divide-y divide-[var(--color-rule)]">
-        {rows.map((row) => (
-          <label key={row.label} className="flex items-center justify-between gap-3 py-3 text-sm font-semibold text-[var(--color-ink-2)]">
-            <span>{row.label}</span>
-            <input type="checkbox" checked={row.checked} onChange={row.onChange} className="h-4 w-4 accent-[var(--color-accent)]" />
-          </label>
-        ))}
-      </div>
-    </section>
-  )
-}
-
 function Metric({ label, value, small = false }) {
   return (
     <div className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] p-4">
@@ -516,15 +408,4 @@ function useMetaPageProfiles() {
     return () => { ignore = true }
   }, [])
   return profiles
-}
-
-function mergeSettings(base, input) {
-  return {
-    ...base,
-    ...input,
-    postCf: { ...base.postCf, ...(input.postCf || {}) },
-    liveCf: { ...base.liveCf, ...(input.liveCf || {}) },
-    orderDraft: { ...base.orderDraft, ...(input.orderDraft || {}) },
-    ai: { ...base.ai, ...(input.ai || {}) },
-  }
 }
