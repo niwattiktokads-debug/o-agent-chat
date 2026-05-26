@@ -1,3 +1,5 @@
+import { createOmniSeed } from '../server/src/omni/seed.js'
+
 const SUPABASE_URL = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').replace(/\/$/, '')
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
 
@@ -73,7 +75,25 @@ export function normalizeSettings(rows = []) {
   }))
 }
 
+function mergeSeedRows(seedRows = [], dbRows = [], { preferSeedName = false } = {}) {
+  const rowsById = new Map(seedRows.map((row) => [row.id, { ...row }]))
+  for (const row of dbRows) {
+    const seed = rowsById.get(row.id)
+    if (!seed) {
+      rowsById.set(row.id, { ...row })
+      continue
+    }
+    rowsById.set(row.id, {
+      ...seed,
+      ...row,
+      name: preferSeedName && (!row.name || row.name === row.id) ? seed.name : row.name,
+    })
+  }
+  return [...rowsById.values()]
+}
+
 export async function fetchOmniSnapshotFromSupabase() {
+  const seed = createOmniSeed()
   const [
     pages,
     customers,
@@ -99,12 +119,12 @@ export async function fetchOmniSnapshotFromSupabase() {
   ])
 
   return {
-    pages: pages.map(snakeToCamel),
+    pages: mergeSeedRows(seed.pages, pages.map(snakeToCamel), { preferSeedName: true }),
     pageRuntimeSettings: [],
-    platformAccounts: [],
-    brandGroups: [],
-    policySets: [],
-    agentProfiles: [],
+    platformAccounts: seed.platformAccounts || [],
+    brandGroups: seed.brandGroups || [],
+    policySets: seed.policySets || [],
+    agentProfiles: seed.agentProfiles || [],
     customers: customers.map(snakeToCamel),
     threads: threads.map(snakeToCamel),
     messages: messages.map(snakeToCamel),
