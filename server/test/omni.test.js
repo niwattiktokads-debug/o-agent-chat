@@ -567,6 +567,37 @@ test('normalizes Meta webhook messages into Omni memory rows', () => {
   assert.equal(normalized.messages[0].text, 'มีสินค้าไหม')
 })
 
+test('normalizes Meta page feed webhook changes into Omni post rows', () => {
+  const normalized = normalizeMetaWebhookPayload({
+    object: 'page',
+    entry: [{
+      id: '122106446570001676',
+      time: 1779470000,
+      changes: [{
+        field: 'feed',
+        value: {
+          item: 'comment',
+          verb: 'add',
+          post_id: '122106446570001676_555',
+          comment_id: '122106446570001676_555_777',
+          sender_id: 'customer_feed_1',
+          sender_name: 'Feed Customer',
+          message: 'สนใจโพสต์นี้ค่ะ',
+          created_time: 1779470001,
+        },
+      }],
+    }],
+  })
+
+  assert.equal(normalized.customers[0].displayName, 'Feed Customer')
+  assert.equal(normalized.threads[0].pageId, 'page_annalynn')
+  assert.equal(normalized.threads[0].intent, 'comment')
+  assert.equal(normalized.messages[0].direction, 'inbound')
+  assert.equal(normalized.messages[0].providerMessageId, '122106446570001676_555_777')
+  assert.equal(normalized.messages[0].text, 'สนใจโพสต์นี้ค่ะ')
+  assert.match(normalized.messages[0].sourceRef, /^meta_feed:122106446570001676:comment:add$/)
+})
+
 test('omni service syncs Meta webhook messages into memory store', () => {
   const service = createOmniService()
   const result = service.syncFacebookWebhookEvents(normalizeMetaWebhookPayload({

@@ -13,6 +13,72 @@ function messageText(message) {
   return message?.text || message?.attachments?.map((item) => item.type).join(', ') || ''
 }
 
+function feedText(value = {}) {
+  if (value.message) return value.message
+  const item = value.item || 'feed'
+  const verb = value.verb || 'update'
+  return `Facebook ${item} ${verb}`
+}
+
+function normalizeFeedChange(entry, change, profile) {
+  if (change?.field !== 'feed' || !change.value) return null
+
+  const value = change.value
+  const postId = String(value.post_id || value.parent_id || value.comment_id || '')
+  if (!postId) return null
+
+  const senderId = String(value.sender_id || '')
+  const actorProviderId = senderId || `post_${postId}`
+  const timestamp = value.created_time
+    ? new Date(Number(value.created_time) * 1000).toISOString()
+    : entry.time
+      ? new Date(Number(entry.time) * 1000).toISOString()
+      : new Date().toISOString()
+  const text = feedText(value)
+  const providerMessageId = String(value.comment_id || value.post_id || stableId(profile.pageId, postId, timestamp, text))
+  const threadId = `fb_feed_${stableId(profile.pageId, postId)}`
+  const customerId = senderId === profile.pageId
+    ? `fb_page_actor_${profile.pageId}`
+    : `fb_feed_actor_${actorProviderId}`
+  const isOutbound = senderId === profile.pageId
+  const authorName = value.sender_name || (isOutbound ? profile.pageName : 'Facebook Feed')
+
+  return {
+    customer: {
+      id: customerId,
+      displayName: authorName,
+      platform: 'facebook',
+      providerCustomerId: actorProviderId,
+      matchConfidence: senderId ? 0.8 : 0.2,
+      sourceRef: `meta_feed:${profile.pageId}`,
+    },
+    thread: {
+      id: threadId,
+      providerThreadId: postId,
+      pageId: profile.omniPageId,
+      platform: 'facebook',
+      customerId,
+      status: 'open',
+      intent: value.item === 'comment' ? 'comment' : 'post',
+      risk: 'medium',
+      unreadCount: isOutbound ? 0 : 1,
+      messageCount: 1,
+      updatedAt: timestamp,
+      link: null,
+    },
+    message: {
+      id: `fb_feed_msg_${providerMessageId}`,
+      threadId,
+      direction: isOutbound ? 'outbound' : 'inbound',
+      authorName,
+      text,
+      createdAt: timestamp,
+      providerMessageId,
+      sourceRef: `meta_feed:${profile.pageId}:${value.item || 'feed'}:${value.verb || 'update'}`,
+    },
+  }
+}
+
 export function normalizeMetaWebhookPayload(payload) {
   const customers = []
   const threads = []
@@ -69,6 +135,14 @@ export function normalizeMetaWebhookPayload(payload) {
         providerMessageId: event.message?.mid || null,
         sourceRef: `meta_webhook:${profile.pageId}`,
       })
+    }
+
+    for (const change of entry.changes || []) {
+      const normalized = normalizeFeedChange(entry, change, profile)
+      if (!normalized) continue
+      customers.push(normalized.customer)
+      threads.push(normalized.thread)
+      messages.push(normalized.message)
     }
   }
 
