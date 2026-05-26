@@ -1,0 +1,13 @@
+{
+  "name": "o-agent-chat-vercel",
+  "private": true,
+  "version": "0.0.2",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "npm --prefix client run build",
+    "start": "node server/src/index.js"
+  }
+}
