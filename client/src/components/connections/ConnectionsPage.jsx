@@ -4,6 +4,8 @@
  */
 import React, { useEffect, useMemo, useState } from 'react'
 import {
+  addConnectionOption,
+  deleteConnectionOption,
   createConnectionAiDraft,
   fetchConnectionConversations,
   fetchConnectionThread,
@@ -19,7 +21,22 @@ const GROUP_LABELS = {
   ai_provider: 'AI',
   research_provider: 'ค้นเว็บ',
   finance_provider: 'การเงิน',
+  commerce_backend: 'คลัง/ออเดอร์',
+  marketplace_channel: 'มาร์เก็ตเพลส',
+  social_automation: 'โซเชียลอัตโนมัติ',
+  custom_provider: 'กำหนดเอง',
 }
+
+const CONNECTION_GROUP_OPTIONS = [
+  { value: 'customer_channel', label: 'ช่องทางลูกค้า' },
+  { value: 'ai_provider', label: 'AI' },
+  { value: 'research_provider', label: 'ค้นเว็บ' },
+  { value: 'finance_provider', label: 'การเงิน' },
+  { value: 'commerce_backend', label: 'คลัง/ออเดอร์' },
+  { value: 'marketplace_channel', label: 'มาร์เก็ตเพลส' },
+  { value: 'social_automation', label: 'โซเชียลอัตโนมัติ' },
+  { value: 'custom_provider', label: 'กำหนดเอง' },
+]
 
 function StatusPill({ status }) {
   const map = {
@@ -81,6 +98,93 @@ function FieldRow({ connectionId, field, value, onChange }) {
         <StatusPill status={field.status === 'configured' ? 'healthy' : 'needs_key'} />
       </div>
     </label>
+  )
+}
+
+function AddConnectionPanel({ values, busy, error, onChange, onCancel, onSubmit }) {
+  return (
+    <form onSubmit={onSubmit} className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-bold text-[var(--color-ink)]">เพิ่มตัวเลือกการเชื่อมต่อ</h2>
+          <p className="mt-1 text-xs leading-5 text-[var(--color-muted)]">สร้างเป็น custom option ก่อน ถ้าจะใช้ production automation ค่อยเพิ่ม helper/manifest ภายหลัง</p>
+        </div>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded-[var(--radius-md)] border border-[var(--color-rule)] px-3 py-2 text-sm font-semibold text-[var(--color-ink)] transition hover:bg-[var(--color-panel-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]"
+        >
+          ยกเลิก
+        </button>
+      </div>
+      {error ? <div className="mt-3 rounded-[var(--radius-sm)] bg-[var(--color-danger-soft)] p-3 text-xs font-semibold text-[var(--color-danger)]">{error}</div> : null}
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <label className="grid gap-2">
+          <span className="text-xs font-semibold text-[var(--color-muted)]">ชื่อการเชื่อมต่อ</span>
+          <input
+            value={values.title}
+            onChange={(event) => onChange('title', event.target.value)}
+            className="h-10 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 text-sm text-[var(--color-ink)] outline-none focus-visible:border-[var(--color-focus)] focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]"
+            placeholder="เช่น LINE OA"
+          />
+        </label>
+        <label className="grid gap-2">
+          <span className="text-xs font-semibold text-[var(--color-muted)]">Provider key</span>
+          <input
+            value={values.provider}
+            onChange={(event) => onChange('provider', event.target.value)}
+            className="h-10 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 font-mono text-sm text-[var(--color-ink)] outline-none focus-visible:border-[var(--color-focus)] focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]"
+            placeholder="เช่น line"
+          />
+        </label>
+        <label className="grid gap-2">
+          <span className="text-xs font-semibold text-[var(--color-muted)]">ประเภท</span>
+          <select
+            value={values.group}
+            onChange={(event) => onChange('group', event.target.value)}
+            className="h-10 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 text-sm text-[var(--color-ink)] outline-none focus-visible:border-[var(--color-focus)] focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]"
+          >
+            {CONNECTION_GROUP_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        <label className="grid gap-2">
+          <span className="text-xs font-semibold text-[var(--color-muted)]">Credential name</span>
+          <input
+            value={values.credentialName}
+            onChange={(event) => onChange('credentialName', event.target.value)}
+            className="h-10 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 text-sm text-[var(--color-ink)] outline-none focus-visible:border-[var(--color-focus)] focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]"
+            placeholder="เว้นว่างได้"
+          />
+        </label>
+        <label className="grid gap-2 md:col-span-2">
+          <span className="text-xs font-semibold text-[var(--color-muted)]">คำอธิบาย</span>
+          <textarea
+            value={values.description}
+            onChange={(event) => onChange('description', event.target.value)}
+            className="min-h-[76px] rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm leading-6 text-[var(--color-ink)] outline-none focus-visible:border-[var(--color-focus)] focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]"
+            placeholder="ใช้เชื่อมต่ออะไร และอยู่หลัง approval guard แบบไหน"
+          />
+        </label>
+        <label className="grid gap-2 md:col-span-2">
+          <span className="text-xs font-semibold text-[var(--color-muted)]">Helper / setup note</span>
+          <input
+            value={values.helper}
+            onChange={(event) => onChange('helper', event.target.value)}
+            className="h-10 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 font-mono text-sm text-[var(--color-ink)] outline-none focus-visible:border-[var(--color-focus)] focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]"
+            placeholder="เว้นว่างได้"
+          />
+        </label>
+      </div>
+      <div className="mt-4 flex justify-end">
+        <button
+          type="submit"
+          disabled={busy}
+          className="rounded-[var(--radius-md)] bg-[var(--color-accent)] px-3 py-2 text-sm font-semibold text-[var(--color-accent-ink)] transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)] disabled:cursor-not-allowed disabled:opacity-55"
+        >
+          {busy ? 'กำลังบันทึก' : 'บันทึกตัวเลือก'}
+        </button>
+      </div>
+    </form>
   )
 }
 
@@ -212,6 +316,7 @@ function ConnectionCard({
   onFieldChange,
   onSave,
   onVerify,
+  onDelete,
   onLoadConversations,
   onOpenThread,
   onDraftReply,
@@ -262,6 +367,17 @@ function ConnectionCard({
           >
             {busy === 'save' ? 'กำลังบันทึก' : 'บันทึก key'}
           </button>
+          {connection.canDelete ? (
+            <button
+              type="button"
+              onClick={() => onDelete(connection.id)}
+              disabled={busy === 'delete'}
+              aria-label={`ลบ ${connection.title}`}
+              className="rounded-[var(--radius-md)] border border-[var(--color-danger)] px-3 py-2 text-sm font-semibold text-[var(--color-danger)] transition hover:bg-[var(--color-danger-soft)] active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)] disabled:cursor-not-allowed disabled:opacity-55"
+            >
+              {busy === 'delete' ? 'กำลังลบ' : 'ลบ'}
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -341,6 +457,17 @@ function ConnectionCard({
 export default function ConnectionsPage({ onOpenInbox, onOpenChat, onOpenAiTrain }) {
   const [payload, setPayload] = useState(null)
   const [activeGroup, setActiveGroup] = useState('all')
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [addForm, setAddForm] = useState({
+    title: '',
+    provider: '',
+    group: 'customer_channel',
+    description: '',
+    helper: '',
+    credentialName: '',
+  })
+  const [addError, setAddError] = useState('')
+  const [addBusy, setAddBusy] = useState(false)
   const [draftValues, setDraftValues] = useState({})
   const [busyById, setBusyById] = useState({})
   const [results, setResults] = useState({})
@@ -387,6 +514,45 @@ export default function ConnectionsPage({ onOpenInbox, onOpenChat, onOpenAiTrain
       ...current,
       [connectionId]: { ...(current[connectionId] || {}), [fieldId]: value },
     }))
+  }
+
+  function onAddFormChange(key, value) {
+    setAddForm((current) => ({ ...current, [key]: value }))
+  }
+
+  async function onAddConnection(event) {
+    event.preventDefault()
+    setAddError('')
+    setAddBusy(true)
+    try {
+      await addConnectionOption(addForm)
+      setPayload(await fetchConnections())
+      setActiveGroup(addForm.group || 'all')
+      setShowAddForm(false)
+      setAddForm({ title: '', provider: '', group: 'customer_channel', description: '', helper: '', credentialName: '' })
+    } catch (err) {
+      setAddError(err.message || 'connection_add_failed')
+    } finally {
+      setAddBusy(false)
+    }
+  }
+
+  async function onDeleteConnection(connectionId) {
+    setError('')
+    setBusyById((current) => ({ ...current, [connectionId]: 'delete' }))
+    try {
+      await deleteConnectionOption(connectionId)
+      setPayload(await fetchConnections())
+      setExpandedById((current) => {
+        const next = { ...current }
+        delete next[connectionId]
+        return next
+      })
+    } catch (err) {
+      setError(err.message || 'connection_delete_failed')
+    } finally {
+      setBusyById((current) => ({ ...current, [connectionId]: null }))
+    }
   }
 
   async function onSave(connectionId) {
@@ -624,6 +790,13 @@ export default function ConnectionsPage({ onOpenInbox, onOpenChat, onOpenAiTrain
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
+                  onClick={() => setShowAddForm(true)}
+                  className="rounded-[var(--radius-md)] border border-[var(--color-rule)] px-3 py-2 text-sm font-semibold text-[var(--color-ink)] transition hover:bg-[var(--color-panel-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]"
+                >
+                  เพิ่มตัวเลือก
+                </button>
+                <button
+                  type="button"
                   onClick={() => setAllVisibleExpanded(false)}
                   className="rounded-[var(--radius-md)] border border-[var(--color-rule)] px-3 py-2 text-sm font-semibold text-[var(--color-ink)] transition hover:bg-[var(--color-panel-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]"
                 >
@@ -639,6 +812,19 @@ export default function ConnectionsPage({ onOpenInbox, onOpenChat, onOpenAiTrain
               </div>
             </div>
           ) : null}
+          {showAddForm ? (
+            <AddConnectionPanel
+              values={addForm}
+              busy={addBusy}
+              error={addError}
+              onChange={onAddFormChange}
+              onCancel={() => {
+                setShowAddForm(false)
+                setAddError('')
+              }}
+              onSubmit={onAddConnection}
+            />
+          ) : null}
           {connections.map((connection) => (
             <ConnectionCard
               key={connection.id}
@@ -653,6 +839,7 @@ export default function ConnectionsPage({ onOpenInbox, onOpenChat, onOpenAiTrain
               onFieldChange={onFieldChange}
               onSave={onSave}
               onVerify={onVerify}
+              onDelete={onDeleteConnection}
               onLoadConversations={onLoadConversations}
               onOpenThread={onOpenThread}
               onDraftReply={onDraftReply}

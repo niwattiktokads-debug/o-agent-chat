@@ -2,8 +2,37 @@ import { normalizeMetaWebhookPayload } from './omni/metaWebhook.js'
 import { createAiReplyEngine } from './omni/aiReplyEngine.js'
 import { sendFacebookReply } from './omni/metaInboxClient.js'
 import { normalizeTikTokMessagingWebhookPayload } from './omni/tiktokMessagingClient.js'
+import { appendFileSync, mkdirSync } from 'node:fs'
+import { dirname } from 'node:path'
+import { execFile } from 'node:child_process'
 
 const seen = new Set()
+const LINE_CAPTURE_LOG = process.env.LINE_SUDA_OAGENT_CAPTURE_LOG || '/Users/babycuca/Documents/O-Agent workspace/finance/staging/line_suda_oagent_capture_events.jsonl'
+const LINE_HELPER = process.env.LINE_SUDA_OAGENT_HELPER || '/Users/babycuca/.codex/bin/line-suda-oagent'
+
+function appendLineCapture(row) {
+  mkdirSync(dirname(LINE_CAPTURE_LOG), { recursive: true })
+  appendFileSync(LINE_CAPTURE_LOG, `${JSON.stringify(row)}\n`)
+}
+
+function trySaveLineGroupId(groupId) {
+  if (!groupId) return
+  execFile(LINE_HELPER, ['set-group-id', '--group-id', groupId], { env: process.env }, () => {})
+}
+
+function signalLineGroupJoin({ room, hub, rows }) {
+  const joins = rows.filter((row) => row.sourceType === 'group' && row.groupId && row.eventType === 'join')
+  if (!joins.length) return null
+  const first = joins[0]
+  const extra = joins.length > 1 ? ` (+${joins.length - 1})` : ''
+  const message = room.addMessage({
+    role: 'Codex',
+    text: `[STATE] @เดส สุดาถูกเพิ่มเข้ากลุ่ม LINE ใหม่${extra}: groupId=${first.groupId} · กำลัง verify กลุ่มและบันทึก target ถ้าตรง O-agent`,
+  })
+  hub.broadcast('message', room.snapshot())
+  hub.broadcast('line:suda-oagent:join', { joins, message })
+  return message
+}
 
 function pageProfileForThread(thread) {
   if (thread?.pageId === 'page_mankynd') return 'man_kynd'
@@ -194,6 +223,34 @@ export function mountWebhook(app, hub, room, options = {}) {
     const dexSignalMessage = signalDex({ room, hub, signals: dexSignals })
     hub.broadcast('omni', result.snapshot)
     res.json({ ok: true, result: { customers: result.customers, threads: result.threads, messages: result.messages, dexSignals, dexSignalMessage } })
+  })
+
+  app.post('/webhook/line/suda-oagent', (req, res) => {
+    const rows = []
+    for (const event of req.body?.events || []) {
+      const source = event.source || {}
+      const row = {
+        receivedAt: new Date().toISOString(),
+        eventType: event.type || '',
+        sourceType: source.type || '',
+        groupId: source.groupId || '',
+        roomId: source.roomId || '',
+        userId: source.userId || '',
+        messageType: event.message?.type || '',
+        text: event.message?.text || '',
+        replyToken: event.replyToken ? 'present' : '',
+      }
+      rows.push(row)
+      appendLineCapture(row)
+      if (row.sourceType === 'group' && row.groupId) trySaveLineGroupId(row.groupId)
+    }
+    const joinSignalMessage = signalLineGroupJoin({ room, hub, rows })
+    res.json({
+      ok: true,
+      captured: rows.length,
+      groups: rows.filter((row) => row.groupId).map((row) => ({ groupId: row.groupId, eventType: row.eventType, text: row.text })),
+      joinSignal: joinSignalMessage ? 'sent' : 'none',
+    })
   })
 
   app.post('/webhook/dex/auto-reply', async (req, res) => {

@@ -6,6 +6,7 @@ import { createOmniSeed } from '../src/omni/seed.js'
 import { createAdapterRegistry } from '../src/omni/adapters.js'
 import { createOmniService } from '../src/omni/service.js'
 import { listFacebookConversations, normalizeMetaConversations } from '../src/omni/metaInboxClient.js'
+import { createMetaSocialRuntime } from '../src/omni/metaSocialRuntime.js'
 import { createAiReplyEngine } from '../src/omni/aiReplyEngine.js'
 import { normalizeMetaWebhookPayload } from '../src/omni/metaWebhook.js'
 import { listTikTokOrders, normalizeTikTokOrders } from '../src/omni/tiktokOrderClient.js'
@@ -67,6 +68,22 @@ test('omni service filters threads by page and blocks unsafe auto-send', () => {
   const blocked = service.evaluateAutoSend({ threadId: 'thread_2' })
   assert.equal(blocked.allowed, false)
   assert.equal(blocked.reason, 'risk_not_low')
+})
+
+test('omni report date filters and hourly buckets use configured timezone', () => {
+  const seed = createOmniSeed()
+  seed.messages = [
+    { id: 'msg_bangkok_day', threadId: 'thread_1', direction: 'inbound', authorName: 'ลูกค้า A', text: 'เข้าวันใหม่ไทย', createdAt: '2026-05-21T18:00:00.000Z' },
+  ]
+  const service = createOmniService(seed)
+
+  const report = service.messageVolumeReport({ from: '2026-05-22', to: '2026-05-22' })
+
+  assert.equal(report.timezone, 'Asia/Bangkok')
+  assert.equal(report.totals.total, 1)
+  assert.equal(report.byHour[1].total, 1)
+  assert.match(report.from, /^2026-05-21T17:00:00/)
+  assert.match(report.to, /^2026-05-22T16:59:59.999/)
 })
 
 test('chat retention deletes old message text while preserving customer phone and address', () => {
@@ -341,6 +358,33 @@ test('Facebook connector calls meta helper through injectable runner', async () 
   assert.deepEqual(calls[0], ['list-conversations', '--page=page_des'])
   assert.equal(result.page.omniPageId, 'page_des')
   assert.deepEqual(result.threads, [])
+})
+
+test('Meta social live sources attempts live comments before fallback with blocker evidence', async () => {
+  const calls = []
+  const social = createMetaSocialRuntime({
+    runner: async (args) => {
+      calls.push(args)
+      if (args[0] === 'list-live-comments') throw new Error('meta_live_comments_permission_missing')
+      if (args[0] === 'list-posts') {
+        return {
+          ok: true,
+          page_id: 'page_1',
+          response: { data: [{ id: 'post_1', message: 'fallback post', comment_count: 2 }] },
+        }
+      }
+      throw new Error(`unexpected:${args[0]}`)
+    },
+  })
+
+  const result = await social.listLiveCommentSources({ pageProfile: 'man_kynd', limit: 3 })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.mode, 'fallback_live_post_comment_capture')
+  assert.equal(result.blocker, 'meta_live_comments_permission_missing')
+  assert.equal(result.blockerEvidence.command, 'list-live-comments')
+  assert.equal(result.posts[0].id, 'post_1')
+  assert.deepEqual(calls.map((args) => args[0]), ['list-live-comments', 'list-posts'])
 })
 
 test('Facebook connector accepts configured extra page profile', async () => {
