@@ -1,11 +1,13 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import { dirname } from 'node:path'
 
 const execFileAsync = promisify(execFile)
 const CSNAP_BASE_URL = process.env.CSNAP_BASE_URL || 'http://127.0.0.1:9876'
 const CSNAP_AUTH_FILE = process.env.CSNAP_AUTH_FILE || '/Users/babycuca/Projects/c-snap/data/.auth_token'
 const META_INBOX_HELPER = process.env.META_INBOX_HELPER || '/Users/babycuca/.codex/bin/meta-inbox-api'
+const CUSTOM_CONNECTIONS_PATH = process.env.OMNI_CUSTOM_CONNECTIONS_PATH || new URL('../../data/custom-connections.json', import.meta.url).pathname
 
 const CONNECTIONS = [
   {
@@ -56,6 +58,161 @@ const CONNECTIONS = [
       },
     ],
     productionNotes: ['Keep page token scoped to Meta tasks only.', 'Do not expose customer tokens in workspace files.'],
+  },
+  {
+    id: 'social_instagram',
+    title: 'Instagram · Social Chat',
+    provider: 'instagram',
+    group: 'customer_channel',
+    description: 'Instagram DM sales channel for chat-to-order workflows. Requires Instagram Professional account linked to Facebook, then channel verify and warehouse/user access mapping.',
+    helper: 'runtime gap: add instagram messaging helper via Meta Graph API before live use',
+    verify: null,
+    fields: [
+      { id: 'instagram_business_id', label: 'Instagram business account ID', credentialName: 'Instagram Business Account ID -OA', secret: false, required: true },
+      { id: 'page_token', label: 'Linked Facebook page token', credentialName: 'Instagram Linked FB Page Token -OA', secret: true, required: true },
+    ],
+    docs: 'https://zortout.com/docs/connect-and-set-up-instagram',
+    endpoints: [
+      {
+        method: 'WEBHOOK',
+        path: '/webhook/meta/instagram',
+        purpose: 'รับ Instagram DM ผ่าน Meta webhook แล้วสร้าง thread ใน Omni',
+      },
+    ],
+    productionNotes: ['Instagram must be linked to Facebook before connection.', 'Map warehouse and allowed users before customer-facing order creation.'],
+  },
+  {
+    id: 'line_oa',
+    title: 'LINE OA · Chat + Order',
+    provider: 'line_oa',
+    group: 'customer_channel',
+    description: 'LINE Official Account chat channel for replying, creating orders, and sending order/payment summaries from one screen.',
+    helper: 'runtime gap: add line-oa-api helper using LINE Messaging API',
+    verify: null,
+    fields: [
+      { id: 'channel_id', label: 'Channel ID', credentialName: 'LINE OA Channel ID -OA', secret: false, required: true },
+      { id: 'channel_secret', label: 'Channel secret', credentialName: 'LINE OA Channel Secret -OA', secret: true, required: true },
+      { id: 'channel_access_token', label: 'Channel access token', credentialName: 'LINE OA Channel Access Token -OA', secret: true, required: true },
+    ],
+    docs: 'https://zortout.com/docs/lineoa-system-guide',
+    endpoints: [
+      {
+        method: 'WEBHOOK',
+        path: '/webhook/line/oa',
+        purpose: 'รับข้อความ LINE OA เข้า Omni inbox และ route ไป order/payment guard',
+      },
+    ],
+    productionNotes: ['LINE OA must enable Messaging API, chat, webhook, and manual chat mode.', 'Reply cost follows LINE OA message quota/broadcast rules.'],
+  },
+  {
+    id: 'line_shopping_myshop',
+    title: 'LINE Shopping · MyShop',
+    provider: 'line_shopping',
+    group: 'marketplace_channel',
+    description: 'LINE Shopping/MyShop order and stock bridge so Omni can sync marketplace orders into one stock source.',
+    helper: 'runtime gap: add line-shopping helper when LINE MyShop API access is approved',
+    verify: null,
+    fields: [
+      { id: 'shop_id', label: 'LINE Shopping shop ID', credentialName: 'LINE Shopping Shop ID -OA', secret: false, required: true },
+      { id: 'access_token', label: 'LINE Shopping access token', credentialName: 'LINE Shopping Access Token -OA', secret: true, required: true },
+    ],
+    docs: 'https://zortout.com/docs/zort-social-chat',
+    endpoints: [
+      {
+        method: 'SYNC',
+        path: '/api/omni/marketplaces/line-shopping/orders',
+        purpose: 'ดึงออเดอร์ LINE Shopping และ sync stock กับ ZORT stock master',
+      },
+    ],
+    productionNotes: ['Use ZORT as stock master before enabling automatic stock deduction.', 'Order import is read-only until approval guard is wired.'],
+  },
+  {
+    id: 'tiktok_sale_page',
+    title: 'TikTok · Sale Page Tracking',
+    provider: 'tiktok_sale_page',
+    group: 'marketplace_channel',
+    description: 'TikTok sale page tracking lane for campaign attribution, order source mapping, and future TikTok Shop/Business Messaging bridge.',
+    helper: '/Users/babycuca/.codex/bin/tiktok-messaging-api',
+    verify: { command: '/Users/babycuca/.codex/bin/tiktok-messaging-api', args: ['verify'] },
+    fields: [
+      { id: 'app_id', label: 'TikTok Business app ID', credentialName: 'TikTok Business App ID -OA', secret: false, required: true },
+      { id: 'app_secret', label: 'TikTok Business app secret', credentialName: 'TikTok Business App Secret -OA', secret: true, required: true },
+      { id: 'access_token', label: 'TikTok Business access token', credentialName: 'TikTok Business Messaging Access Token -OA', secret: true, required: true },
+    ],
+    docs: '/Users/babycuca/.codex/integrations/tiktok_business_messaging.json',
+    endpoints: [
+      {
+        method: 'WEBHOOK',
+        path: '/webhook/tiktok/business-messaging',
+        purpose: 'รับ TikTok message/order signal เข้า Omni และผูกกับ campaign/source tracking',
+      },
+    ],
+    productionNotes: ['Business Messaging/OAuth approval is required before live use.', 'Keep sale-page tracking separate from auto-send until smoke tests pass.'],
+  },
+  {
+    id: 'facebook_post_cf',
+    title: 'Facebook Post CF · Auto Order',
+    provider: 'facebook_post_cf',
+    group: 'social_automation',
+    description: 'Facebook post CF automation lane: watch connected posts, map CF keywords to products, create guarded orders, and send summary links back through chat.',
+    helper: 'runtime gap: extend meta-inbox-api with post comment CF parser',
+    verify: null,
+    fields: [
+      { id: 'page_token', label: 'Facebook page token', credentialName: 'FB Anna Lynn Page Token -OA', secret: true, required: true },
+      { id: 'cf_keyword_rule', label: 'Default CF keyword rule', credentialName: 'FB Post CF Rule -OA', secret: false, required: false },
+    ],
+    docs: 'https://zortout.com/docs/how-to-create-postsocialchat',
+    endpoints: [
+      {
+        method: 'WEBHOOK',
+        path: '/webhook/meta/comments',
+        purpose: 'ดึงคอมเมนต์ CF ใต้โพสต์มาเข้าคิวสร้าง order แบบมี approval guard',
+      },
+    ],
+    productionNotes: ['Do not connect a live post until products, CF codes, quantity, gifts, and stop/end states are configured.', 'Customer summary/payment links remain approval-gated.'],
+  },
+  {
+    id: 'facebook_live_cf',
+    title: 'Facebook Live CF · Realtime Order',
+    provider: 'facebook_live_cf',
+    group: 'social_automation',
+    description: 'Facebook Live CF lane for realtime comment capture, CF code matching, stock reservation, and post-live continuation planning.',
+    helper: 'runtime gap: extend meta-inbox-api with live comment CF stream',
+    verify: null,
+    fields: [
+      { id: 'page_token', label: 'Facebook page token', credentialName: 'FB Anna Lynn Page Token -OA', secret: true, required: true },
+      { id: 'live_cf_rule', label: 'Default live CF rule', credentialName: 'FB Live CF Rule -OA', secret: false, required: false },
+    ],
+    docs: 'https://zortout.com/docs/how-to-create-livesocialchat',
+    endpoints: [
+      {
+        method: 'STREAM',
+        path: '/webhook/meta/live-comments',
+        purpose: 'รับ CF ระหว่างไลฟ์แบบ realtime แล้วสร้าง order draft/stock hold',
+      },
+    ],
+    productionNotes: ['Support post-live selling as a separate post/order lane.', 'Realtime auto-order must stay behind stock and payment approval guards.'],
+  },
+  {
+    id: 'social_message_report',
+    title: 'Social Message Report',
+    provider: 'social_report',
+    group: 'social_automation',
+    description: 'Message-volume analytics lane for tracking admin replies by date/channel and exporting operational review data.',
+    helper: 'runtime gap: aggregate Omni outbound messages by channel/user/date',
+    verify: null,
+    fields: [
+      { id: 'export_sink', label: 'Report export sink', credentialName: 'Omni Social Message Report Sink -OA', secret: false, required: false },
+    ],
+    docs: 'https://zortout.com/docs/how-to-view-message-volume-reports',
+    endpoints: [
+      {
+        method: 'GET',
+        path: '/api/omni/reports/message-volume',
+        purpose: 'สรุปจำนวนข้อความตอบกลับตามช่วงเวลา ช่องทาง และผู้ใช้งาน',
+      },
+    ],
+    productionNotes: ['Count only messages sent through Omni for auditability.', 'Export must not expose full customer message bodies by default.'],
   },
   {
     id: 'omni_ai_gemini',
@@ -163,6 +320,69 @@ function compact(value, limit = 360) {
   return text.length > limit ? `${text.slice(0, limit - 1)}…` : text
 }
 
+function slugify(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 48)
+}
+
+function safeString(value, limit = 240) {
+  return String(value || '').trim().slice(0, limit)
+}
+
+function readCustomConnections() {
+  if (!existsSync(CUSTOM_CONNECTIONS_PATH)) return []
+  try {
+    const parsed = JSON.parse(readFileSync(CUSTOM_CONNECTIONS_PATH, 'utf8'))
+    return Array.isArray(parsed?.connections) ? parsed.connections : []
+  } catch {
+    return []
+  }
+}
+
+function writeCustomConnections(connections) {
+  mkdirSync(dirname(CUSTOM_CONNECTIONS_PATH), { recursive: true })
+  writeFileSync(CUSTOM_CONNECTIONS_PATH, `${JSON.stringify({ connections }, null, 2)}\n`)
+}
+
+function allConnections() {
+  return [...CONNECTIONS, ...readCustomConnections()]
+}
+
+function normalizeCustomConnection(input = {}) {
+  const title = safeString(input.title, 80)
+  const provider = slugify(input.provider)
+  if (!title) throw new Error('connection_title_required')
+  if (!provider) throw new Error('connection_provider_required')
+  const group = slugify(input.group) || 'custom_provider'
+  const idBase = slugify(input.id || `${provider}_${title}`) || `custom_${Date.now()}`
+  const credentialName = safeString(input.credentialName, 120)
+  return {
+    id: idBase.startsWith('custom_') ? idBase : `custom_${idBase}`,
+    title,
+    provider,
+    group,
+    description: safeString(input.description, 240) || 'Custom connection option. Add credentials and runtime helper when ready.',
+    helper: safeString(input.helper, 180) || 'manual setup',
+    verify: null,
+    fields: credentialName ? [{
+      id: 'credential',
+      label: 'Credential',
+      credentialName,
+      secret: true,
+      required: false,
+    }] : [],
+    docs: safeString(input.docs, 180) || null,
+    endpoints: [],
+    productionNotes: ['Custom option. Add a reusable helper/manifest before production automation.'],
+    custom: true,
+    canDelete: true,
+  }
+}
+
 function maskPresence(value) {
   return value ? 'configured' : 'missing'
 }
@@ -240,6 +460,8 @@ function summarizeConnection(connection, credentials, cSnapStatus) {
     docs: connection.docs,
     endpoints: connection.endpoints || [],
     productionNotes: connection.productionNotes,
+    custom: Boolean(connection.custom),
+    canDelete: Boolean(connection.canDelete),
     fields,
     cSnap: cSnapStatus,
     status: missingRequired.length ? 'needs_key' : 'ready_to_verify',
@@ -354,7 +576,7 @@ async function sendMetaReply(connectionId, conversationId, { message = '', appro
 }
 
 function findConnection(connectionId) {
-  const connection = CONNECTIONS.find((item) => item.id === connectionId)
+  const connection = allConnections().find((item) => item.id === connectionId)
   if (!connection) throw new Error('connection_not_found')
   return connection
 }
@@ -362,6 +584,17 @@ function findConnection(connectionId) {
 async function verifyConnection(connectionId) {
   const connection = findConnection(connectionId)
   const startedAt = new Date().toISOString()
+  if (!connection.verify?.command) {
+    return {
+      ok: false,
+      connectionId,
+      checkedAt: startedAt,
+      status: 'runtime_gap',
+      provider: connection.provider,
+      model: null,
+      summary: 'manual custom option: add helper/manifest before automated verify',
+    }
+  }
   try {
     const { stdout } = await execFileAsync(connection.verify.command, connection.verify.args, {
       env: { ...process.env, ...(connection.verify.env || {}) },
@@ -426,6 +659,32 @@ async function saveConnectionSecrets(connectionId, fields = {}) {
   return { ok: true, connectionId, saved, savedCount: saved.length }
 }
 
+async function addConnection(input = {}) {
+  const customConnections = readCustomConnections()
+  const connection = normalizeCustomConnection(input)
+  const existingIds = new Set([...CONNECTIONS, ...customConnections].map((item) => item.id))
+  let candidate = connection.id
+  let suffix = 2
+  while (existingIds.has(candidate)) {
+    candidate = `${connection.id}_${suffix}`
+    suffix += 1
+  }
+  const nextConnection = { ...connection, id: candidate }
+  writeCustomConnections([...customConnections, nextConnection])
+  return { ok: true, connection: nextConnection }
+}
+
+async function removeConnection(connectionId) {
+  const customConnections = readCustomConnections()
+  const connection = customConnections.find((item) => item.id === connectionId)
+  if (!connection) {
+    if (CONNECTIONS.some((item) => item.id === connectionId)) throw new Error('system_connection_locked')
+    throw new Error('connection_not_found')
+  }
+  writeCustomConnections(customConnections.filter((item) => item.id !== connectionId))
+  return { ok: true, removedId: connectionId }
+}
+
 export function createConnectionRuntime() {
   return {
     async list() {
@@ -433,9 +692,11 @@ export function createConnectionRuntime() {
       return {
         ok: true,
         cSnap: { ok: cSnap.ok, error: cSnap.error || null },
-        connections: CONNECTIONS.map((connection) => summarizeConnection(connection, cSnap.credentials, { ok: cSnap.ok })),
+        connections: allConnections().map((connection) => summarizeConnection(connection, cSnap.credentials, { ok: cSnap.ok })),
       }
     },
+    add: addConnection,
+    remove: removeConnection,
     verify: verifyConnection,
     saveSecrets: saveConnectionSecrets,
     listConversations: listMetaConversations,

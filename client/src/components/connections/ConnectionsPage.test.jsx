@@ -2,13 +2,22 @@ import React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import ConnectionsPage from './ConnectionsPage.jsx'
-import { fetchConnectionConversations, saveConnectionSecrets, sendConnectionReply, verifyConnection } from '../../lib/omniApi.js'
+import {
+  addConnectionOption,
+  deleteConnectionOption,
+  fetchConnectionConversations,
+  saveConnectionSecrets,
+  sendConnectionReply,
+  verifyConnection,
+} from '../../lib/omniApi.js'
 
 const apiMocks = vi.hoisted(() => ({
   fetchConnections: vi.fn(),
   fetchConnectionConversations: vi.fn(),
   fetchConnectionThread: vi.fn(),
   createConnectionAiDraft: vi.fn(),
+  addConnectionOption: vi.fn(),
+  deleteConnectionOption: vi.fn(),
   sendConnectionReply: vi.fn(),
   saveConnectionSecrets: vi.fn(),
   verifyConnection: vi.fn(),
@@ -19,6 +28,8 @@ vi.mock('../../lib/omniApi.js', () => ({
   fetchConnectionConversations: apiMocks.fetchConnectionConversations,
   fetchConnectionThread: apiMocks.fetchConnectionThread,
   createConnectionAiDraft: apiMocks.createConnectionAiDraft,
+  addConnectionOption: apiMocks.addConnectionOption,
+  deleteConnectionOption: apiMocks.deleteConnectionOption,
   sendConnectionReply: apiMocks.sendConnectionReply,
   saveConnectionSecrets: apiMocks.saveConnectionSecrets,
   verifyConnection: apiMocks.verifyConnection,
@@ -109,6 +120,18 @@ const payload = {
       }],
       productionNotes: ['create order / decrease stock ต้องมี approval guard'],
     },
+    {
+      id: 'custom_line',
+      title: 'LINE OA',
+      provider: 'line',
+      description: 'Manual custom connection',
+      helper: 'manual setup',
+      group: 'customer_channel',
+      status: 'ready_to_verify',
+      canDelete: true,
+      fields: [],
+      productionNotes: ['Custom option'],
+    },
   ],
 }
 
@@ -118,10 +141,14 @@ describe('ConnectionsPage', () => {
     apiMocks.fetchConnectionConversations.mockReset()
     apiMocks.fetchConnectionThread.mockReset()
     apiMocks.createConnectionAiDraft.mockReset()
+    apiMocks.addConnectionOption.mockReset()
+    apiMocks.deleteConnectionOption.mockReset()
     apiMocks.sendConnectionReply.mockReset()
     apiMocks.saveConnectionSecrets.mockReset()
     apiMocks.verifyConnection.mockReset()
     apiMocks.fetchConnections.mockResolvedValue(payload)
+    apiMocks.addConnectionOption.mockResolvedValue({ ok: true, connection: { id: 'custom_line_2', title: 'LINE OA 2' } })
+    apiMocks.deleteConnectionOption.mockResolvedValue({ ok: true, removedId: 'custom_line' })
     apiMocks.fetchConnectionConversations.mockResolvedValue({
       ok: true,
       conversations: [{
@@ -157,6 +184,27 @@ describe('ConnectionsPage', () => {
     expect(screen.getByPlaceholderText('วางค่า API key หรือ token')).toHaveAttribute('type', 'password')
     fireEvent.click(screen.getAllByRole('button', { name: 'เปิด' })[0])
     expect(screen.getByPlaceholderText('จัดการจาก local profile')).toBeDisabled()
+  })
+
+  it('labels social automation connection groups clearly', async () => {
+    apiMocks.fetchConnections.mockResolvedValueOnce({
+      ...payload,
+      connections: [{
+        id: 'facebook_live_cf',
+        title: 'Facebook Live CF',
+        provider: 'facebook_live_cf',
+        group: 'social_automation',
+        description: 'CF automation',
+        helper: 'manual setup',
+        status: 'needs_key',
+        fields: [],
+        productionNotes: ['guarded'],
+      }],
+    })
+
+    render(<ConnectionsPage />)
+
+    expect(await screen.findByRole('button', { name: 'โซเชียลอัตโนมัติ' })).toBeInTheDocument()
   })
 
   it('saves a changed credential and clears the input', async () => {
@@ -218,6 +266,58 @@ describe('ConnectionsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'ยืนยันส่งจริง' }))
     await waitFor(() => {
       expect(sendConnectionReply).toHaveBeenCalledWith('meta_anna_lynn', 't_test_1', 'รับทราบค่ะ เดี๋ยวช่วยดูให้ค่ะ')
+    })
+  })
+
+  it('adds and deletes custom connection options', async () => {
+    apiMocks.fetchConnections
+      .mockResolvedValueOnce(payload)
+      .mockResolvedValueOnce({
+        ...payload,
+        connections: [
+          ...payload.connections,
+          {
+            id: 'custom_line_2',
+            title: 'LINE OA 2',
+            provider: 'line',
+            group: 'customer_channel',
+            description: 'Line test',
+            helper: 'manual setup',
+            status: 'ready_to_verify',
+            canDelete: true,
+            fields: [],
+            productionNotes: ['Custom option'],
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        ...payload,
+        connections: payload.connections.filter((connection) => connection.id !== 'custom_line'),
+      })
+
+    render(<ConnectionsPage />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'เพิ่มตัวเลือก' }))
+    fireEvent.change(screen.getByLabelText('ชื่อการเชื่อมต่อ'), { target: { value: 'LINE OA 2' } })
+    fireEvent.change(screen.getByLabelText('Provider key'), { target: { value: 'line' } })
+    fireEvent.change(screen.getByLabelText('คำอธิบาย'), { target: { value: 'Line test' } })
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึกตัวเลือก' }))
+
+    await waitFor(() => {
+      expect(addConnectionOption).toHaveBeenCalledWith({
+        title: 'LINE OA 2',
+        provider: 'line',
+        group: 'customer_channel',
+        description: 'Line test',
+        helper: '',
+        credentialName: '',
+      })
+    })
+    expect(await screen.findByText('LINE OA 2')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'ลบ LINE OA' }))
+    await waitFor(() => {
+      expect(deleteConnectionOption).toHaveBeenCalledWith('custom_line')
     })
   })
 })

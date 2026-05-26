@@ -25,6 +25,13 @@ vi.mock('../../lib/omniApi.js', () => ({
   }),
   subscribeOmniSnapshots: () => () => {},
   fetchConnectorHealth: async () => [{ provider: 'meta', status: 'healthy' }],
+  fetchConnections: async () => ({
+    ok: true,
+    connections: [
+      { id: 'meta_man_kynd', title: 'Meta · MAN KYND', provider: 'meta', pageProfile: 'man_kynd' },
+      { id: 'meta_anna_lynn', title: 'Meta · Anna Lynn', provider: 'meta', pageProfile: 'anna_lynn' },
+    ],
+  }),
   fetchFacebookConversations: async () => ({ threads: [] }),
   syncFacebookConversations: async () => ({
     page: { omniPageId: 'page_mankynd' },
@@ -109,6 +116,75 @@ vi.mock('../../lib/omniApi.js', () => ({
       connectorHealth: [],
     },
   }),
+  fetchSocialPosts: async () => ({
+    ok: true,
+    posts: [{ id: 'post_1', message: 'เปิด CF BLACK-M', commentCount: 1, createdTime: '2026-05-26T00:00:00.000Z' }],
+  }),
+  capturePostCf: async () => ({
+    ok: true,
+    summary: { parsedCount: 1, draftCount: 1 },
+    drafts: [{ id: 'order_draft_1', status: 'draft', items: [{ sku: 'BLACK-M', quantity: 2 }] }],
+    snapshot: {
+      pages: [{ id: 'page_mankynd', name: 'MAN KYND', status: 'active' }],
+      platformAccounts: [{ id: 'acct_fb_mankynd', pageId: 'page_mankynd', platform: 'facebook' }],
+      threads: [{ id: 'thread_1', pageId: 'page_mankynd', platform: 'facebook', status: 'draft_ready', intent: 'stock', risk: 'low' }],
+      messages: [{ id: 'msg_1', threadId: 'thread_1', direction: 'inbound', authorName: 'ลูกค้า A', text: 'มีไซซ์ M สีดำไหม' }],
+      customers: [{ id: 'cust_1', displayName: 'ลูกค้า A' }],
+      orders: [{ id: 'order_draft_1', customerId: 'cust_1', platform: 'facebook', status: 'draft', totalAmount: 1180, items: [{ sku: 'BLACK-M', quantity: 2 }] }],
+      aiDecisions: [],
+      paymentRequests: [],
+      connectorHealth: [],
+    },
+  }),
+  fetchLiveSources: async () => ({
+    ok: true,
+    mode: 'fallback_live_post_comment_capture',
+    blocker: 'meta_live_comment_stream_not_available_in_current_helper',
+    posts: [{ id: 'live_fallback_1', message: 'Live fallback post', commentCount: 3 }],
+  }),
+  fetchMessageVolumeReport: async () => ({
+    totals: { inbound: 2, outbound: 1, total: 3 },
+    byHour: [{ hour: '10', inbound: 2, outbound: 1, total: 3 }],
+    byPage: [{ pageId: 'page_mankynd', inbound: 2, outbound: 1, total: 3 }],
+  }),
+  fetchOmniSettings: async () => ({
+    postCf: { enabled: true, autoCreateDrafts: true },
+    liveCf: { enabled: true },
+    orderDraft: { enabled: true, approvalRequired: true, createZortOrderOnApprove: true },
+    ai: { enabled: true },
+  }),
+  saveOmniSettings: async ({ postCf }) => ({
+    ok: true,
+    settings: {
+      postCf,
+      liveCf: { enabled: true },
+      orderDraft: { enabled: true, approvalRequired: true, createZortOrderOnApprove: true },
+      ai: { enabled: true },
+    },
+  }),
+  searchZortProducts: async () => ({
+    ok: true,
+    products: [{ id: '637', sku: 'BLACK-M', name: 'Black Shirt M', sellPrice: 590, availableStock: 7 }],
+  }),
+  createOrderDraft: async () => ({
+    ok: true,
+    order: { id: 'order_draft_1', status: 'draft', totalAmount: 590, items: [{ sku: 'BLACK-M', quantity: 1 }] },
+    snapshot: {
+      pages: [{ id: 'page_mankynd', name: 'MAN KYND', status: 'active' }],
+      platformAccounts: [{ id: 'acct_fb_mankynd', pageId: 'page_mankynd', platform: 'facebook' }],
+      threads: [{ id: 'thread_1', pageId: 'page_mankynd', platform: 'facebook', status: 'draft_ready', intent: 'stock', risk: 'low' }],
+      messages: [{ id: 'msg_1', threadId: 'thread_1', direction: 'inbound', authorName: 'ลูกค้า A', text: 'มีไซซ์ M สีดำไหม' }],
+      customers: [{ id: 'cust_1', displayName: 'ลูกค้า A' }],
+      orders: [{ id: 'order_draft_1', customerId: 'cust_1', platform: 'omni', status: 'draft', totalAmount: 590, items: [{ sku: 'BLACK-M', quantity: 1 }] }],
+      aiDecisions: [],
+      paymentRequests: [],
+      connectorHealth: [],
+    },
+  }),
+  approveOrderDraft: async () => ({
+    ok: true,
+    order: { id: 'order_draft_1', status: 'zort_created', providerOrderId: 'zort_1001' },
+  }),
 }))
 
 describe('OmniWorkbench', () => {
@@ -129,6 +205,53 @@ describe('OmniWorkbench', () => {
     expect(await screen.findByText('TikTok Order Sync')).toBeInTheDocument()
     expect(await screen.findByText('Facebook Live Preview')).toBeInTheDocument()
     expect((await screen.findAllByText('Sync')).length).toBeGreaterThan(1)
+  })
+
+  it('lets the operator switch through ZORT-style chat, post, live, report, and setting workflows', async () => {
+    render(<OmniWorkbench />)
+
+    expect(await screen.findByRole('button', { name: 'แชท' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'โพสต์' }))
+
+    expect(await screen.findByRole('heading', { name: 'โพสต์' })).toBeInTheDocument()
+    expect(await screen.findByText('เปิด CF BLACK-M')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'สร้าง draft จาก CF post_1' }))
+    expect(await screen.findByText('สร้าง draft แล้ว 1 รายการ')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'ไลฟ์' }))
+    expect(await screen.findByRole('heading', { name: 'ไลฟ์สตรีม' })).toBeInTheDocument()
+    expect(await screen.findByText('fallback_live_post_comment_capture')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'รายงาน' }))
+    expect(await screen.findByRole('heading', { name: 'รายงานปริมาณการส่งข้อความ' })).toBeInTheDocument()
+    expect(await screen.findByText('รวมทั้งหมด')).toBeInTheDocument()
+    expect(screen.getByText('3')).toBeInTheDocument()
+    expect(screen.getByText('Export CSV')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'ตั้งค่า' }))
+    expect(await screen.findByRole('heading', { name: 'ตั้งค่าระบบ' })).toBeInTheDocument()
+    expect(await screen.findByLabelText('Post CF enabled')).toBeChecked()
+    fireEvent.click(screen.getByLabelText('Post CF enabled'))
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึก setting' }))
+    expect(await screen.findByText('บันทึก setting แล้ว')).toBeInTheDocument()
+  })
+
+  it('shows a guarded order draft workflow beside the active chat', async () => {
+    render(<OmniWorkbench />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'ออเดอร์' }))
+
+    expect(await screen.findByRole('heading', { name: 'คำสั่งซื้อใหม่' })).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('ค้นสินค้า ZORT'), { target: { value: 'BLACK-M' } })
+    fireEvent.click(screen.getByRole('button', { name: 'ค้น ZORT' }))
+    expect(await screen.findByText('Black Shirt M')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'เลือก BLACK-M' }))
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึก draft ออเดอร์' }))
+    expect(await screen.findByText('draft: order_draft_1')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Approve ไป ZORT' }))
+    expect(await screen.findByText('ยืนยัน approval ก่อนสร้าง ZORT order')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'ยืนยันสร้าง ZORT order' }))
+    expect(await screen.findByText('สร้าง ZORT order แล้ว zort_1001')).toBeInTheDocument()
   })
 
   it('lets the operator type a manual draft in the selected thread', async () => {

@@ -53,6 +53,7 @@ export function createOmniSeed() {
     orders: [
       { id: 'order_1', customerId: 'cust_2', platform: 'tiktok', status: 'awaiting_shipment', total: 729, tracking: null },
     ],
+    orderLinks: [],
     inventorySnapshots: [
       { id: 'stock_1', sku: 'BLACK-M', source: 'bigseller_mock', available: 4, checkedAt: '2026-05-22T10:00:00.000Z' },
     ],
@@ -67,6 +68,20 @@ export function createOmniSeed() {
     ],
     paymentEvents: [
       { id: 'pay_event_1', paymentRequestId: 'pay_1', type: 'created', source: 'mock', createdAt: '2026-05-22T10:06:00.000Z' },
+    ],
+    omniSettings: [
+      {
+        id: 'default',
+        settings: {
+          postCf: { enabled: true, autoCreateDrafts: true },
+          liveCf: { enabled: true, mode: 'fallback_post_comment_capture' },
+          report: { timezone: 'Asia/Bangkok' },
+          orderDraft: { enabled: true, approvalRequired: true, createZortOrderOnApprove: true },
+          ai: { enabled: true },
+        },
+        updatedAt: '2026-05-24T00:00:00.000Z',
+        updatedBy: 'seed',
+      },
     ],
     connectorHealth: [
       { id: 'health_meta', provider: 'meta', status: 'healthy', lastCheckedAt: '2026-05-22T10:00:00.000Z' },

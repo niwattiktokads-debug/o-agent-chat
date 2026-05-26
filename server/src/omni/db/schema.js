@@ -19,6 +19,7 @@ export const REQUIRED_OMNI_TABLES = [
   'inventory_snapshots',
   'payment_requests',
   'payment_events',
+  'omni_settings',
   'ai_decisions',
   'action_audits',
   'approval_tasks',

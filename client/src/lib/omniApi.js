@@ -5,6 +5,17 @@ async function getJson(path) {
   return body
 }
 
+async function postJson(path, payload = {}) {
+  const response = await fetch(path, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  const body = await response.json()
+  if (!response.ok || !body.ok) throw new Error(body.error || `request_failed:${path}`)
+  return body
+}
+
 export async function fetchOmniSnapshot() {
   return (await getJson('/api/omni/snapshot')).snapshot
 }
@@ -57,8 +68,70 @@ export async function fetchConnectorHealth() {
   return (await getJson('/api/omni/connectors/health')).health
 }
 
+export async function fetchOmniSettings() {
+  return (await getJson('/api/omni/settings')).settings
+}
+
+export async function saveOmniSettings(settings) {
+  return postJson('/api/omni/settings', { settings, updatedBy: 'boss' })
+}
+
+export async function fetchMessageVolumeReport({ from = '', to = '', pageId = '' } = {}) {
+  const query = new URLSearchParams()
+  if (from) query.set('from', from)
+  if (to) query.set('to', to)
+  if (pageId) query.set('pageId', pageId)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return (await getJson(`/api/omni/reports/message-volume${suffix}`)).report
+}
+
+export async function fetchSocialPosts(pageProfile = 'man_kynd', limit = 10) {
+  const query = new URLSearchParams({ pageProfile, limit: String(limit) })
+  return getJson(`/api/omni/social/posts?${query.toString()}`)
+}
+
+export async function capturePostCf(postId, { pageProfile = 'man_kynd', limit = 50 } = {}) {
+  return postJson(`/api/omni/social/posts/${encodeURIComponent(postId)}/capture`, { pageProfile, limit })
+}
+
+export async function fetchLiveSources(pageProfile = 'man_kynd', limit = 10) {
+  const query = new URLSearchParams({ pageProfile, limit: String(limit) })
+  return getJson(`/api/omni/social/live?${query.toString()}`)
+}
+
+export async function searchZortProducts(query, limit = 8) {
+  const params = new URLSearchParams({ q: query, limit: String(limit) })
+  return getJson(`/api/omni/zort/products?${params.toString()}`)
+}
+
+export async function createOrderDraft(input) {
+  return postJson('/api/omni/order-drafts', { ...input, createdBy: 'boss' })
+}
+
+export async function approveOrderDraft(orderId) {
+  return postJson(`/api/omni/order-drafts/${encodeURIComponent(orderId)}/approve`, { approved: true, approvedBy: 'boss' })
+}
+
 export async function fetchConnections() {
   return getJson('/api/omni/connections')
+}
+
+export async function addConnectionOption(input) {
+  const response = await fetch('/api/omni/connections', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+  const body = await response.json()
+  if (!response.ok || !body.ok) throw new Error(body.error || 'connection_add_failed')
+  return body
+}
+
+export async function deleteConnectionOption(connectionId) {
+  const response = await fetch(`/api/omni/connections/${connectionId}`, { method: 'DELETE' })
+  const body = await response.json()
+  if (!response.ok || !body.ok) throw new Error(body.error || 'connection_delete_failed')
+  return body
 }
 
 export async function verifyConnection(connectionId) {

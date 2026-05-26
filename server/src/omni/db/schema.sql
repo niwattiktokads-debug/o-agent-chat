@@ -181,6 +181,13 @@ CREATE TABLE IF NOT EXISTS payment_events (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS omni_settings (
+  id TEXT PRIMARY KEY,
+  settings_json TEXT NOT NULL DEFAULT '{}',
+  updated_by TEXT,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS ai_decisions (
   id TEXT PRIMARY KEY,
   thread_id TEXT NOT NULL REFERENCES threads(id),
@@ -245,6 +252,7 @@ CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at);
 CREATE INDEX IF NOT EXISTS idx_retention_runs_policy_created ON retention_runs(policy_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_orders_customer ON orders(customer_id);
 CREATE INDEX IF NOT EXISTS idx_payment_requests_thread ON payment_requests(thread_id);
+CREATE INDEX IF NOT EXISTS idx_omni_settings_updated ON omni_settings(updated_at);
 CREATE INDEX IF NOT EXISTS idx_ai_decisions_thread ON ai_decisions(thread_id);
 CREATE INDEX IF NOT EXISTS idx_action_audits_thread ON action_audits(thread_id);
 CREATE INDEX IF NOT EXISTS idx_knowledge_sources_status ON knowledge_sources(status);

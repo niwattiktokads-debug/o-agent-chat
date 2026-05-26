@@ -35,7 +35,7 @@ export default function ContextPanel({ snapshot, thread, onSnapshot }) {
       </div>
       {tab === 'ai' ? <AiDecisionPanel snapshot={snapshot} thread={thread} onDrafted={onSnapshot} /> : null}
       {tab === 'profiles' ? <ProfilePanel snapshot={snapshot} /> : null}
-      {tab === 'orders' ? <OrderDesk snapshot={snapshot} thread={thread} /> : null}
+      {tab === 'orders' ? <OrderDesk snapshot={snapshot} thread={thread} onSnapshot={onSnapshot} /> : null}
       {tab === 'payment' ? <PaymentDesk snapshot={snapshot} thread={thread} /> : null}
       <details className="border-t border-[var(--color-rule)] p-4">
         <summary className="cursor-pointer text-sm font-bold text-[var(--color-ink)]">เครื่องมือระบบ</summary>

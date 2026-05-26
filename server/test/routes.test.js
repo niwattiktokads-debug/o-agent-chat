@@ -29,6 +29,84 @@ test('GET /api/state returns snapshot', async () => {
   assert.ok(Array.isArray(body.messages))
 })
 
+test('GET /api/omni/connections includes ZORT Social parity options missing from the MVP', async () => {
+  const { body, status } = await req('GET', '/api/omni/connections')
+  assert.equal(status, 200)
+  const ids = new Set(body.connections.map((connection) => connection.id))
+  assert.ok(ids.has('social_instagram'))
+  assert.ok(ids.has('line_oa'))
+  assert.ok(ids.has('line_shopping_myshop'))
+  assert.ok(ids.has('tiktok_sale_page'))
+  assert.ok(ids.has('facebook_post_cf'))
+  assert.ok(ids.has('facebook_live_cf'))
+  assert.ok(ids.has('social_message_report'))
+})
+
+test('Suda O-agent notification routes use injected notifier runtime', async () => {
+  const localApp = express()
+  localApp.use(express.json())
+  const calls = []
+  const fakeNotifier = {
+    responseStatus: (payload) => payload.ok ? 200 : 409,
+    verify: async () => {
+      calls.push({ action: 'verify' })
+      return { ok: true, bot: { displayName: 'สุดา', basicId: '@537mpwyq' }, target: { ok: false, reason: 'missing_target_group_id_for_O_agent' } }
+    },
+    chatUrl: async () => {
+      calls.push({ action: 'chatUrl' })
+      return { ok: true, url: 'https://chat.line.biz/', confirmedChatName: 'O-agent(4)' }
+    },
+    setGroupId: async (groupId) => {
+      calls.push({ action: 'setGroupId', groupId })
+      return { ok: true, groupName: 'O-agent(4)' }
+    },
+    sendTaskSummary: async ({ dryRun }) => {
+      calls.push({ action: 'sendTaskSummary', dryRun })
+      return dryRun ? { ok: true, dryRun: true } : { ok: false, error: 'missing_target_group_id_for_O_agent' }
+    },
+  }
+  mountRoutes(localApp, { broadcast: () => {} }, createState(), { sudaOagentNotifier: fakeNotifier })
+  const localServer = localApp.listen(0)
+  try {
+    const localPort = localServer.address().port
+
+    const healthResponse = await fetch(`http://localhost:${localPort}/api/omni/notifications/suda-oagent/health`)
+    const health = await healthResponse.json()
+    assert.equal(healthResponse.status, 200)
+    assert.equal(health.bot.displayName, 'สุดา')
+
+    const dryRunResponse = await fetch(`http://localhost:${localPort}/api/omni/notifications/suda-oagent/task-summary`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ dryRun: true }),
+    })
+    const dryRun = await dryRunResponse.json()
+    assert.equal(dryRunResponse.status, 200)
+    assert.equal(dryRun.dryRun, true)
+
+    const sendResponse = await fetch(`http://localhost:${localPort}/api/omni/notifications/suda-oagent/task-summary`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ dryRun: false }),
+    })
+    const send = await sendResponse.json()
+    assert.equal(sendResponse.status, 409)
+    assert.equal(send.error, 'missing_target_group_id_for_O_agent')
+
+    const saveResponse = await fetch(`http://localhost:${localPort}/api/omni/notifications/suda-oagent/group-id`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ groupId: 'Ctest' }),
+    })
+    const saved = await saveResponse.json()
+    assert.equal(saveResponse.status, 200)
+    assert.equal(saved.groupName, 'O-agent(4)')
+    assert.deepEqual(calls.map((call) => call.action), ['verify', 'sendTaskSummary', 'sendTaskSummary', 'setGroupId'])
+  } finally {
+    localServer.close()
+  }
+})
+
 test('POST /api/message appends and broadcasts', async () => {
   events.length = 0
   const { body } = await req('POST', '/api/message', { role: 'Boss', text: 'hello' })
@@ -109,6 +187,15 @@ test('POST /api/omni/connections verifies through injected runtime', async () =>
   }
 })
 
+test('POST /api/omni/connections verify reports runtime gap when no helper exists', async () => {
+  const response = await fetch(`http://localhost:${port}/api/omni/connections/line_oa/verify`, { method: 'POST' })
+  const body = await response.json()
+
+  assert.equal(response.status, 400)
+  assert.equal(body.ok, false)
+  assert.equal(body.status, 'runtime_gap')
+})
+
 test('POST /api/omni/connections saves secrets through injected runtime', async () => {
   const localApp = express()
   localApp.use(express.json())
@@ -133,6 +220,438 @@ test('POST /api/omni/connections saves secrets through injected runtime', async 
     assert.equal(response.status, 200)
     assert.equal(body.ok, true)
     assert.deepEqual(savedPayload, { id: 'meta_anna_lynn', fields: { page_token: 'test-token' } })
+  } finally {
+    localServer.close()
+  }
+})
+
+test('POST and DELETE /api/omni/connections manage custom options through injected runtime', async () => {
+  const localApp = express()
+  localApp.use(express.json())
+  const calls = []
+  const fakeConnections = {
+    list: async () => ({ ok: true, connections: [] }),
+    add: async (input) => {
+      calls.push({ action: 'add', input })
+      return { ok: true, connection: { id: 'custom_line', title: input.title, canDelete: true } }
+    },
+    remove: async (id) => {
+      calls.push({ action: 'remove', id })
+      return { ok: true, removedId: id }
+    },
+  }
+  mountRoutes(localApp, { broadcast: () => {} }, createState(), { connections: fakeConnections })
+  const localServer = localApp.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const createResponse = await fetch(`http://localhost:${localPort}/api/omni/connections`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'LINE OA', provider: 'line', group: 'customer_channel' }),
+    })
+    const createBody = await createResponse.json()
+    assert.equal(createResponse.status, 200)
+    assert.equal(createBody.ok, true)
+    assert.equal(createBody.connection.id, 'custom_line')
+
+    const deleteResponse = await fetch(`http://localhost:${localPort}/api/omni/connections/custom_line`, { method: 'DELETE' })
+    const deleteBody = await deleteResponse.json()
+    assert.equal(deleteResponse.status, 200)
+    assert.equal(deleteBody.ok, true)
+    assert.equal(deleteBody.removedId, 'custom_line')
+    assert.deepEqual(calls, [
+      { action: 'add', input: { title: 'LINE OA', provider: 'line', group: 'customer_channel' } },
+      { action: 'remove', id: 'custom_line' },
+    ])
+  } finally {
+    localServer.close()
+  }
+})
+
+test('GET /api/omni/reports/message-volume filters by date and exports CSV', async () => {
+  const localApp = express()
+  localApp.use(express.json())
+  const localOmni = createOmniService()
+  localOmni.recordManualReplyDraft({
+    threadId: 'thread_1',
+    authorName: 'บอส',
+    text: 'ตอบลูกค้าช่วงทดสอบ report',
+  })
+  mountRoutes(localApp, { broadcast: () => {} }, createState(), { omni: localOmni })
+  const localServer = localApp.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const jsonResponse = await fetch(`http://localhost:${localPort}/api/omni/reports/message-volume?from=2026-05-22&to=2099-12-31`)
+    const jsonBody = await jsonResponse.json()
+    assert.equal(jsonResponse.status, 200)
+    assert.equal(jsonBody.ok, true)
+    assert.ok(jsonBody.report.totals.outbound >= 1)
+    assert.ok(Array.isArray(jsonBody.report.byHour))
+
+    const csvResponse = await fetch(`http://localhost:${localPort}/api/omni/reports/message-volume?from=2026-05-22&to=2099-12-31&format=csv`)
+    const csvText = await csvResponse.text()
+    assert.equal(csvResponse.status, 200)
+    assert.match(csvResponse.headers.get('content-type'), /text\/csv/)
+    assert.match(csvText, /hour,inbound,outbound,total/)
+  } finally {
+    localServer.close()
+  }
+})
+
+test('POST /api/omni/settings persists settings and gates Post CF capture', async () => {
+  const localApp = express()
+  localApp.use(express.json())
+  const localOmni = createOmniService()
+  const fakeSocial = {
+    listPostComments: async () => ({
+      ok: true,
+      comments: [{ id: 'c1', message: 'CF BLACK-M x2', from: { id: 'fb_cust_1', name: 'ลูกค้า CF' }, createdTime: '2026-05-26T00:00:00.000Z' }],
+    }),
+  }
+  const fakeCommerce = {
+    searchProducts: async () => ({ ok: true, products: [{ id: 'p1', sku: 'BLACK-M', name: 'Black Shirt M', sellPrice: 590, availableStock: 7 }] }),
+  }
+  mountRoutes(localApp, { broadcast: () => {} }, createState(), { omni: localOmni, social: fakeSocial, commerce: fakeCommerce })
+  const localServer = localApp.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const saveResponse = await fetch(`http://localhost:${localPort}/api/omni/settings`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ settings: { postCf: { enabled: false } }, updatedBy: 'boss' }),
+    })
+    const saved = await saveResponse.json()
+    assert.equal(saveResponse.status, 200)
+    assert.equal(saved.settings.postCf.enabled, false)
+
+    const captureResponse = await fetch(`http://localhost:${localPort}/api/omni/social/posts/post_1/capture`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ pageProfile: 'man_kynd' }),
+    })
+    const captureBody = await captureResponse.json()
+    assert.equal(captureResponse.status, 409)
+    assert.equal(captureBody.error, 'post_cf_disabled')
+  } finally {
+    localServer.close()
+  }
+})
+
+test('POST /api/omni/settings gates AI draft routes when disabled', async () => {
+  const localApp = express()
+  localApp.use(express.json())
+  const localOmni = createOmniService()
+  let aiDraftCalls = 0
+  let connectionReadCalls = 0
+  const fakeAi = {
+    draft: async () => {
+      aiDraftCalls += 1
+      return { ok: true, action: 'draft_ready' }
+    },
+  }
+  const fakeConnections = {
+    readThread: async () => {
+      connectionReadCalls += 1
+      return { ok: true, messages: [] }
+    },
+  }
+  mountRoutes(localApp, { broadcast: () => {} }, createState(), { omni: localOmni, ai: fakeAi, connections: fakeConnections })
+  const localServer = localApp.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const saveResponse = await fetch(`http://localhost:${localPort}/api/omni/settings`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ settings: { ai: { enabled: false } }, updatedBy: 'boss' }),
+    })
+    assert.equal(saveResponse.status, 200)
+
+    const threadResponse = await fetch(`http://localhost:${localPort}/api/omni/threads/thread_1/ai-draft`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    const threadBody = await threadResponse.json()
+    assert.equal(threadResponse.status, 409)
+    assert.equal(threadBody.error, 'ai_disabled')
+
+    const connectionResponse = await fetch(`http://localhost:${localPort}/api/omni/connections/meta_anna_lynn/conversations/conv_1/ai-draft`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    const connectionBody = await connectionResponse.json()
+    assert.equal(connectionResponse.status, 409)
+    assert.equal(connectionBody.error, 'ai_disabled')
+    assert.equal(aiDraftCalls, 0)
+    assert.equal(connectionReadCalls, 0)
+  } finally {
+    localServer.close()
+  }
+})
+
+test('Post CF capture reads comments, parses CF, links ZORT product read-only, and creates order draft', async () => {
+  const localApp = express()
+  localApp.use(express.json())
+  const localOmni = createOmniService()
+  const calls = []
+  const fakeSocial = {
+    listPagePosts: async ({ pageProfile, limit }) => {
+      calls.push({ action: 'posts', pageProfile, limit })
+      return { ok: true, posts: [{ id: 'post_1', message: 'เปิด CF BLACK-M', commentCount: 1, createdTime: '2026-05-26T00:00:00.000Z' }] }
+    },
+    listPostComments: async ({ objectId, pageProfile, limit }) => {
+      calls.push({ action: 'comments', objectId, pageProfile, limit })
+      return {
+        ok: true,
+        comments: [
+          { id: 'comment_1', message: 'CF BLACK-M x2', from: { id: 'fb_cust_1', name: 'ลูกค้า CF' }, createdTime: '2026-05-26T00:01:00.000Z' },
+          { id: 'comment_2', message: 'สวยมาก', from: { id: 'fb_cust_2', name: 'ลูกค้าคุย' }, createdTime: '2026-05-26T00:02:00.000Z' },
+        ],
+      }
+    },
+  }
+  const fakeCommerce = {
+    searchProducts: async ({ keyword, sku }) => {
+      calls.push({ action: 'products', keyword, sku })
+      return { ok: true, products: [{ id: '637', sku: 'BLACK-M', name: 'Black Shirt M', sellPrice: 590, availableStock: 7 }] }
+    },
+  }
+  mountRoutes(localApp, { broadcast: () => {} }, createState(), { omni: localOmni, social: fakeSocial, commerce: fakeCommerce })
+  const localServer = localApp.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const postsResponse = await fetch(`http://localhost:${localPort}/api/omni/social/posts?pageProfile=man_kynd&limit=5`)
+    const postsBody = await postsResponse.json()
+    assert.equal(postsResponse.status, 200)
+    assert.equal(postsBody.posts[0].id, 'post_1')
+
+    const captureResponse = await fetch(`http://localhost:${localPort}/api/omni/social/posts/post_1/capture`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ pageProfile: 'man_kynd' }),
+    })
+    const captureBody = await captureResponse.json()
+    assert.equal(captureResponse.status, 200)
+    assert.equal(captureBody.ok, true)
+    assert.equal(captureBody.summary.parsedCount, 1)
+    assert.equal(captureBody.drafts[0].status, 'draft')
+    assert.equal(captureBody.drafts[0].items[0].sku, 'BLACK-M')
+    assert.equal(captureBody.drafts[0].items[0].quantity, 2)
+    assert.equal(captureBody.drafts[0].items[0].zortProduct.availableStock, 7)
+    assert.deepEqual(calls.find((call) => call.action === 'comments'), { action: 'comments', objectId: 'post_1', pageProfile: 'man_kynd', limit: 50 })
+    assert.equal(localOmni.snapshot().orders.some((order) => order.id === captureBody.drafts[0].id), true)
+  } finally {
+    localServer.close()
+  }
+})
+
+test('Post CF capture queues review instead of draft when CF has no mapped ZORT product', async () => {
+  const localApp = express()
+  localApp.use(express.json())
+  const localOmni = createOmniService()
+  const fakeSocial = {
+    listPostComments: async () => ({
+      ok: true,
+      comments: [
+        { id: 'comment_1', message: 'CF UNKNOWN-SKU x1', from: { id: 'fb_cust_1', name: 'ลูกค้า CF' }, createdTime: '2026-05-26T00:01:00.000Z' },
+        { id: 'comment_2', message: 'เอาค่ะ', from: { id: 'fb_cust_2', name: 'ลูกค้าคุย' }, createdTime: '2026-05-26T00:02:00.000Z' },
+      ],
+    }),
+  }
+  const fakeCommerce = {
+    searchProducts: async () => ({ ok: true, products: [] }),
+  }
+  mountRoutes(localApp, { broadcast: () => {} }, createState(), { omni: localOmni, social: fakeSocial, commerce: fakeCommerce })
+  const localServer = localApp.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const captureResponse = await fetch(`http://localhost:${localPort}/api/omni/social/posts/post_1/capture`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ pageProfile: 'man_kynd' }),
+    })
+    const captureBody = await captureResponse.json()
+    assert.equal(captureResponse.status, 200)
+    assert.equal(captureBody.summary.parsedCount, 1)
+    assert.equal(captureBody.summary.draftCount, 0)
+    assert.equal(captureBody.summary.reviewCount, 2)
+    assert.equal(captureBody.reviewItems.some((item) => item.reason === 'zort_product_not_found'), true)
+    assert.equal(captureBody.reviewItems.some((item) => item.reason === 'missing_sku'), true)
+    assert.equal(localOmni.snapshot().orders.some((order) => String(order.sourceRef || '').startsWith('meta_post_cf:post_1')), false)
+  } finally {
+    localServer.close()
+  }
+})
+
+test('Post CF capture respects autoCreateDrafts setting', async () => {
+  const localApp = express()
+  localApp.use(express.json())
+  const localOmni = createOmniService()
+  localOmni.updateSettings({ settings: { postCf: { autoCreateDrafts: false } }, updatedBy: 'boss' })
+  const fakeSocial = {
+    listPostComments: async () => ({
+      ok: true,
+      comments: [{ id: 'comment_1', message: 'CF BLACK-M x1', from: { id: 'fb_cust_1', name: 'ลูกค้า CF' }, createdTime: '2026-05-26T00:01:00.000Z' }],
+    }),
+  }
+  const fakeCommerce = {
+    searchProducts: async () => ({ ok: true, products: [{ id: '637', sku: 'BLACK-M', name: 'Black Shirt M', sellPrice: 590, availableStock: 7 }] }),
+  }
+  mountRoutes(localApp, { broadcast: () => {} }, createState(), { omni: localOmni, social: fakeSocial, commerce: fakeCommerce })
+  const localServer = localApp.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const captureResponse = await fetch(`http://localhost:${localPort}/api/omni/social/posts/post_1/capture`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ pageProfile: 'man_kynd' }),
+    })
+    const captureBody = await captureResponse.json()
+    assert.equal(captureResponse.status, 200)
+    assert.equal(captureBody.summary.parsedCount, 1)
+    assert.equal(captureBody.summary.draftCount, 0)
+    assert.equal(captureBody.reviewItems[0].reason, 'auto_create_disabled')
+    assert.equal(localOmni.snapshot().orders.some((order) => String(order.sourceRef || '').startsWith('meta_post_cf:post_1')), false)
+  } finally {
+    localServer.close()
+  }
+})
+
+test('Order draft searches ZORT products, creates draft, and requires approval before ZORT order create', async () => {
+  const localApp = express()
+  localApp.use(express.json())
+  const localOmni = createOmniService()
+  const calls = []
+  const fakeCommerce = {
+    searchProducts: async ({ keyword }) => {
+      calls.push({ action: 'search', keyword })
+      return { ok: true, products: [{ id: '637', sku: 'BLACK-M', name: 'Black Shirt M', sellPrice: 590, availableStock: 7 }] }
+    },
+    createOrder: async ({ order, uniquenumber, approved }) => {
+      calls.push({ action: 'createOrder', orderId: order.id, uniquenumber, approved })
+      return { ok: true, providerOrderId: 'zort_1001', response: { res: { resCode: '200' } } }
+    },
+  }
+  mountRoutes(localApp, { broadcast: () => {} }, createState(), { omni: localOmni, commerce: fakeCommerce })
+  const localServer = localApp.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const searchResponse = await fetch(`http://localhost:${localPort}/api/omni/zort/products?q=BLACK-M`)
+    const searchBody = await searchResponse.json()
+    assert.equal(searchResponse.status, 200)
+    assert.equal(searchBody.products[0].sku, 'BLACK-M')
+
+    const draftResponse = await fetch(`http://localhost:${localPort}/api/omni/order-drafts`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        threadId: 'thread_1',
+        items: [{ sku: 'BLACK-M', name: 'Black Shirt M', quantity: 1, unitPrice: 590, zortProductId: '637' }],
+      }),
+    })
+    const draftBody = await draftResponse.json()
+    assert.equal(draftResponse.status, 200)
+    assert.equal(draftBody.order.status, 'draft')
+
+    const blockedResponse = await fetch(`http://localhost:${localPort}/api/omni/order-drafts/${draftBody.order.id}/approve`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ approved: false }),
+    })
+    const blockedBody = await blockedResponse.json()
+    assert.equal(blockedResponse.status, 403)
+    assert.equal(blockedBody.error, 'approval_required')
+
+    const approveResponse = await fetch(`http://localhost:${localPort}/api/omni/order-drafts/${draftBody.order.id}/approve`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ approved: true, approvedBy: 'boss' }),
+    })
+    const approveBody = await approveResponse.json()
+    assert.equal(approveResponse.status, 200)
+    assert.equal(approveBody.order.status, 'zort_created')
+    assert.equal(approveBody.order.providerOrderId, 'zort_1001')
+    assert.equal(calls.some((call) => call.action === 'createOrder' && call.approved === true), true)
+  } finally {
+    localServer.close()
+  }
+})
+
+test('Order draft approval respects createZortOrderOnApprove setting', async () => {
+  const localApp = express()
+  localApp.use(express.json())
+  const localOmni = createOmniService()
+  localOmni.updateSettings({ settings: { orderDraft: { createZortOrderOnApprove: false } }, updatedBy: 'boss' })
+  const fakeCommerce = {
+    createOrder: async () => {
+      throw new Error('should_not_create_zort_order')
+    },
+  }
+  mountRoutes(localApp, { broadcast: () => {} }, createState(), { omni: localOmni, commerce: fakeCommerce })
+  const localServer = localApp.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const draftResponse = await fetch(`http://localhost:${localPort}/api/omni/order-drafts`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        threadId: 'thread_1',
+        items: [{ sku: 'BLACK-M', name: 'Black Shirt M', quantity: 1, unitPrice: 590, zortProductId: '637' }],
+      }),
+    })
+    const draftBody = await draftResponse.json()
+    assert.equal(draftResponse.status, 200)
+
+    const approveResponse = await fetch(`http://localhost:${localPort}/api/omni/order-drafts/${draftBody.order.id}/approve`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ approved: true, approvedBy: 'boss' }),
+    })
+    const approveBody = await approveResponse.json()
+    assert.equal(approveResponse.status, 409)
+    assert.equal(approveBody.error, 'zort_order_create_disabled')
+    assert.equal(localOmni.snapshot().orders.find((order) => order.id === draftBody.order.id).status, 'draft')
+  } finally {
+    localServer.close()
+  }
+})
+
+test('Order draft approval returns guarded JSON when ZORT order create fails', async () => {
+  const localApp = express()
+  localApp.use(express.json())
+  const localOmni = createOmniService()
+  const fakeCommerce = {
+    createOrder: async () => {
+      throw new Error('zort_helper_unavailable')
+    },
+  }
+  mountRoutes(localApp, { broadcast: () => {} }, createState(), { omni: localOmni, commerce: fakeCommerce })
+  const localServer = localApp.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const draftResponse = await fetch(`http://localhost:${localPort}/api/omni/order-drafts`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        threadId: 'thread_1',
+        items: [{ sku: 'BLACK-M', name: 'Black Shirt M', quantity: 1, unitPrice: 590, zortProductId: '637' }],
+      }),
+    })
+    const draftBody = await draftResponse.json()
+    assert.equal(draftResponse.status, 200)
+
+    const approveResponse = await fetch(`http://localhost:${localPort}/api/omni/order-drafts/${draftBody.order.id}/approve`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ approved: true, approvedBy: 'boss' }),
+    })
+    const approveBody = await approveResponse.json()
+    assert.equal(approveResponse.status, 400)
+    assert.equal(approveBody.ok, false)
+    assert.equal(approveBody.error, 'zort_order_create_failed')
+    assert.equal(approveBody.provider.error, 'zort_helper_unavailable')
+    assert.equal(localOmni.snapshot().orders.find((order) => order.id === draftBody.order.id).status, 'draft')
   } finally {
     localServer.close()
   }

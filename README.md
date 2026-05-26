@@ -51,6 +51,11 @@ OMNI_AI_PROVIDER=local_rules
 OMNI_AI_MODEL=dex-local-rules-v1
 ```
 
+## Suda O-agent Task Alerts
+Omni Chat มี endpoint สำหรับแจ้งงานวินเข้า LINE OA `สุดา @537mpwyq` แล้ว โดยใช้ helper `/Users/babycuca/.codex/bin/line-suda-oagent` เป็นตัวกลางและไม่ใช้ n8n เป็นทางหลัก
+
+รายละเอียดฟังก์ชันและคำสั่งทดสอบอยู่ที่ `docs/omni-suda-oagent-task-functions.md`
+
 ## Omni Manual Draft
 หน้า Inbox/Omni มีช่องพิมพ์ใต้ thread ที่เลือกแล้ว สามารถพิมพ์ข้อความและแนบภาพได้หลายรูป ระบบจะบันทึกเป็น `manual_draft` ใน Omni และอัปเดตหน้าจอทันที
 
