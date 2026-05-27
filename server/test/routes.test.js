@@ -1,6 +1,9 @@
 import { test, after } from 'node:test'
 import assert from 'node:assert/strict'
 import express from 'express'
+import { mkdtempSync, readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { mountRoutes } from '../src/routes.js'
 import { mountWebhook } from '../src/webhook.js'
 import { createState } from '../src/state.js'
@@ -86,6 +89,14 @@ test('Suda O-agent notification routes use injected notifier runtime', async () 
       calls.push({ action: 'sendTaskSummary', dryRun })
       return dryRun ? { ok: true, dryRun: true } : { ok: false, error: 'missing_target_group_id_for_O_agent' }
     },
+    listGroupRules: async () => {
+      calls.push({ action: 'listGroupRules' })
+      return { ok: true, groups: [{ groupId: 'Ctest', groupName: 'ผลิตออนไลน์', responseRules: { duty: 'ตามงานผลิต' } }] }
+    },
+    saveGroupRules: async (groupId, responseRules) => {
+      calls.push({ action: 'saveGroupRules', groupId, responseRules })
+      return { ok: true, group: { groupId, groupName: 'ผลิตออนไลน์', responseRules } }
+    },
   }
   mountRoutes(localApp, { broadcast: () => {} }, createState(), { sudaOagentNotifier: fakeNotifier })
   const localServer = localApp.listen(0)
@@ -123,7 +134,121 @@ test('Suda O-agent notification routes use injected notifier runtime', async () 
     const saved = await saveResponse.json()
     assert.equal(saveResponse.status, 200)
     assert.equal(saved.groupName, 'O-agent(4)')
-    assert.deepEqual(calls.map((call) => call.action), ['verify', 'sendTaskSummary', 'sendTaskSummary', 'setGroupId'])
+
+    const rulesResponse = await fetch(`http://localhost:${localPort}/api/omni/notifications/suda-oagent/group-rules`)
+    const rules = await rulesResponse.json()
+    assert.equal(rulesResponse.status, 200)
+    assert.equal(rules.groups[0].responseRules.duty, 'ตามงานผลิต')
+
+    const saveRulesResponse = await fetch(`http://localhost:${localPort}/api/omni/notifications/suda-oagent/group-rules/Ctest`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ responseRules: { questionPattern: 'วินส่งไปยัง' } }),
+    })
+    const savedRules = await saveRulesResponse.json()
+    assert.equal(saveRulesResponse.status, 200)
+    assert.equal(savedRules.group.responseRules.questionPattern, 'วินส่งไปยัง')
+
+    assert.deepEqual(calls.map((call) => call.action), ['verify', 'sendTaskSummary', 'sendTaskSummary', 'setGroupId', 'listGroupRules', 'saveGroupRules'])
+  } finally {
+    localServer.close()
+  }
+})
+
+test('LINE Suda webhook records new groups without auto-sending join intake and records /su response rules', async () => {
+  const localApp = express()
+  localApp.use(express.json())
+  const localEvents = []
+  const localRoom = createState()
+  const tempDir = mkdtempSync(join(tmpdir(), 'line-suda-test-'))
+  const lineCaptureLog = join(tempDir, 'capture.jsonl')
+  const lineRegistryLog = join(tempDir, 'registry.jsonl')
+  const lineRulesFile = join(tempDir, 'rules.json')
+  const calls = []
+  const fakeLineHelperRunner = async (args) => {
+    calls.push(args)
+    const command = args[0]
+    if (command === 'set-group-id') return { ok: false, error: 'target_group_mismatch' }
+    if (command === 'group-details') {
+      return {
+        ok: true,
+        groupId: 'Cnew',
+        groupIdMasked: 'Cnew',
+        groupName: 'ผลิตออนไลน์',
+        memberCount: 3,
+        members: [{ displayName: 'บอส' }, { displayName: 'วิน' }, { displayName: 'สุดา' }],
+        memberFetch: { errors: [] },
+      }
+    }
+    if (command === 'send-join-intake') return { ok: true, sent: 'join_intake', groupName: 'ผลิตออนไลน์' }
+    if (command === 'send') return { ok: true, sent: 'custom', groupName: 'ผลิตออนไลน์' }
+    return { ok: true }
+  }
+  mountWebhook(localApp, { broadcast: (event, payload) => localEvents.push({ event, payload }) }, localRoom, {
+    lineHelperRunner: fakeLineHelperRunner,
+    lineCaptureLog,
+    lineRegistryLog,
+    lineRulesFile,
+  })
+  const localServer = localApp.listen(0)
+  const localReq = (body) => fetch(`http://localhost:${localServer.address().port}/webhook/line/suda-oagent`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  }).then(async (response) => ({ status: response.status, body: await response.json() }))
+
+  try {
+    const joinResponse = await localReq({
+      events: [{
+        type: 'join',
+        replyToken: 'reply-token',
+        source: { type: 'group', groupId: 'Cnew' },
+      }],
+    })
+    assert.equal(joinResponse.status, 200)
+    assert.equal(joinResponse.body.joinSignal, 'recorded')
+    assert.equal(calls.some((args) => args[0] === 'send-join-intake' && args.includes('Cnew')), false)
+    assert.ok(localEvents.some((event) => event.event === 'line:suda-oagent:join'))
+
+    const dutyResponse = await localReq({
+      events: [{
+        type: 'message',
+        replyToken: 'reply-token',
+        source: { type: 'group', groupId: 'Cnew', userId: 'Uboss' },
+        message: {
+          type: 'text',
+          text: [
+            '/su',
+            'หน้าที่: แจ้งเตือนงานผลิตและถามสถานะวิน',
+            'รูปแบบคำถาม: สถานะงานผลิต/วินส่งไปยัง',
+            'รูปแบบตอบ: สรุปสถานะล่าสุด + ถามเจ้าของงานถ้าข้อมูลไม่ครบ',
+            'กฎตอบ: สุภาพ สั้น ห้ามเดาสถานะงาน',
+          ].join('\n'),
+        },
+      }],
+    })
+    assert.equal(dutyResponse.status, 200)
+    assert.equal(dutyResponse.body.dutyCommands, 1)
+    assert.equal(dutyResponse.body.ruleCommands, 1)
+    assert.ok(calls.some((args) => args[0] === 'send' && args.includes('--unsafe-no-verify')))
+    assert.ok(localEvents.some((event) => event.event === 'line:suda-oagent:rules'))
+
+    const registryRows = readFileSync(lineRegistryLog, 'utf8').trim().split('\n').map((line) => JSON.parse(line))
+    assert.equal(registryRows[0].type, 'group_join_detected')
+    assert.equal(registryRows[0].status, 'pending_boss_instruction')
+    assert.equal(registryRows[1].type, 'group_response_rules_recorded')
+    assert.equal(registryRows[1].duty, 'แจ้งเตือนงานผลิตและถามสถานะวิน')
+    assert.equal(registryRows[1].questionPattern, 'สถานะงานผลิต/วินส่งไปยัง')
+    assert.equal(registryRows[1].defaultReply, 'สรุปสถานะล่าสุด + ถามเจ้าของงานถ้าข้อมูลไม่ครบ')
+    assert.equal(registryRows[1].replyRules, 'สุภาพ สั้น ห้ามเดาสถานะงาน')
+    assert.equal(registryRows[1].status, 'response_rules_recorded')
+
+    const rules = JSON.parse(readFileSync(lineRulesFile, 'utf8'))
+    assert.equal(rules.groups.Cnew.groupName, 'ผลิตออนไลน์')
+    assert.equal(rules.groups.Cnew.responseRules.duty, 'แจ้งเตือนงานผลิตและถามสถานะวิน')
+    assert.equal(rules.groups.Cnew.responseRules.questionPattern, 'สถานะงานผลิต/วินส่งไปยัง')
+    assert.equal(rules.groups.Cnew.responseRules.defaultReply, 'สรุปสถานะล่าสุด + ถามเจ้าของงานถ้าข้อมูลไม่ครบ')
+    assert.equal(rules.groups.Cnew.responseRules.replyRules, 'สุภาพ สั้น ห้ามเดาสถานะงาน')
   } finally {
     localServer.close()
   }

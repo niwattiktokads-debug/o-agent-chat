@@ -246,6 +246,16 @@ export function mountRoutes(app, hub, room, options = {}) {
     res.status(sudaOagentNotifier.responseStatus(result)).json(result)
   })
 
+  app.get('/api/omni/notifications/suda-oagent/group-rules', async (_req, res) => {
+    const result = await sudaOagentNotifier.listGroupRules()
+    res.status(sudaOagentNotifier.responseStatus(result)).json(result)
+  })
+
+  app.post('/api/omni/notifications/suda-oagent/group-rules/:groupId', async (req, res) => {
+    const result = await sudaOagentNotifier.saveGroupRules(req.params.groupId, req.body?.responseRules || {})
+    res.status(sudaOagentNotifier.responseStatus(result)).json(result)
+  })
+
   app.get('/api/omni/settings', (_req, res) => {
     res.json({ ok: true, settings: omni.getSettings() })
   })

@@ -6,7 +6,9 @@ import {
   addConnectionOption,
   deleteConnectionOption,
   fetchConnectionConversations,
+  fetchLineSudaGroupRules,
   saveConnectionSecrets,
+  saveLineSudaGroupRules,
   sendConnectionReply,
   verifyConnection,
 } from '../../lib/omniApi.js'
@@ -16,9 +18,11 @@ const apiMocks = vi.hoisted(() => ({
   fetchConnectionConversations: vi.fn(),
   fetchConnectionThread: vi.fn(),
   createConnectionAiDraft: vi.fn(),
+  fetchLineSudaGroupRules: vi.fn(),
   addConnectionOption: vi.fn(),
   deleteConnectionOption: vi.fn(),
   sendConnectionReply: vi.fn(),
+  saveLineSudaGroupRules: vi.fn(),
   saveConnectionSecrets: vi.fn(),
   verifyConnection: vi.fn(),
 }))
@@ -28,9 +32,11 @@ vi.mock('../../lib/omniApi.js', () => ({
   fetchConnectionConversations: apiMocks.fetchConnectionConversations,
   fetchConnectionThread: apiMocks.fetchConnectionThread,
   createConnectionAiDraft: apiMocks.createConnectionAiDraft,
+  fetchLineSudaGroupRules: apiMocks.fetchLineSudaGroupRules,
   addConnectionOption: apiMocks.addConnectionOption,
   deleteConnectionOption: apiMocks.deleteConnectionOption,
   sendConnectionReply: apiMocks.sendConnectionReply,
+  saveLineSudaGroupRules: apiMocks.saveLineSudaGroupRules,
   saveConnectionSecrets: apiMocks.saveConnectionSecrets,
   verifyConnection: apiMocks.verifyConnection,
 }))
@@ -121,6 +127,22 @@ const payload = {
       productionNotes: ['create order / decrease stock ต้องมี approval guard'],
     },
     {
+      id: 'line_suda_oagent',
+      title: 'LINE OA · สุดา O-agent',
+      provider: 'line_suda_oagent',
+      description: 'LINE Official Account สุดา for O-agent group alerts',
+      helper: '/Users/babycuca/.codex/bin/line-suda-oagent',
+      group: 'customer_channel',
+      status: 'ready_to_verify',
+      fields: [],
+      endpoints: [{
+        method: 'GET',
+        path: '/api/omni/notifications/suda-oagent/group-rules',
+        purpose: 'อ่านกฎรายกลุ่ม',
+      }],
+      productionNotes: ['ไม่ใช้ n8n เป็น route หลัก'],
+    },
+    {
       id: 'custom_line',
       title: 'LINE OA',
       provider: 'line',
@@ -141,9 +163,11 @@ describe('ConnectionsPage', () => {
     apiMocks.fetchConnectionConversations.mockReset()
     apiMocks.fetchConnectionThread.mockReset()
     apiMocks.createConnectionAiDraft.mockReset()
+    apiMocks.fetchLineSudaGroupRules.mockReset()
     apiMocks.addConnectionOption.mockReset()
     apiMocks.deleteConnectionOption.mockReset()
     apiMocks.sendConnectionReply.mockReset()
+    apiMocks.saveLineSudaGroupRules.mockReset()
     apiMocks.saveConnectionSecrets.mockReset()
     apiMocks.verifyConnection.mockReset()
     apiMocks.fetchConnections.mockResolvedValue(payload)
@@ -166,6 +190,38 @@ describe('ConnectionsPage', () => {
     apiMocks.createConnectionAiDraft.mockResolvedValue({
       ok: true,
       decision: { draftText: 'รับทราบค่ะ เดี๋ยวช่วยดูให้ค่ะ' },
+    })
+    apiMocks.fetchLineSudaGroupRules.mockResolvedValue({
+      ok: true,
+      groups: [{
+        groupId: 'Cprod',
+        groupIdMasked: 'Cprod',
+        groupName: 'ผลิตออนไลน์',
+        memberCount: 5,
+        status: 'response_rules_recorded',
+        responseRules: {
+          duty: 'ตามงานผลิต',
+          questionPattern: 'วินส่งไปยัง',
+          defaultReply: 'สรุปสถานะล่าสุด',
+          replyRules: 'ห้ามเดา',
+        },
+      }],
+    })
+    apiMocks.saveLineSudaGroupRules.mockResolvedValue({
+      ok: true,
+      group: {
+        groupId: 'Cprod',
+        groupIdMasked: 'Cprod',
+        groupName: 'ผลิตออนไลน์',
+        memberCount: 5,
+        status: 'response_rules_recorded',
+        responseRules: {
+          duty: 'ตามงานผลิต',
+          questionPattern: 'วินส่งไปยัง',
+          defaultReply: 'ตอบแบบสั้นและชัด',
+          replyRules: 'ห้ามเดา',
+        },
+      },
     })
     apiMocks.sendConnectionReply.mockResolvedValue({ ok: true, sent: true })
   })
@@ -245,6 +301,34 @@ describe('ConnectionsPage', () => {
       expect(verifyConnection).toHaveBeenCalledWith('meta_anna_lynn')
     })
     expect(await screen.findByText(/verified meta/)).toBeInTheDocument()
+  })
+
+  it('edits LINE Suda group response rules inside the connection card', async () => {
+    render(<ConnectionsPage />)
+
+    expect(await screen.findByText('LINE OA · สุดา O-agent')).toBeInTheDocument()
+    const sudaCard = screen.getByText('LINE OA · สุดา O-agent').closest('article')
+    fireEvent.click(sudaCard.querySelector('button[aria-expanded="false"]'))
+
+    expect(await screen.findByText('กฎคำถามและคำตอบรายกลุ่ม')).toBeInTheDocument()
+    expect(fetchLineSudaGroupRules).toHaveBeenCalled()
+    await waitFor(() => {
+      expect(screen.getAllByText('ผลิตออนไลน์').length).toBeGreaterThan(0)
+    })
+
+    const defaultReply = screen.getByPlaceholderText('เช่น สรุปสถานะล่าสุด + ระบุคนรับผิดชอบ + ถามเพิ่มถ้าข้อมูลไม่ครบ')
+    fireEvent.change(defaultReply, { target: { value: 'ตอบแบบสั้นและชัด' } })
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึกกฎกลุ่ม' }))
+
+    await waitFor(() => {
+      expect(saveLineSudaGroupRules).toHaveBeenCalledWith('Cprod', {
+        duty: 'ตามงานผลิต',
+        questionPattern: 'วินส่งไปยัง',
+        defaultReply: 'ตอบแบบสั้นและชัด',
+        replyRules: 'ห้ามเดา',
+      })
+    })
+    expect(await screen.findByText('บันทึกกฎกลุ่ม ผลิตออนไลน์ แล้ว พร้อมส่งข้อความ')).toBeInTheDocument()
   })
 
   it('loads latest Meta conversations, opens a thread, and drafts without sending', async () => {

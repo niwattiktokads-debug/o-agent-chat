@@ -82,6 +82,38 @@ const CONNECTIONS = [
     productionNotes: ['Instagram must be linked to Facebook before connection.', 'Map warehouse and allowed users before customer-facing order creation.'],
   },
   {
+    id: 'line_suda_oagent',
+    title: 'LINE OA · สุดา O-agent',
+    provider: 'line_suda_oagent',
+    group: 'customer_channel',
+    description: 'LINE Official Account สุดา for O-agent group alerts, approval-gated group intake, and per-group /su response rules.',
+    helper: '/Users/babycuca/.codex/bin/line-suda-oagent',
+    verify: { command: '/Users/babycuca/.codex/bin/line-suda-oagent', args: ['verify'] },
+    fields: [
+      { id: 'channel_access_token', label: 'Channel access token', credentialName: 'LINE Channel Access Token -EP', secret: true, required: true },
+      { id: 'oagent_group_id', label: 'O-agent group ID', credentialName: 'LINE O-agent Winn Group ID -OA', secret: true, required: false },
+    ],
+    docs: '/Users/babycuca/.codex/integrations/line_suda_oagent_alerts.json',
+    endpoints: [
+      {
+        method: 'WEBHOOK',
+        path: '/webhook/line/suda-oagent',
+        purpose: 'รับ join/message event จาก LINE OA สุดาเข้า Omni',
+      },
+      {
+        method: 'GET',
+        path: '/api/omni/notifications/suda-oagent/group-rules',
+        purpose: 'อ่านกฎคำถามและคำตอบตั้งต้นรายกลุ่ม',
+      },
+    ],
+    productionNotes: [
+      'ไม่ใช้ n8n เป็น route หลัก',
+      'กฎตอบรายกลุ่มเก็บใน Omni staging และใช้เป็น context ของ /su',
+      'helper ห้ามส่งข้อความทุกชนิดเข้ากลุ่มจนกว่าตั้งครบ หน้าที่/รูปแบบคำถาม/รูปแบบตอบ/กฎตอบ',
+      'การส่งข้อความเข้ากลุ่มใช้ LINE Push API ในนามสุดา',
+    ],
+  },
+  {
     id: 'line_oa',
     title: 'LINE OA · Chat + Order',
     provider: 'line_oa',

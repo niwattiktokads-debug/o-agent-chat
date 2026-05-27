@@ -2,36 +2,275 @@ import { normalizeMetaWebhookPayload } from './omni/metaWebhook.js'
 import { createAiReplyEngine } from './omni/aiReplyEngine.js'
 import { sendFacebookReply } from './omni/metaInboxClient.js'
 import { normalizeTikTokMessagingWebhookPayload } from './omni/tiktokMessagingClient.js'
-import { appendFileSync, mkdirSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { execFile } from 'node:child_process'
 
 const seen = new Set()
 const LINE_CAPTURE_LOG = process.env.LINE_SUDA_OAGENT_CAPTURE_LOG || '/Users/babycuca/Documents/O-Agent workspace/finance/staging/line_suda_oagent_capture_events.jsonl'
+const LINE_GROUP_REGISTRY_LOG = process.env.LINE_SUDA_GROUP_REGISTRY_LOG || '/Users/babycuca/Documents/O-Agent workspace/finance/staging/line_suda_group_registry.jsonl'
+const LINE_GROUP_RULES_FILE = process.env.LINE_SUDA_GROUP_RULES_FILE || '/Users/babycuca/Documents/O-Agent workspace/finance/staging/line_suda_group_rules.json'
 const LINE_HELPER = process.env.LINE_SUDA_OAGENT_HELPER || '/Users/babycuca/.codex/bin/line-suda-oagent'
+const LINE_JOIN_INTAKE_PUSH_DEFAULT = process.env.LINE_SUDA_JOIN_INTAKE_PUSH === '1'
 
-function appendLineCapture(row) {
-  mkdirSync(dirname(LINE_CAPTURE_LOG), { recursive: true })
-  appendFileSync(LINE_CAPTURE_LOG, `${JSON.stringify(row)}\n`)
+function appendJsonl(file, row) {
+  mkdirSync(dirname(file), { recursive: true })
+  appendFileSync(file, `${JSON.stringify(row)}\n`)
 }
 
-function trySaveLineGroupId(groupId) {
+function appendLineCapture(row, file = LINE_CAPTURE_LOG) {
+  appendJsonl(file, row)
+}
+
+function readJsonFile(file, fallback) {
+  if (!existsSync(file)) return fallback
+  try {
+    return JSON.parse(readFileSync(file, 'utf8'))
+  } catch (_error) {
+    return fallback
+  }
+}
+
+function writeJsonFile(file, value) {
+  mkdirSync(dirname(file), { recursive: true })
+  writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 })
+}
+
+async function trySaveLineGroupId(groupId, lineHelperRunner = defaultLineHelperRunner) {
   if (!groupId) return
-  execFile(LINE_HELPER, ['set-group-id', '--group-id', groupId], { env: process.env }, () => {})
+  await lineHelperRunner(['set-group-id', '--group-id', groupId])
 }
 
-function signalLineGroupJoin({ room, hub, rows }) {
+function parseHelperOutput(stdout) {
+  const text = String(stdout || '').trim()
+  if (!text) return { ok: true }
+  try {
+    return JSON.parse(text)
+  } catch (_error) {
+    return { ok: false, error: 'invalid_helper_json', stdout: text.slice(0, 500) }
+  }
+}
+
+function defaultLineHelperRunner(args) {
+  return new Promise((resolve) => {
+    execFile(LINE_HELPER, args, { env: process.env, maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
+      const parsed = parseHelperOutput(stdout)
+      if (error) {
+        resolve({
+          ...parsed,
+          ok: false,
+          error: parsed.error || error.message,
+          stderr: String(stderr || '').trim(),
+        })
+        return
+      }
+      resolve(parsed)
+    })
+  })
+}
+
+function groupMemberSummary(details) {
+  if (Array.isArray(details?.members) && details.members.length) {
+    const names = details.members
+      .map((member) => member.displayName || member.userIdMasked || '')
+      .filter(Boolean)
+    return names.length ? names.join(', ') : 'อ่านรายชื่อไม่ได้'
+  }
+  if (details?.memberFetch?.errors?.length) return 'LINE API ยังไม่ส่งรายชื่อสมาชิก'
+  return 'ยังไม่มีรายชื่อสมาชิกจาก API'
+}
+
+function normalizeSudaRules(input = {}) {
+  return {
+    duty: String(input.duty || '').trim(),
+    questionPattern: String(input.questionPattern || '').trim(),
+    defaultReply: String(input.defaultReply || '').trim(),
+    replyRules: String(input.replyRules || '').trim(),
+  }
+}
+
+function rulesComplete(rules) {
+  const normalizedRules = normalizeSudaRules(rules)
+  return ['duty', 'questionPattern', 'defaultReply', 'replyRules']
+    .every((field) => Boolean(normalizedRules[field]))
+}
+
+function rulesStatus(rules, fallback = 'pending_boss_instruction') {
+  const normalizedRules = normalizeSudaRules(rules)
+  if (rulesComplete(normalizedRules)) return 'response_rules_recorded'
+  if (Object.values(normalizedRules).some(Boolean)) return 'pending_group_usage_rules'
+  return fallback
+}
+
+function formatRuleLines(rules) {
+  const lines = []
+  if (rules.duty) lines.push(`หน้าที่: ${rules.duty}`)
+  if (rules.questionPattern) lines.push(`รูปแบบคำถาม: ${rules.questionPattern}`)
+  if (rules.defaultReply) lines.push(`รูปแบบตอบ: ${rules.defaultReply}`)
+  if (rules.replyRules) lines.push(`กฎตอบ: ${rules.replyRules}`)
+  return lines
+}
+
+function lineGroupRegistryRow({ type, row, details = {}, rules = {}, result = {} }) {
+  const normalizedRules = normalizeSudaRules(rules)
+  return {
+    recordedAt: new Date().toISOString(),
+    type,
+    groupId: row.groupId,
+    groupIdMasked: details.groupIdMasked || '',
+    groupName: details.groupName || '',
+    eventType: row.eventType,
+    userId: row.userId || '',
+    messageText: row.text || '',
+    memberCount: details.memberCount ?? null,
+    memberNamesReadable: Array.isArray(details.members) ? details.members.map((member) => member.displayName || member.userIdMasked || '').filter(Boolean) : [],
+    duty: normalizedRules.duty,
+    questionPattern: normalizedRules.questionPattern,
+    defaultReply: normalizedRules.defaultReply,
+    replyRules: normalizedRules.replyRules,
+    responseRules: normalizedRules,
+    status: rulesStatus(normalizedRules),
+    helperResult: result,
+  }
+}
+
+function upsertLineGroupRules({ file = LINE_GROUP_RULES_FILE, row, details = {}, rules = {} }) {
+  if (!row.groupId) return null
+  const store = readJsonFile(file, { version: 1, groups: {} })
+  const previous = store.groups?.[row.groupId] || {}
+  const normalizedRules = normalizeSudaRules(rules)
+  const mergedRules = normalizeSudaRules(previous.responseRules || {})
+  for (const [key, value] of Object.entries(normalizedRules)) {
+    if (value) mergedRules[key] = value
+  }
+  const group = {
+    groupId: row.groupId,
+    groupIdMasked: details.groupIdMasked || previous.groupIdMasked || '',
+    groupName: details.groupName || previous.groupName || '',
+    memberCount: details.memberCount ?? previous.memberCount ?? null,
+    memberNamesReadable: Array.isArray(details.members) && details.members.length
+      ? details.members.map((member) => member.displayName || member.userIdMasked || '').filter(Boolean)
+      : previous.memberNamesReadable || [],
+    responseRules: mergedRules,
+    status: rulesStatus(mergedRules, previous.status || 'pending_boss_instruction'),
+    updatedAt: new Date().toISOString(),
+    updatedByUserId: row.userId || previous.updatedByUserId || '',
+    sourceMessageText: row.text || previous.sourceMessageText || '',
+  }
+  store.version = 1
+  store.groups = { ...(store.groups || {}), [row.groupId]: group }
+  writeJsonFile(file, store)
+  return group
+}
+
+async function signalLineGroupJoin({ room, hub, rows, lineHelperRunner = defaultLineHelperRunner, lineRegistryLog = LINE_GROUP_REGISTRY_LOG, lineRulesFile = LINE_GROUP_RULES_FILE, joinIntakePush = LINE_JOIN_INTAKE_PUSH_DEFAULT }) {
   const joins = rows.filter((row) => row.sourceType === 'group' && row.groupId && row.eventType === 'join')
   if (!joins.length) return null
   const first = joins[0]
   const extra = joins.length > 1 ? ` (+${joins.length - 1})` : ''
+  const detailsResult = await lineHelperRunner(['group-details', '--group-id', first.groupId, '--member-limit', '20'])
+  const details = detailsResult.ok ? detailsResult : {}
+  const intakeResult = joinIntakePush
+    ? await lineHelperRunner(['send-join-intake', '--group-id', first.groupId, '--member-limit', '20'])
+    : { ok: true, sent: false, reason: 'approval_required_before_group_message' }
+  appendJsonl(lineRegistryLog, lineGroupRegistryRow({
+    type: joinIntakePush ? 'group_join_intake_requested' : 'group_join_detected',
+    row: first,
+    details,
+    result: { ok: intakeResult.ok, sent: Boolean(intakeResult.sent), reason: intakeResult.reason || null, error: intakeResult.error || null },
+  }))
+  const groupRules = upsertLineGroupRules({ file: lineRulesFile, row: first, details })
   const message = room.addMessage({
     role: 'Codex',
-    text: `[STATE] @เดส สุดาถูกเพิ่มเข้ากลุ่ม LINE ใหม่${extra}: groupId=${first.groupId} · กำลัง verify กลุ่มและบันทึก target ถ้าตรง O-agent`,
+    text: `[STATE] @เดส สุดาถูกเพิ่มเข้ากลุ่ม LINE ใหม่${extra}: ${details.groupName || 'ไม่ทราบชื่อกลุ่ม'} · สมาชิก ${details.memberCount ?? 'ไม่ทราบจำนวน'} · ${groupMemberSummary(details)} · บันทึกเข้า Settings/registry แล้ว ยังไม่ส่งคำถามเข้ากลุ่ม`,
   })
   hub.broadcast('message', room.snapshot())
-  hub.broadcast('line:suda-oagent:join', { joins, message })
+  hub.broadcast('line:suda-oagent:join', { joins, details, intakeResult, groupRules, message })
   return message
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+const SUDA_RULE_FIELDS = [
+  { key: 'duty', labels: ['หน้าที่', 'duty', 'role', 'purpose'] },
+  { key: 'questionPattern', labels: ['รูปแบบคำถาม', 'รูปแบบถาม', 'คำถาม', 'question_pattern', 'question pattern', 'question'] },
+  { key: 'defaultReply', labels: ['รูปแบบตอบ', 'รูปแบบการตอบ', 'คำตอบตั้งต้น', 'ตอบตั้งต้น', 'default_reply', 'default reply', 'answer_format', 'answer format', 'reply format'] },
+  { key: 'replyRules', labels: ['กฎตอบ', 'กฎการตอบ', 'กติกาตอบ', 'ข้อห้าม', 'reply_rules', 'reply rules', 'rules'] },
+]
+
+const SUDA_RULE_LABELS = new Map(SUDA_RULE_FIELDS.flatMap((field) => (
+  field.labels.map((label) => [label.toLowerCase(), field.key])
+)))
+
+const SUDA_RULE_PATTERN = new RegExp(
+  `(^|\\n|\\s)(${[...SUDA_RULE_LABELS.keys()].map(escapeRegExp).sort((a, b) => b.length - a.length).join('|')})\\s*[:：]`,
+  'giu'
+)
+
+function parseSudaRuleCommand(row) {
+  const text = String(row.text || '').trim()
+  if (!/^\/su\b/i.test(text)) return null
+  const body = text.replace(/^\/su\b/i, '').trim()
+  SUDA_RULE_PATTERN.lastIndex = 0
+  const matches = [...body.matchAll(SUDA_RULE_PATTERN)]
+  if (!matches.length) return null
+
+  const rules = {}
+  for (let index = 0; index < matches.length; index += 1) {
+    const match = matches[index]
+    const label = String(match[2] || '').toLowerCase()
+    const key = SUDA_RULE_LABELS.get(label)
+    if (!key) continue
+    const start = match.index + match[0].length
+    const end = matches[index + 1]?.index ?? body.length
+    const value = body.slice(start, end).replace(/\s+/g, ' ').trim()
+    if (value) rules[key] = value
+  }
+
+  const normalizedRules = normalizeSudaRules(rules)
+  return Object.values(normalizedRules).some(Boolean) ? normalizedRules : null
+}
+
+async function handleSudaRuleCommands({ room, hub, rows, lineHelperRunner = defaultLineHelperRunner, lineRegistryLog = LINE_GROUP_REGISTRY_LOG, lineRulesFile = LINE_GROUP_RULES_FILE }) {
+  const commands = rows
+    .filter((row) => row.sourceType === 'group' && row.groupId && row.messageType === 'text')
+    .map((row) => ({ row, parsed: parseSudaRuleCommand(row) }))
+    .filter((item) => item.parsed)
+  if (!commands.length) return []
+
+  const results = []
+  for (const item of commands) {
+    const detailsResult = await lineHelperRunner(['group-details', '--group-id', item.row.groupId, '--member-limit', '20'])
+    const details = detailsResult.ok ? detailsResult : {}
+    const groupRules = upsertLineGroupRules({ file: lineRulesFile, row: item.row, details, rules: item.parsed })
+    const ackText = [
+      'สุดาบันทึกกฎการตอบของกลุ่มนี้แล้ว',
+      `กลุ่ม: ${details.groupName || 'ไม่ทราบชื่อกลุ่ม'}`,
+      ...formatRuleLines(item.parsed),
+      '',
+      'ต่อไปเดสจะใช้กฎนี้เป็น context เวลามีคำสั่ง /su ในกลุ่มนี้'
+    ].join('\n')
+    const ackResult = rulesComplete(groupRules?.responseRules)
+      ? await lineHelperRunner(['send', '--group-id', item.row.groupId, '--text', ackText, '--unsafe-no-verify'])
+      : { ok: true, sent: false, reason: 'group_usage_rules_incomplete_no_ack_sent' }
+    appendJsonl(lineRegistryLog, lineGroupRegistryRow({
+      type: 'group_response_rules_recorded',
+      row: item.row,
+      details,
+      rules: item.parsed,
+      result: { ok: ackResult.ok, sent: Boolean(ackResult.sent), reason: ackResult.reason || null, error: ackResult.error || null },
+    }))
+    const message = room.addMessage({
+      role: 'Codex',
+      text: `[STATE] @เดส บันทึกกฎกลุ่ม LINE: ${details.groupName || 'ไม่ทราบชื่อกลุ่ม'} · ${compactText(formatRuleLines(item.parsed).join(' · '), 160)}`,
+    })
+    results.push({ row: item.row, details, rules: item.parsed, groupRules, ackResult, message })
+  }
+  hub.broadcast('message', room.snapshot())
+  hub.broadcast('line:suda-oagent:rules', { results })
+  return results
 }
 
 function pageProfileForThread(thread) {
@@ -171,6 +410,11 @@ export function mountWebhook(app, hub, room, options = {}) {
   const metaVerifyToken = options.metaVerifyToken || process.env.META_VERIFY_TOKEN || ''
   const metaAutoReplyDefault = options.metaAutoReplyDefault ?? process.env.OMNI_META_WEBHOOK_AUTO_REPLY === '1'
   const metaAutoSendDefault = options.metaAutoSendDefault ?? process.env.OMNI_META_WEBHOOK_SEND === '1'
+  const lineHelperRunner = options.lineHelperRunner || defaultLineHelperRunner
+  const lineCaptureLog = options.lineCaptureLog || LINE_CAPTURE_LOG
+  const lineRegistryLog = options.lineRegistryLog || LINE_GROUP_REGISTRY_LOG
+  const lineRulesFile = options.lineRulesFile || LINE_GROUP_RULES_FILE
+  const lineJoinIntakePush = options.lineJoinIntakePush ?? LINE_JOIN_INTAKE_PUSH_DEFAULT
 
   app.post('/webhook/telegram', (req, res) => {
     const { update_id, message } = req.body || {}
@@ -225,7 +469,7 @@ export function mountWebhook(app, hub, room, options = {}) {
     res.json({ ok: true, result: { customers: result.customers, threads: result.threads, messages: result.messages, dexSignals, dexSignalMessage } })
   })
 
-  app.post('/webhook/line/suda-oagent', (req, res) => {
+  app.post('/webhook/line/suda-oagent', async (req, res) => {
     const rows = []
     for (const event of req.body?.events || []) {
       const source = event.source || {}
@@ -241,15 +485,18 @@ export function mountWebhook(app, hub, room, options = {}) {
         replyToken: event.replyToken ? 'present' : '',
       }
       rows.push(row)
-      appendLineCapture(row)
-      if (row.sourceType === 'group' && row.groupId) trySaveLineGroupId(row.groupId)
+      appendLineCapture(row, lineCaptureLog)
+      if (row.sourceType === 'group' && row.groupId) await trySaveLineGroupId(row.groupId, lineHelperRunner)
     }
-    const joinSignalMessage = signalLineGroupJoin({ room, hub, rows })
+    const joinSignalMessage = await signalLineGroupJoin({ room, hub, rows, lineHelperRunner, lineRegistryLog, lineRulesFile, joinIntakePush: lineJoinIntakePush })
+    const ruleResults = await handleSudaRuleCommands({ room, hub, rows, lineHelperRunner, lineRegistryLog, lineRulesFile })
     res.json({
       ok: true,
       captured: rows.length,
       groups: rows.filter((row) => row.groupId).map((row) => ({ groupId: row.groupId, eventType: row.eventType, text: row.text })),
-      joinSignal: joinSignalMessage ? 'sent' : 'none',
+      joinSignal: joinSignalMessage ? 'recorded' : 'none',
+      dutyCommands: ruleResults.length,
+      ruleCommands: ruleResults.length,
     })
   })
 
