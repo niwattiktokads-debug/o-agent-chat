@@ -103,6 +103,13 @@ Draft นี้ยังเป็นโหมด manual ภายในหน้
 
 ไฟล์นี้มีรายการ post-install checklist, สิ่งที่ยังติดหลังติดตั้ง, endpoint, test, และ line pointer ของทุกฟังก์ชันเพื่อไม่ให้แก้ตกหล่น
 
+## Omni Facebook ZORT KGP Payment Flow
+Flow สำหรับ Facebook Inbox -> ZORT order -> KGP payment request -> Facebook payment link -> KGP webhook -> finance update ถูกบันทึกเป็น draft/contract เท่านั้น:
+
+`docs/facebook-zort-kgp-payment-flow.md`
+
+ห้ามเปิด live, ส่งลิงก์เงินจริง, mark paid, refund, หรือ cancel payment จนกว่า KGP credentials, webhook, sandbox smoke, และ Boss approval จะครบ
+
 ## API Contract (freeze)
 ```
 GET  /api/state                                    → { roomName, leader, operator, executor, goal, scope, dod, doneDefinition, messages[], presence, updatedAt }
