@@ -44,6 +44,33 @@ export async function supabaseRpc(name, payload = {}) {
   })
 }
 
+export async function recordAiDecisionToSupabase(decision, { agentProfileId = null } = {}) {
+  const row = {
+    id: decision.id || `ai_${decision.threadId}_${Date.now()}`,
+    thread_id: decision.threadId,
+    agent_profile_id: agentProfileId,
+    confidence: Number(decision.confidence || 0),
+    action: decision.action || 'draft_ready',
+    source_ids_json: decision.sourceIds || [],
+    reason: [
+      decision.reason || '',
+      `provider=${decision.provider || ''}`,
+      `model=${decision.model || ''}`,
+      `intent=${decision.intent || ''}`,
+      `risk=${decision.risk || ''}`,
+    ].filter(Boolean).join(' | '),
+  }
+  const rows = await supabaseRest('/rest/v1/omni_ai_decisions', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      prefer: 'return=representation',
+    },
+    body: JSON.stringify(row),
+  })
+  return rows?.[0] ? snakeToCamel(rows[0]) : snakeToCamel(row)
+}
+
 export function getWebhookSecret() {
   return process.env.OMNI_WEBHOOK_INGEST_SECRET || ''
 }

@@ -1,5 +1,5 @@
 import { createAiReplyEngine } from '../../../../server/src/omni/aiReplyEngine.js'
-import { fetchOmniSnapshotFromSupabase, json } from '../../../_omniSupabase.js'
+import { fetchOmniSnapshotFromSupabase, json, recordAiDecisionToSupabase } from '../../../_omniSupabase.js'
 
 const PAGE_POLICY_FALLBACKS = {
   page_annalynn: 'policy_annalynn',
@@ -33,14 +33,15 @@ export default async function handler(req, res) {
     })
     const decision = await engine.draft({ thread, snapshot, policy })
     if (!decision.ok) return json(res, 400, decision)
+    const recorded = await recordDecision({ snapshot, thread, decision })
 
     return json(res, 200, {
       ok: true,
       decision,
-      recorded: null,
+      recorded: recorded.decision,
       sent: false,
       runtime: 'vercel_serverless',
-      recording: 'not_recorded_without_supabase_write_role',
+      recording: recorded.ok ? 'recorded_to_supabase' : recorded.error,
     })
   } catch (error) {
     return json(res, 500, { ok: false, error: error.message || 'ai_draft_failed' })
@@ -56,6 +57,16 @@ function policyForThread(snapshot, thread) {
   const page = (snapshot.pages || []).find((item) => item.id === thread.pageId)
   const policyId = page?.policySetId || PAGE_POLICY_FALLBACKS[thread.pageId]
   return (snapshot.policySets || []).find((item) => item.id === policyId) || { autoSend: {} }
+}
+
+async function recordDecision({ snapshot, thread, decision }) {
+  try {
+    const page = (snapshot.pages || []).find((item) => item.id === thread.pageId)
+    const row = await recordAiDecisionToSupabase(decision, { agentProfileId: page?.agentProfileId || null })
+    return { ok: true, decision: row }
+  } catch (error) {
+    return { ok: false, decision: null, error: error.message || 'ai_decision_record_failed' }
+  }
 }
 
 function deepMerge(base, patch) {
