@@ -6,6 +6,13 @@ const AUTO_SEND_ALL = process.env.OMNI_AI_AUTO_SEND_ALL === '1'
 const GEMINI_API_BASE = process.env.GEMINI_API_BASE || 'https://generativelanguage.googleapis.com/v1beta'
 const MAX_DRAFT_CHARS = Number(process.env.OMNI_AI_MAX_DRAFT_CHARS || 480)
 
+const PAGE_AGENT_FALLBACKS = {
+  page_annalynn: 'น้องอันนา',
+  page_annalynn_tiktok: 'น้องอันนา',
+  page_mankynd: 'MAN KYND Page AI',
+  page_des: 'Page Des AI',
+}
+
 function latestInboundMessage(thread, snapshot) {
   return (snapshot.messages || [])
     .filter((message) => message.threadId === thread.id && message.direction === 'inbound')
@@ -56,7 +63,8 @@ function relevantKnowledge(intent, snapshot) {
 
 function agentForThread(thread, snapshot) {
   const page = (snapshot.pages || []).find((item) => item.id === thread.pageId)
-  return (snapshot.agentProfiles || []).find((item) => item.id === page?.agentProfileId) || null
+  const agent = (snapshot.agentProfiles || []).find((item) => item.id === page?.agentProfileId) || null
+  return agent || { name: PAGE_AGENT_FALLBACKS[thread.pageId] || 'น้องอันนา' }
 }
 
 function customerForThread(thread, snapshot) {
@@ -140,6 +148,7 @@ function guardedDraftText(text, fallback) {
   const draft = String(text || '').replace(/\s+/g, ' ').trim()
   if (draft.length < 4) return fallback
   if (/^here is\b/i.test(draft) || /^```/.test(draft) || /"draftText"\s*:/.test(draft)) return fallback
+  if (/(AI Page Assistant|language model|โมเดล|prompt|system|developer)/i.test(draft)) return fallback
   if (/(และ|หรือ|กับ|ของ|ให้|ว่า|น้อง)$/i.test(draft)) return fallback
   return draft.slice(0, MAX_DRAFT_CHARS)
 }
@@ -232,7 +241,24 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
     if (!response.ok) {
       return {
         ...baseDecision,
-        ok: false,
+        ok: true,
+        provider: 'gemini',
+        model,
+        draftText: baseDecision.draftText,
+        confidence: Math.min(baseDecision.confidence || 0.7, 0.68),
+        reason: `gemini_error_fallback:${payload?.error?.message || payload?.error || response.status}`,
+        helperError: payload?.error?.message || payload?.error || `gemini_http_${response.status}`,
+      }
+    }
+    if (!payload?.candidates?.length) {
+      return {
+        ...baseDecision,
+        ok: true,
+        provider: 'gemini',
+        model,
+        draftText: baseDecision.draftText,
+        confidence: Math.min(baseDecision.confidence || 0.7, 0.68),
+        reason: 'gemini_empty_fallback',
         error: payload?.error?.message || payload?.error || `gemini_http_${response.status}`,
       }
     }
