@@ -661,6 +661,48 @@ test('AI reply engine drafts guarded replies from thread memory', async () => {
   assert.deepEqual(decision.evidenceIds, ['msg_1'])
 })
 
+test('AI reply engine calls Gemini natively for Vercel drafts', async () => {
+  const previousKey = process.env.GOOGLE_API_KEY
+  process.env.GOOGLE_API_KEY = 'test-gemini-key'
+  const calls = []
+  const service = createOmniService()
+  const thread = service.getThread('thread_1')
+  const ai = createAiReplyEngine({
+    provider: 'gemini',
+    model: 'gemini-3-flash-preview',
+    fetchImpl: async (url, options) => {
+      calls.push({ url, body: JSON.parse(options.body) })
+      return {
+        ok: true,
+        json: async () => ({
+          candidates: [{
+            content: {
+              parts: [{ text: JSON.stringify({ draftText: 'มีค่ะ เดี๋ยวเช็กสีและไซซ์ให้ก่อนนะคะ', confidence: 0.86, reason: 'stock_question' }) }],
+            },
+          }],
+        }),
+      }
+    },
+  })
+
+  try {
+    const decision = await ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
+
+    assert.equal(decision.ok, true)
+    assert.equal(decision.provider, 'gemini')
+    assert.equal(decision.model, 'gemini-3-flash-preview')
+    assert.equal(decision.intent, 'stock')
+    assert.equal(decision.allowed, true)
+    assert.equal(decision.draftText, 'มีค่ะ เดี๋ยวเช็กสีและไซซ์ให้ก่อนนะคะ')
+    assert.match(calls[0].url, /generativelanguage.googleapis.com/)
+    assert.match(calls[0].body.systemInstruction.parts[0].text, /ห้ามแต่งข้อมูล/)
+    assert.equal(calls[0].body.generationConfig.responseMimeType, 'application/json')
+  } finally {
+    if (previousKey === undefined) delete process.env.GOOGLE_API_KEY
+    else process.env.GOOGLE_API_KEY = previousKey
+  }
+})
+
 test('SQLite Omni store persists synced Facebook conversations across service instances', () => {
   const dbPath = `${process.cwd()}/.tmp-test/omni-${Date.now()}-${Math.random().toString(16).slice(2)}.sqlite`
   const firstStore = createSqliteOmniStore({ dbPath })

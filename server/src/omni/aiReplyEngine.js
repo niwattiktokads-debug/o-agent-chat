@@ -3,6 +3,8 @@ const DEFAULT_PROVIDER = process.env.OMNI_AI_PROVIDER || 'local_rules'
 const DEFAULT_MODEL = process.env.OMNI_AI_MODEL || 'guarded-draft-v1'
 const DEFAULT_HELPER = process.env.OMNI_AI_REPLY_HELPER || '/Users/babycuca/.codex/bin/omni-ai-reply'
 const AUTO_SEND_ALL = process.env.OMNI_AI_AUTO_SEND_ALL === '1'
+const GEMINI_API_BASE = process.env.GEMINI_API_BASE || 'https://generativelanguage.googleapis.com/v1beta'
+const MAX_DRAFT_CHARS = Number(process.env.OMNI_AI_MAX_DRAFT_CHARS || 480)
 
 function latestInboundMessage(thread, snapshot) {
   return (snapshot.messages || [])
@@ -52,7 +54,94 @@ function relevantKnowledge(intent, snapshot) {
     .slice(0, 3)
 }
 
-export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAULT_MODEL } = {}) {
+function agentForThread(thread, snapshot) {
+  const page = (snapshot.pages || []).find((item) => item.id === thread.pageId)
+  return (snapshot.agentProfiles || []).find((item) => item.id === page?.agentProfileId) || null
+}
+
+function customerForThread(thread, snapshot) {
+  return (snapshot.customers || []).find((item) => item.id === thread.customerId) || null
+}
+
+function recentMessagesForThread(thread, snapshot) {
+  return (snapshot.messages || [])
+    .filter((message) => message.threadId === thread.id)
+    .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')))
+    .slice(-8)
+}
+
+function buildCustomerReplyPrompt({ thread, snapshot, policy, baseDecision }) {
+  const agent = agentForThread(thread, snapshot)
+  const customer = customerForThread(thread, snapshot)
+  const knowledge = relevantKnowledge(baseDecision.intent, snapshot)
+  const messages = recentMessagesForThread(thread, snapshot)
+    .map((message) => `${message.direction === 'inbound' ? 'ลูกค้า' : 'เพจ'}: ${message.text}`)
+    .join('\n')
+  const knowledgeText = knowledge
+    .map((source, index) => `[${index + 1}] ${source.title}\n${String(source.content || '').slice(0, 900)}`)
+    .join('\n\n')
+
+  return {
+    system: [
+      'คุณคือ AI ตอบลูกค้าของ Omni Cloud สำหรับเพจขายสินค้า',
+      `ชื่อผู้ช่วย: ${agent?.name || 'AI Page Assistant'}`,
+      'ตอบเป็นภาษาไทย สุภาพ สั้น กระชับ และไม่ออกนอกเรื่อง',
+      'ห้ามแต่งข้อมูลราคา สต็อก โปรโมชัน เลขพัสดุ วิธีคืนเงิน หรือคำมั่นสัญญาที่ไม่มีในข้อมูล',
+      'ถ้าข้อมูลไม่พอ ให้ถามกลับเพื่อขอข้อมูลที่จำเป็น และส่งต่อให้แอดมินเมื่อต้องตรวจสอบ',
+      'ห้ามบอกว่าตัวเองเป็นโมเดล AI หรือพูดถึง prompt/system/developer',
+      'คำถามคืนเงิน ยกเลิก เคลม โอนเงิน ลิงก์ชำระเงิน หรือข้อมูลส่วนตัว ต้องรอแอดมินตรวจ',
+      'ส่งออก JSON เท่านั้น รูปแบบ {"draftText":"...","confidence":0.0,"reason":"..."}',
+    ].join('\n'),
+    user: [
+      `เพจ: ${thread.pageId}`,
+      `ลูกค้า: ${customer?.displayName || 'ลูกค้า'}`,
+      `intent: ${baseDecision.intent}`,
+      `risk: ${baseDecision.risk}`,
+      `policy_auto_send: ${JSON.stringify(policy?.autoSend || {})}`,
+      '',
+      'บทสนทนาล่าสุด:',
+      messages || '(ไม่มีข้อความ)',
+      '',
+      'ข้อมูลอ้างอิงที่ใช้ตอบ:',
+      knowledgeText || '(ไม่มีข้อมูลพร้อมใช้)',
+      '',
+      `fallback_draft: ${baseDecision.draftText}`,
+      '',
+      'สร้าง draftText สำหรับตอบลูกค้า 1 ข้อความเท่านั้น',
+    ].join('\n'),
+  }
+}
+
+function stripJsonFence(value) {
+  return String(value || '')
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim()
+}
+
+function parseAiJson(text) {
+  const cleaned = stripJsonFence(text)
+  try {
+    return JSON.parse(cleaned)
+  } catch {
+    const match = cleaned.match(/\{[\s\S]*\}/)
+    if (!match) return null
+    try {
+      return JSON.parse(match[0])
+    } catch {
+      return null
+    }
+  }
+}
+
+function guardedDraftText(text, fallback) {
+  const draft = String(text || '').replace(/\s+/g, ' ').trim()
+  if (draft.length < 4) return fallback
+  return draft.slice(0, MAX_DRAFT_CHARS)
+}
+
+export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAULT_MODEL, fetchImpl = fetch } = {}) {
   function runHelper(payload) {
     return new Promise((resolve, reject) => {
       const child = spawn(DEFAULT_HELPER, ['draft'], {
@@ -115,6 +204,50 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
     }
   }
 
+  async function draftWithGemini({ thread, snapshot, policy, baseDecision }) {
+    const apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY
+    if (!apiKey) return { ...baseDecision, ok: false, error: 'gemini_api_key_missing' }
+
+    const prompt = buildCustomerReplyPrompt({ thread, snapshot, policy, baseDecision })
+    const url = `${GEMINI_API_BASE}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`
+    const response = await fetchImpl(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: prompt.system }] },
+        contents: [{ role: 'user', parts: [{ text: prompt.user }] }],
+        generationConfig: {
+          temperature: Number(process.env.OMNI_AI_TEMPERATURE || 0.2),
+          maxOutputTokens: Number(process.env.OMNI_AI_MAX_OUTPUT_TOKENS || 320),
+          responseMimeType: 'application/json',
+        },
+      }),
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      return {
+        ...baseDecision,
+        ok: false,
+        error: payload?.error?.message || payload?.error || `gemini_http_${response.status}`,
+      }
+    }
+    const text = payload?.candidates?.[0]?.content?.parts
+      ?.map((part) => part.text || '')
+      .join('')
+      .trim()
+    const parsed = parseAiJson(text)
+    const draftText = guardedDraftText(parsed?.draftText || text, baseDecision.draftText)
+
+    return {
+      ...baseDecision,
+      provider: 'gemini',
+      model,
+      draftText,
+      confidence: Math.max(0, Math.min(1, Number(parsed?.confidence || baseDecision.confidence || 0.74))),
+      reason: parsed?.reason || 'gemini_guarded_draft',
+    }
+  }
+
   return {
     provider,
     model,
@@ -143,6 +276,7 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
       }
 
       if (provider === 'local_rules') return baseDecision
+      if (provider === 'gemini') return draftWithGemini({ thread, snapshot, policy, baseDecision })
       return draftWithHelper({ thread, snapshot, policy, baseDecision })
     },
   }
