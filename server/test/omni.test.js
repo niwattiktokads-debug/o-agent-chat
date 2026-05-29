@@ -677,7 +677,7 @@ test('AI reply engine calls Gemini natively for Vercel drafts', async () => {
         json: async () => ({
           candidates: [{
             content: {
-              parts: [{ text: JSON.stringify({ draftText: 'มีค่ะ เดี๋ยวเช็กสีและไซซ์ให้ก่อนนะคะ', confidence: 0.86, reason: 'stock_question' }) }],
+              parts: [{ text: 'มีค่ะ เดี๋ยวเช็กสีและไซซ์ให้ก่อนนะคะ' }],
             },
           }],
         }),
@@ -696,7 +696,7 @@ test('AI reply engine calls Gemini natively for Vercel drafts', async () => {
     assert.equal(decision.draftText, 'มีค่ะ เดี๋ยวเช็กสีและไซซ์ให้ก่อนนะคะ')
     assert.match(calls[0].url, /generativelanguage.googleapis.com/)
     assert.match(calls[0].body.systemInstruction.parts[0].text, /ห้ามแต่งข้อมูล/)
-    assert.equal(calls[0].body.generationConfig.responseMimeType, 'application/json')
+    assert.equal(calls[0].body.generationConfig.temperature, 0.2)
   } finally {
     if (previousKey === undefined) delete process.env.GOOGLE_API_KEY
     else process.env.GOOGLE_API_KEY = previousKey

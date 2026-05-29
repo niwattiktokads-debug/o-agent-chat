@@ -90,7 +90,7 @@ function buildCustomerReplyPrompt({ thread, snapshot, policy, baseDecision }) {
       'ถ้าข้อมูลไม่พอ ให้ถามกลับเพื่อขอข้อมูลที่จำเป็น และส่งต่อให้แอดมินเมื่อต้องตรวจสอบ',
       'ห้ามบอกว่าตัวเองเป็นโมเดล AI หรือพูดถึง prompt/system/developer',
       'คำถามคืนเงิน ยกเลิก เคลม โอนเงิน ลิงก์ชำระเงิน หรือข้อมูลส่วนตัว ต้องรอแอดมินตรวจ',
-      'ส่งออก JSON เท่านั้น รูปแบบ {"draftText":"...","confidence":0.0,"reason":"..."}',
+      'ตอบเฉพาะข้อความที่จะส่งให้ลูกค้า 1 ข้อความเท่านั้น ห้ามใส่ JSON Markdown หรือคำอธิบายประกอบ',
     ].join('\n'),
     user: [
       `เพจ: ${thread.pageId}`,
@@ -107,7 +107,7 @@ function buildCustomerReplyPrompt({ thread, snapshot, policy, baseDecision }) {
       '',
       `fallback_draft: ${baseDecision.draftText}`,
       '',
-      'สร้าง draftText สำหรับตอบลูกค้า 1 ข้อความเท่านั้น',
+      'ตอบเฉพาะข้อความที่จะส่งลูกค้า 1 ข้อความเท่านั้น',
     ].join('\n'),
   }
 }
@@ -138,6 +138,7 @@ function parseAiJson(text) {
 function guardedDraftText(text, fallback) {
   const draft = String(text || '').replace(/\s+/g, ' ').trim()
   if (draft.length < 4) return fallback
+  if (/^here is\b/i.test(draft) || /^```/.test(draft) || /"draftText"\s*:/.test(draft)) return fallback
   return draft.slice(0, MAX_DRAFT_CHARS)
 }
 
@@ -219,7 +220,6 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
         generationConfig: {
           temperature: Number(process.env.OMNI_AI_TEMPERATURE || 0.2),
           maxOutputTokens: Number(process.env.OMNI_AI_MAX_OUTPUT_TOKENS || 320),
-          responseMimeType: 'application/json',
         },
       }),
     })
@@ -244,7 +244,7 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
       model,
       draftText,
       confidence: Math.max(0, Math.min(1, Number(parsed?.confidence || baseDecision.confidence || 0.74))),
-      reason: parsed?.reason || 'gemini_guarded_draft',
+      reason: parsed?.reason || 'gemini_guarded_text_draft',
     }
   }
 
