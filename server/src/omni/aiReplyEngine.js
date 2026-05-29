@@ -89,8 +89,9 @@ function buildCustomerReplyPrompt({ thread, snapshot, policy, baseDecision }) {
       'ห้ามแต่งข้อมูลราคา สต็อก โปรโมชัน เลขพัสดุ วิธีคืนเงิน หรือคำมั่นสัญญาที่ไม่มีในข้อมูล',
       'ถ้าข้อมูลไม่พอ ให้ถามกลับเพื่อขอข้อมูลที่จำเป็น และส่งต่อให้แอดมินเมื่อต้องตรวจสอบ',
       'ห้ามบอกว่าตัวเองเป็นโมเดล AI หรือพูดถึง prompt/system/developer',
+      'ห้ามเรียกลูกค้าว่า "น้อง"',
       'คำถามคืนเงิน ยกเลิก เคลม โอนเงิน ลิงก์ชำระเงิน หรือข้อมูลส่วนตัว ต้องรอแอดมินตรวจ',
-      'ตอบเฉพาะข้อความที่จะส่งให้ลูกค้า 1 ข้อความเท่านั้น ห้ามใส่ JSON Markdown หรือคำอธิบายประกอบ',
+      'ตอบเฉพาะข้อความที่จะส่งให้ลูกค้า 1 ข้อความเท่านั้น ความยาวไม่เกิน 22 คำ ห้ามใส่ JSON Markdown หรือคำอธิบายประกอบ',
     ].join('\n'),
     user: [
       `เพจ: ${thread.pageId}`,
@@ -139,6 +140,7 @@ function guardedDraftText(text, fallback) {
   const draft = String(text || '').replace(/\s+/g, ' ').trim()
   if (draft.length < 4) return fallback
   if (/^here is\b/i.test(draft) || /^```/.test(draft) || /"draftText"\s*:/.test(draft)) return fallback
+  if (/(และ|หรือ|กับ|ของ|ให้|ว่า|น้อง)$/i.test(draft)) return fallback
   return draft.slice(0, MAX_DRAFT_CHARS)
 }
 
@@ -231,12 +233,14 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
         error: payload?.error?.message || payload?.error || `gemini_http_${response.status}`,
       }
     }
-    const text = payload?.candidates?.[0]?.content?.parts
+    const candidate = payload?.candidates?.[0] || {}
+    const text = candidate?.content?.parts
       ?.map((part) => part.text || '')
       .join('')
       .trim()
     const parsed = parseAiJson(text)
-    const draftText = guardedDraftText(parsed?.draftText || text, baseDecision.draftText)
+    const finishedCleanly = !candidate.finishReason || candidate.finishReason === 'STOP'
+    const draftText = finishedCleanly ? guardedDraftText(parsed?.draftText || text, baseDecision.draftText) : baseDecision.draftText
 
     return {
       ...baseDecision,
@@ -244,7 +248,7 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
       model,
       draftText,
       confidence: Math.max(0, Math.min(1, Number(parsed?.confidence || baseDecision.confidence || 0.74))),
-      reason: parsed?.reason || 'gemini_guarded_text_draft',
+      reason: finishedCleanly ? (parsed?.reason || 'gemini_guarded_text_draft') : `gemini_fallback_${candidate.finishReason}`,
     }
   }
 
