@@ -146,11 +146,29 @@ export async function fetchOmniSnapshotFromSupabase() {
     actionAudits: [],
     approvalTasks: approvalTasks.map(snakeToCamel),
     connectorHealth: [],
-    knowledgeSources: knowledgeSources.map((row) => ({
+    knowledgeSources: mergeSeedRows(seed.knowledgeSources || [], knowledgeSources.map((row) => ({
       ...snakeToCamel(row),
       tags: row.tags_json || [],
-    })),
+    }))),
     retentionPolicies: [],
     retentionRuns: [],
   }
+}
+
+export async function fetchKnowledgeSourcesFromSupabase({ query = '', type = '', status = '' } = {}) {
+  const snapshot = await fetchOmniSnapshotFromSupabase()
+  const safeQuery = String(query || '').trim().toLowerCase()
+  return (snapshot.knowledgeSources || [])
+    .filter((source) => !status || source.status === status)
+    .filter((source) => !type || source.type === type)
+    .filter((source) => {
+      if (!safeQuery) return true
+      const haystack = [
+        source.title,
+        source.content,
+        source.scope,
+        ...(source.tags || []),
+      ].join(' ').toLowerCase()
+      return haystack.includes(safeQuery)
+    })
 }

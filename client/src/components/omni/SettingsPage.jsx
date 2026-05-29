@@ -31,8 +31,16 @@ const REPORT_TIMEZONES = [
 
 const SETTINGS_SECTIONS = [
   { id: 'settings', label: 'พื้นฐาน' },
+  { id: 'ai-config', label: 'AI Config' },
   { id: 'connections', label: 'การเชื่อมต่อ' },
 ]
+
+const PAGE_RUNTIME_FALLBACKS = {
+  page_annalynn: { agentProfileId: 'agent_annalynn', policySetId: 'policy_annalynn' },
+  page_annalynn_tiktok: { agentProfileId: 'agent_annalynn', policySetId: 'policy_annalynn' },
+  page_mankynd: { agentProfileId: 'agent_mankynd', policySetId: 'policy_mankynd' },
+  page_des: { agentProfileId: 'agent_page_des', policySetId: 'policy_page_des' },
+}
 
 export default function SettingsPage({
   snapshot,
@@ -109,6 +117,7 @@ export default function SettingsPage({
   const section = activeSection || localSection
   const pages = localSnapshot?.pages || []
   const connectorHealth = localSnapshot?.connectorHealth || []
+  const showSaveSettings = section === 'settings'
 
   return (
     <main className="order-1 min-h-0 overflow-y-auto bg-[var(--color-paper)] p-4 lg:order-none lg:h-full lg:p-6">
@@ -127,13 +136,15 @@ export default function SettingsPage({
               กลับกล่องรวม
             </button>
           ) : null}
-          <button
-            type="button"
-            onClick={save}
-            className="rounded-[var(--radius-md)] bg-[var(--color-accent)] px-3 py-2 text-sm font-semibold text-[var(--color-accent-ink)]"
-          >
-            บันทึก setting
-          </button>
+          {showSaveSettings ? (
+            <button
+              type="button"
+              onClick={save}
+              className="rounded-[var(--radius-md)] bg-[var(--color-accent)] px-3 py-2 text-sm font-semibold text-[var(--color-accent-ink)]"
+            >
+              บันทึก setting
+            </button>
+          ) : null}
         </div>
       </header>
       <nav className="mt-4 flex flex-wrap gap-2" aria-label="Settings sections">
@@ -156,6 +167,8 @@ export default function SettingsPage({
         <div className="mt-4">
           <ConnectionsPage embedded showPageNav={false} />
         </div>
+      ) : section === 'ai-config' ? (
+        <AiConfigPanel snapshot={localSnapshot} onOpenChat={onOpenChat} />
       ) : (
         <>
           <section className="mt-4 grid gap-4 lg:grid-cols-2">
@@ -213,6 +226,175 @@ export default function SettingsPage({
       )}
     </main>
   )
+}
+
+function AiConfigPanel({ snapshot, onOpenChat }) {
+  const pages = snapshot?.pages || []
+  const agentProfiles = snapshot?.agentProfiles || []
+  const policySets = snapshot?.policySets || []
+  const knowledgeSources = snapshot?.knowledgeSources || []
+  const platformAccounts = snapshot?.platformAccounts || []
+  const pageRuntimeSettings = snapshot?.pageRuntimeSettings || []
+  const rows = pages.map((page) => {
+    const runtime = pageRuntimeSettings.find((item) => item.pageId === page.id) || {}
+    const fallback = PAGE_RUNTIME_FALLBACKS[page.id] || {}
+    const agentProfileId = page.agentProfileId || runtime.agentProfileId || fallback.agentProfileId
+    const policySetId = page.policySetId || runtime.policySetId || fallback.policySetId
+    const agent = agentProfiles.find((item) => item.id === agentProfileId)
+    const policy = policySets.find((item) => item.id === policySetId)
+    const accounts = platformAccounts.filter((item) => item.pageId === page.id)
+    const knowledge = knowledgeSources
+      .filter((item) => item.scope === page.id || item.scope === 'all_pages')
+      .sort((a, b) => Number(b.scope === page.id) - Number(a.scope === page.id))
+    const warnings = []
+    if (!agent) warnings.push('ยังไม่พบ AI profile')
+    if (!policy) warnings.push('ยังไม่พบ policy')
+    if (!knowledge.length) warnings.push('ยังไม่พบ knowledge')
+    if (!accounts.length) warnings.push('ยังไม่ผูก account')
+    return { page, agent, policy, accounts, knowledge, warnings }
+  })
+  const readyCount = rows.filter((row) => !row.warnings.length).length
+  const sourceCount = knowledgeSources.length
+
+  return (
+    <section className="mt-4 space-y-4">
+      <div className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-base font-bold text-[var(--color-ink)]">AI Config</h2>
+            <p className="mt-1 text-sm text-[var(--color-ink-2)]">ดูว่าแต่ละเพจใช้ AI ตัวไหน กรอบตอบอะไร และ knowledge ไหนคุมการตอบ</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <a
+              href="?mode=ai-train"
+              className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] px-3 py-2 text-sm font-semibold text-[var(--color-ink)] hover:bg-[var(--color-paper)]"
+            >
+              แก้ Knowledge
+            </a>
+            {onOpenChat ? (
+              <button
+                type="button"
+                onClick={onOpenChat}
+                className="rounded-[var(--radius-md)] bg-[var(--color-accent)] px-3 py-2 text-sm font-semibold text-[var(--color-accent-ink)]"
+              >
+                ทดสอบในกล่องรวม
+              </button>
+            ) : null}
+          </div>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          <Metric label="เพจทั้งหมด" value={String(pages.length)} />
+          <Metric label="พร้อมตาม config" value={`${readyCount}/${pages.length || 0}`} />
+          <Metric label="Knowledge sources" value={String(sourceCount)} />
+        </div>
+      </div>
+      <div className="grid gap-4 xl:grid-cols-2">
+        {rows.map((row) => (
+          <AiConfigCard key={row.page.id} row={row} />
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function AiConfigCard({ row }) {
+  const { page, agent, policy, accounts, knowledge, warnings } = row
+  const autoSend = policy?.autoSend || {}
+  const autoSendEntries = Object.entries(autoSend).filter(([, enabled]) => enabled)
+  const approvalEntries = Object.entries(autoSend).filter(([, enabled]) => !enabled)
+  return (
+    <article className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-base font-bold text-[var(--color-ink)]">{page.name}</h3>
+          <p className="mt-1 text-xs font-semibold text-[var(--color-muted)]">{page.id}</p>
+        </div>
+        <StatusPill tone={warnings.length ? 'warn' : 'ready'} label={warnings.length ? 'ต้องเช็ก' : 'พร้อม'} />
+      </div>
+      <dl className="mt-4 grid gap-3 sm:grid-cols-2">
+        <InfoItem label="AI ที่ตอบลูกค้า" value={agent?.name || 'ยังไม่ตั้ง'} />
+        <InfoItem label="Provider / Model" value={agent ? `${agent.provider} / ${agent.model}` : 'ยังไม่ตั้ง'} />
+        <InfoItem label="Policy" value={policy?.id || 'ยังไม่ตั้ง'} />
+        <InfoItem label="Accounts" value={accounts.length ? accounts.map((item) => `${item.platform}:${item.status}`).join(', ') : 'ยังไม่ผูก'} />
+      </dl>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <TagBlock title="ตอบอัตโนมัติได้" empty="ยังไม่มี intent ที่เปิด auto-send" items={autoSendEntries.map(([key]) => key)} />
+        <TagBlock title="ต้องให้บอสอนุมัติ" empty="ไม่มี intent ที่ถูกล็อก approval" items={approvalEntries.map(([key]) => key)} />
+      </div>
+      <div className="mt-4">
+        <h4 className="text-xs font-bold uppercase tracking-[0.08em] text-[var(--color-muted)]">Knowledge ที่ AI ใช้</h4>
+        <div className="mt-2 space-y-2">
+          {knowledge.length ? knowledge.slice(0, 4).map((source) => (
+            <div key={source.id} className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-bold text-[var(--color-ink)]">{source.title}</p>
+                <span className="text-xs font-semibold text-[var(--color-muted)]">{source.scope}</span>
+              </div>
+              <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--color-ink-2)]">{previewText(source.content)}</p>
+            </div>
+          )) : (
+            <p className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] p-3 text-sm font-semibold text-[var(--color-ink-2)]">ยังไม่มี knowledge สำหรับเพจนี้</p>
+          )}
+        </div>
+      </div>
+      {warnings.length ? (
+        <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-paper)] p-3">
+          <p className="text-xs font-bold uppercase tracking-[0.08em] text-[var(--color-muted)]">ต้องทำต่อ</p>
+          <ul className="mt-2 space-y-1 text-sm font-semibold text-[var(--color-ink-2)]">
+            {warnings.map((warning) => <li key={warning}>{warning}</li>)}
+          </ul>
+        </div>
+      ) : null}
+    </article>
+  )
+}
+
+function Metric({ label, value }) {
+  return (
+    <div className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] p-3">
+      <p className="text-xs font-bold uppercase tracking-[0.08em] text-[var(--color-muted)]">{label}</p>
+      <p className="mt-1 text-xl font-bold text-[var(--color-ink)]">{value}</p>
+    </div>
+  )
+}
+
+function InfoItem({ label, value }) {
+  return (
+    <div>
+      <dt className="text-xs font-bold uppercase tracking-[0.08em] text-[var(--color-muted)]">{label}</dt>
+      <dd className="mt-1 break-words text-sm font-semibold text-[var(--color-ink)]">{value}</dd>
+    </div>
+  )
+}
+
+function TagBlock({ title, empty, items }) {
+  return (
+    <div>
+      <h4 className="text-xs font-bold uppercase tracking-[0.08em] text-[var(--color-muted)]">{title}</h4>
+      {items.length ? (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {items.map((item) => (
+            <span key={item} className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] px-2 py-1 text-xs font-bold text-[var(--color-ink-2)]">{item}</span>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-2 text-sm font-semibold text-[var(--color-ink-2)]">{empty}</p>
+      )}
+    </div>
+  )
+}
+
+function StatusPill({ tone, label }) {
+  const ready = tone === 'ready'
+  return (
+    <span className={`rounded-[var(--radius-md)] border px-2 py-1 text-xs font-bold ${ready ? 'border-[var(--color-accent)] bg-[var(--color-accent)] text-[var(--color-accent-ink)]' : 'border-[var(--color-rule)] bg-[var(--color-paper)] text-[var(--color-ink-2)]'}`}>
+      {label}
+    </span>
+  )
+}
+
+function previewText(value = '') {
+  return String(value).replace(/\s+/g, ' ').trim() || 'ไม่มีรายละเอียด'
 }
 
 function SettingsCard({ title, rows, children }) {

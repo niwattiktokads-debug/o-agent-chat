@@ -24,7 +24,7 @@ const TOP_MODE_NAV = [
   { id: 'inbox', label: 'กล่องรวม', widthClass: 'w-[104px]' },
 ]
 
-const SETTINGS_SECTIONS = new Set(['settings', 'connections'])
+const SETTINGS_SECTIONS = new Set(['settings', 'ai-config', 'connections'])
 const OPERATION_MODE_IDS = new Set(OMNI_OPERATION_MODES.map((item) => item.id))
 
 export default function App() {
