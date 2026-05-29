@@ -221,7 +221,10 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
         contents: [{ role: 'user', parts: [{ text: prompt.user }] }],
         generationConfig: {
           temperature: Number(process.env.OMNI_AI_TEMPERATURE || 0.2),
-          maxOutputTokens: Number(process.env.OMNI_AI_MAX_OUTPUT_TOKENS || 320),
+          maxOutputTokens: Number(process.env.OMNI_AI_MAX_OUTPUT_TOKENS || 1024),
+          thinkingConfig: {
+            thinkingBudget: Number(process.env.OMNI_AI_THINKING_BUDGET || 0),
+          },
         },
       }),
     })
