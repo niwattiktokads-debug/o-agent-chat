@@ -7,6 +7,7 @@ const execFileAsync = promisify(execFile)
 const CSNAP_BASE_URL = process.env.CSNAP_BASE_URL || 'http://127.0.0.1:9876'
 const CSNAP_AUTH_FILE = process.env.CSNAP_AUTH_FILE || '/Users/babycuca/Projects/c-snap/data/.auth_token'
 const META_INBOX_HELPER = process.env.META_INBOX_HELPER || '/Users/babycuca/.codex/bin/meta-inbox-api'
+const INSTAGRAM_MESSAGING_HELPER = process.env.INSTAGRAM_MESSAGING_HELPER || '/Users/babycuca/.codex/bin/instagram-messaging-api'
 const CUSTOM_CONNECTIONS_PATH = process.env.OMNI_CUSTOM_CONNECTIONS_PATH || new URL('../../data/custom-connections.json', import.meta.url).pathname
 
 const CONNECTIONS = [
@@ -65,13 +66,13 @@ const CONNECTIONS = [
     provider: 'instagram',
     group: 'customer_channel',
     description: 'Instagram DM sales channel for chat-to-order workflows. Requires Instagram Professional account linked to Facebook, then channel verify and warehouse/user access mapping.',
-    helper: 'runtime gap: add instagram messaging helper via Meta Graph API before live use',
-    verify: null,
+    helper: '/Users/babycuca/.codex/bin/instagram-messaging-api',
+    verify: { command: '/Users/babycuca/.codex/bin/instagram-messaging-api', args: ['verify'] },
     fields: [
-      { id: 'instagram_business_id', label: 'Instagram business account ID', credentialName: 'Instagram Business Account ID -OA', secret: false, required: true },
-      { id: 'page_token', label: 'Linked Facebook page token', credentialName: 'Instagram Linked FB Page Token -OA', secret: true, required: true },
+      { id: 'instagram_user_id', label: 'Instagram user ID', credentialName: 'Instagram User ID -OA', secret: false, required: true },
+      { id: 'access_token', label: 'Instagram access token', credentialName: 'Instagram Access Token -OA', secret: true, required: true },
     ],
-    docs: 'https://zortout.com/docs/connect-and-set-up-instagram',
+    docs: '/Users/babycuca/.codex/integrations/instagram_messaging_api.json',
     endpoints: [
       {
         method: 'WEBHOOK',
@@ -507,10 +508,25 @@ function safeMetaConnection(connectionId) {
   return connection
 }
 
+function safeInstagramConnection(connectionId) {
+  const connection = findConnection(connectionId)
+  if (connection.provider !== 'instagram') throw new Error('instagram_connection_required')
+  return connection
+}
+
 async function runMetaInbox(args) {
   const { stdout } = await execFileAsync(META_INBOX_HELPER, args, {
     env: process.env,
     timeout: Number(process.env.OMNI_META_HELPER_TIMEOUT_MS || 60000),
+    maxBuffer: 1024 * 1024 * 8,
+  })
+  return JSON.parse(stdout)
+}
+
+async function runInstagramMessaging(args) {
+  const { stdout } = await execFileAsync(INSTAGRAM_MESSAGING_HELPER, args, {
+    env: process.env,
+    timeout: Number(process.env.OMNI_INSTAGRAM_HELPER_TIMEOUT_MS || 60000),
     maxBuffer: 1024 * 1024 * 8,
   })
   return JSON.parse(stdout)
@@ -522,6 +538,21 @@ function summarizeConversation(row, pageId) {
   return {
     id: row.id,
     customerName: customer?.name || 'Facebook Customer',
+    customerId: customer?.id || null,
+    snippet: row.snippet || '',
+    updatedTime: row.updated_time || null,
+    unreadCount: row.unread_count || 0,
+    messageCount: row.message_count || 0,
+    link: row.link || null,
+  }
+}
+
+function summarizeInstagramConversation(row, ownUsername = '') {
+  const participants = row.participants?.data || []
+  const customer = participants.find((item) => item.username && item.username !== ownUsername) || participants[0] || null
+  return {
+    id: row.id,
+    customerName: customer?.username || 'Instagram Customer',
     customerId: customer?.id || null,
     snippet: row.snippet || '',
     updatedTime: row.updated_time || null,
@@ -546,6 +577,22 @@ function summarizeMessage(row, pageId) {
   }
 }
 
+function summarizeInstagramMessage(row, ownUsername = '') {
+  const fromUsername = row.from?.username || row.from?.name || ''
+  const fromSelf = ownUsername && fromUsername === ownUsername
+  const target = row.to?.data?.find((item) => item.username !== ownUsername) || row.to?.data?.[0] || null
+  return {
+    id: row.id,
+    direction: fromSelf ? 'outbound' : 'inbound',
+    senderId: row.from?.id || null,
+    authorName: fromUsername || (fromSelf ? 'Instagram Account' : 'Instagram Customer'),
+    recipientId: target?.id || null,
+    recipientName: target?.username || target?.name || null,
+    text: String(row.message || '').trim(),
+    createdTime: row.created_time || null,
+  }
+}
+
 async function listMetaConversations(connectionId, { limit = 5 } = {}) {
   const connection = safeMetaConnection(connectionId)
   const safeLimit = Math.min(20, Math.max(1, Number(limit) || 5))
@@ -556,6 +603,23 @@ async function listMetaConversations(connectionId, { limit = 5 } = {}) {
     connectionId,
     pageProfile: connection.pageProfile,
     conversations: (payload.response?.data || []).map((row) => summarizeConversation(row, connection.pageId)),
+  }
+}
+
+async function listInstagramConversations(connectionId, { limit = 5 } = {}) {
+  safeInstagramConnection(connectionId)
+  const safeLimit = Math.min(20, Math.max(1, Number(limit) || 5))
+  const [account, payload] = await Promise.all([
+    runInstagramMessaging(['verify']).catch(() => null),
+    runInstagramMessaging(['list-conversations', `--limit=${safeLimit}`]),
+  ])
+  if (!payload?.ok) throw new Error(payload?.error || payload?.reason || 'instagram_conversations_failed')
+  const ownUsername = account?.account?.username || ''
+  return {
+    ok: true,
+    connectionId,
+    pageProfile: 'instagram',
+    conversations: (payload.response?.data || []).map((row) => summarizeInstagramConversation(row, ownUsername)),
   }
 }
 
@@ -576,6 +640,25 @@ async function readMetaThread(connectionId, conversationId, { limit = 20 } = {})
     conversationId,
     pageProfile: connection.pageProfile,
     messages: (payload.response?.data || []).map((row) => summarizeMessage(row, connection.pageId)),
+  }
+}
+
+async function readInstagramThread(connectionId, conversationId, { limit = 20 } = {}) {
+  safeInstagramConnection(connectionId)
+  if (!conversationId) throw new Error('conversation_id_required')
+  const safeLimit = Math.min(50, Math.max(1, Number(limit) || 20))
+  const [account, payload] = await Promise.all([
+    runInstagramMessaging(['verify']).catch(() => null),
+    runInstagramMessaging(['read-thread', `--conversation-id=${conversationId}`, `--limit=${safeLimit}`]),
+  ])
+  if (!payload?.ok) throw new Error(payload?.error || payload?.reason || 'instagram_thread_failed')
+  const ownUsername = account?.account?.username || ''
+  return {
+    ok: true,
+    connectionId,
+    conversationId,
+    pageProfile: 'instagram',
+    messages: (payload.response?.messages?.data || []).map((row) => summarizeInstagramMessage(row, ownUsername)),
   }
 }
 
@@ -601,6 +684,33 @@ async function sendMetaReply(connectionId, conversationId, { message = '', appro
     connectionId,
     conversationId,
     pageProfile: connection.pageProfile,
+    recipientId: latestInbound.senderId,
+    message: text,
+    response: payload.response || payload,
+  }
+}
+
+async function sendInstagramReply(connectionId, conversationId, { message = '', approved = false } = {}) {
+  safeInstagramConnection(connectionId)
+  if (!conversationId) throw new Error('conversation_id_required')
+  const text = String(message || '').trim()
+  if (!text) throw new Error('message_required')
+  if (approved !== true) throw new Error('approval_required')
+  const thread = await readInstagramThread(connectionId, conversationId, { limit: 20 })
+  const latestInbound = thread.messages.find((row) => row.direction === 'inbound' && row.senderId)
+  if (!latestInbound?.senderId) throw new Error('recipient_id_not_found')
+  const payload = await runInstagramMessaging([
+    'send-reply',
+    `--recipient-id=${latestInbound.senderId}`,
+    `--message=${text}`,
+    '--approved',
+  ])
+  if (!payload?.ok) throw new Error(payload?.error || payload?.reason || 'instagram_send_reply_failed')
+  return {
+    ok: true,
+    connectionId,
+    conversationId,
+    pageProfile: 'instagram',
     recipientId: latestInbound.senderId,
     message: text,
     response: payload.response || payload,
@@ -731,8 +841,20 @@ export function createConnectionRuntime() {
     remove: removeConnection,
     verify: verifyConnection,
     saveSecrets: saveConnectionSecrets,
-    listConversations: listMetaConversations,
-    readThread: readMetaThread,
-    sendReply: sendMetaReply,
+    async listConversations(connectionId, options) {
+      const connection = findConnection(connectionId)
+      if (connection.provider === 'instagram') return listInstagramConversations(connectionId, options)
+      return listMetaConversations(connectionId, options)
+    },
+    async readThread(connectionId, conversationId, options) {
+      const connection = findConnection(connectionId)
+      if (connection.provider === 'instagram') return readInstagramThread(connectionId, conversationId, options)
+      return readMetaThread(connectionId, conversationId, options)
+    },
+    async sendReply(connectionId, conversationId, options) {
+      const connection = findConnection(connectionId)
+      if (connection.provider === 'instagram') return sendInstagramReply(connectionId, conversationId, options)
+      return sendMetaReply(connectionId, conversationId, options)
+    },
   }
 }

@@ -1,12 +1,15 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import express from 'express'
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { OMNI_STATUSES, validatePage } from '../src/omni/schema.js'
 import { createOmniSeed } from '../src/omni/seed.js'
 import { createAdapterRegistry } from '../src/omni/adapters.js'
 import { createOmniService } from '../src/omni/service.js'
-import { listFacebookConversations, normalizeMetaConversations } from '../src/omni/metaInboxClient.js'
+import { listFacebookConversations, normalizeMetaConversations, sendFacebookCommentReply } from '../src/omni/metaInboxClient.js'
+import { loadPageRegistry } from '../src/omni/pageRegistry.js'
 import { createMetaSocialRuntime } from '../src/omni/metaSocialRuntime.js'
 import { createAiReplyEngine } from '../src/omni/aiReplyEngine.js'
 import { normalizeMetaWebhookPayload } from '../src/omni/metaWebhook.js'
@@ -15,14 +18,18 @@ import { normalizeTikTokMessagingWebhookPayload } from '../src/omni/tiktokMessag
 import { getOmniSchemaSummary, loadOmniSchemaSql, REQUIRED_OMNI_TABLES } from '../src/omni/db/schema.js'
 import { createSqliteOmniStore } from '../src/omni/db/sqliteStore.js'
 import { mountRoutes } from '../src/routes.js'
+import { mountWebhook } from '../src/webhook.js'
+import { createState } from '../src/state.js'
 import { createZortCommerceRuntime } from '../src/omni/zortCommerceRuntime.js'
 
 test('omni seed starts with configured production page data', () => {
   const seed = createOmniSeed()
-  assert.equal(seed.pages.length, 5)
+  assert.equal(seed.pages.length, 6)
   assert.equal(seed.pages.find((page) => page.id === 'page_annalynn').name, 'Anna Lynn')
+  assert.equal(seed.pages.find((page) => page.id === 'page_ig_annalynn').name, 'Anna Lynn IG')
   assert.equal(seed.pages.find((page) => page.id === 'page_annalynn_tiktok').name, 'AnnaLynn')
   assert.equal(seed.platformAccounts.find((account) => account.id === 'acct_fb_annalynn').pageId, 'page_annalynn')
+  assert.equal(seed.platformAccounts.find((account) => account.id === 'acct_ig_annalynn').pageId, 'page_ig_annalynn')
   assert.equal(seed.platformAccounts.find((account) => account.id === 'acct_tt_shop').pageId, 'page_annalynn_tiktok')
   assert.equal(seed.platformAccounts.find((account) => account.id === 'acct_tt_annalynn_dm').provider, 'tiktok_business_messaging')
   assert.ok(seed.pages.find((page) => page.id === 'page_fb_112154661515664'))
@@ -32,7 +39,7 @@ test('omni seed starts with configured production page data', () => {
   assert.equal(seed.pages.every((page) => page.status === 'active'), true)
   assert.equal(seed.pages.every((page) => page.policySetId), true)
   assert.equal(seed.pages.every((page) => page.agentProfileId), true)
-  assert.equal(seed.knowledgeSources.length, 3)
+  assert.equal(seed.knowledgeSources.length, 5)
   assert.equal(seed.knowledgeSources.every((source) => source.content), true)
 })
 
@@ -93,6 +100,13 @@ test('normalizes TikTok Business Messaging webhook payload into Omni threads', (
   assert.equal(normalized.threads[0].id, 'ttbm_conv_anna_1')
   assert.equal(normalized.threads[0].pageId, 'page_annalynn_tiktok')
   assert.equal(normalized.messages[0].text, 'มีไซซ์ไหม')
+})
+
+test('MAN KYND seed keeps Meta provider account id for runtime sync', () => {
+  const seed = createOmniSeed()
+  const account = seed.platformAccounts.find((item) => item.id === 'acct_fb_mankynd')
+
+  assert.equal(account.providerAccountId, '189971841184132')
 })
 
 test('page validation accepts active, paused, and archived statuses', () => {
@@ -209,7 +223,7 @@ test('omni routes are mounted under api', async () => {
 
     assert.equal(response.status, 200)
     assert.equal(body.ok, true)
-    assert.equal(body.pages.length, 5)
+    assert.equal(body.pages.length, 6)
   } finally {
     server.close()
   }
@@ -442,6 +456,40 @@ test('Facebook connector accepts configured extra page profile', async () => {
   assert.equal(result.page.omniPageId, 'page_fb_112154661515664')
 })
 
+test('page registry merges file profiles with fallback profiles', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'omni-pages-'))
+  const registryPath = join(dir, 'pages.json')
+  writeFileSync(registryPath, JSON.stringify([{
+    profileKey: 'fb_extra_page',
+    pageId: '999999999',
+    pageName: 'Extra Page',
+    omniPageId: 'page_extra',
+    platform: 'facebook',
+  }]))
+
+  const registry = loadPageRegistry({ registryPath })
+
+  assert.equal(registry.anna_lynn.omniPageId, 'page_annalynn')
+  assert.equal(registry.ig_anna_lynn.pageId, 'PLACEHOLDER_IG_PAGE_ID')
+  assert.equal(registry.fb_extra_page.omniPageId, 'page_extra')
+})
+
+test('Facebook comment connector calls meta helper through injectable runner', async () => {
+  const calls = []
+  const result = await sendFacebookCommentReply({
+    pageProfile: 'anna_lynn',
+    commentId: 'comment_123',
+    message: 'ทัก inbox ได้เลยค่ะ',
+    runner: async (args) => {
+      calls.push(args)
+      return { ok: true, response: { id: 'reply_123' } }
+    },
+  })
+
+  assert.deepEqual(calls[0], ['reply-comment', '--page=anna_lynn', '--comment-id=comment_123', '--message=ทัก inbox ได้เลยค่ะ', '--approved'])
+  assert.equal(result.response.id, 'reply_123')
+})
+
 test('Facebook connector reads thread messages beyond conversation snippets', async () => {
   const calls = []
   const result = await listFacebookConversations({
@@ -557,6 +605,15 @@ test('normalizes Meta webhook messages into Omni memory rows', () => {
         sender: { id: 'customer_vz_1' },
         recipient: { id: '112154661515664' },
         timestamp: 1779470000000,
+        referral: {
+          source: 'ADS',
+          ad_id: 'ad_123',
+          ads_context_data: {
+            ad_title: 'เดรสดำโปรเปิดตัว',
+            campaign_name: 'Anna Lynn Launch',
+            post_id: '112154661515664_999',
+          },
+        },
         message: { mid: 'mid_vz_1', text: 'มีสินค้าไหม' },
       }],
     }],
@@ -565,6 +622,73 @@ test('normalizes Meta webhook messages into Omni memory rows', () => {
   assert.equal(normalized.threads[0].pageId, 'page_fb_112154661515664')
   assert.equal(normalized.messages[0].direction, 'inbound')
   assert.equal(normalized.messages[0].text, 'มีสินค้าไหม')
+  assert.equal(normalized.threads[0].originContext.sourceType, 'ad')
+  assert.equal(normalized.threads[0].originContext.ad.id, 'ad_123')
+  assert.equal(normalized.threads[0].originContext.ad.title, 'เดรสดำโปรเปิดตัว')
+  assert.equal(normalized.threads[0].originContext.post.id, '112154661515664_999')
+  assert.match(normalized.threads[0].originContext.replyFrame, /แอด\/โพสต์/)
+})
+
+test('normalizes Meta live referral context into Omni origin rows', () => {
+  const normalized = normalizeMetaWebhookPayload({
+    object: 'page',
+    entry: [{
+      id: '122106446570001676',
+      messaging: [{
+        sender: { id: 'customer_live_1' },
+        recipient: { id: '122106446570001676' },
+        timestamp: 1779470000000,
+        referral: {
+          source: 'LIVE',
+          type: 'OPEN_THREAD',
+          ref: 'live_ref_001',
+          live_id: 'live_anna_001',
+          video_id: 'video_anna_001',
+          product_id: 'prod_black_m',
+          sku: 'DRESS-BLK-M',
+          product_name: 'เดรสดำ',
+          color: 'ดำ',
+          size: 'M',
+        },
+        message: { mid: 'mid_live_1', text: 'ตัวนี้มีไหม' },
+      }],
+    }],
+  })
+
+  assert.equal(normalized.threads[0].originContext.sourceType, 'live')
+  assert.equal(normalized.threads[0].originContext.live.id, 'live_anna_001')
+  assert.equal(normalized.threads[0].originContext.live.videoId, 'video_anna_001')
+  assert.equal(normalized.threads[0].originContext.live.productId, 'prod_black_m')
+  assert.equal(normalized.threads[0].originContext.live.sku, 'DRESS-BLK-M')
+  assert.equal(normalized.threads[0].originContext.productHint.text, 'เดรสดำ')
+  assert.equal(normalized.threads[0].originContext.productHint.color, 'ดำ')
+  assert.equal(normalized.threads[0].originContext.productHint.size, 'M')
+  assert.match(normalized.threads[0].originContext.replyFrame, /ไลฟ์/)
+})
+
+test('normalizes Meta live referral without product without using ref as product hint', () => {
+  const normalized = normalizeMetaWebhookPayload({
+    object: 'page',
+    entry: [{
+      id: '122106446570001676',
+      messaging: [{
+        sender: { id: 'customer_live_unknown_1' },
+        recipient: { id: '122106446570001676' },
+        timestamp: 1779470000000,
+        referral: {
+          source: 'LIVE',
+          ref: 'live-general-entrypoint',
+          live_id: 'live_anna_unknown_001',
+        },
+        message: { mid: 'mid_live_unknown_1', text: 'ตัวนี้มีไหม' },
+      }],
+    }],
+  })
+
+  assert.equal(normalized.threads[0].originContext.sourceType, 'live')
+  assert.equal(normalized.threads[0].originContext.ref, 'live-general-entrypoint')
+  assert.equal(normalized.threads[0].originContext.live.id, 'live_anna_unknown_001')
+  assert.equal(normalized.threads[0].originContext.productHint, undefined)
 })
 
 test('normalizes Meta page feed webhook changes into Omni post rows', () => {
@@ -583,6 +707,7 @@ test('normalizes Meta page feed webhook changes into Omni post rows', () => {
           sender_id: 'customer_feed_1',
           sender_name: 'Feed Customer',
           message: 'สนใจโพสต์นี้ค่ะ',
+          post_message: 'เดรสดำไซซ์ M โปรวันนี้',
           created_time: 1779470001,
         },
       }],
@@ -591,11 +716,67 @@ test('normalizes Meta page feed webhook changes into Omni post rows', () => {
 
   assert.equal(normalized.customers[0].displayName, 'Feed Customer')
   assert.equal(normalized.threads[0].pageId, 'page_annalynn')
+  assert.equal(normalized.threads[0].platform, 'facebook_comment')
+  assert.equal(normalized.threads[0].providerThreadId, '122106446570001676_555')
   assert.equal(normalized.threads[0].intent, 'comment')
   assert.equal(normalized.messages[0].direction, 'inbound')
   assert.equal(normalized.messages[0].providerMessageId, '122106446570001676_555_777')
   assert.equal(normalized.messages[0].text, 'สนใจโพสต์นี้ค่ะ')
   assert.match(normalized.messages[0].sourceRef, /^meta_feed:122106446570001676:comment:add$/)
+  assert.equal(normalized.threads[0].originContext.sourceType, 'post_comment')
+  assert.equal(normalized.threads[0].originContext.post.id, '122106446570001676_555')
+  assert.equal(normalized.threads[0].originContext.productHint.color, 'ดำ')
+  assert.equal(normalized.threads[0].originContext.productHint.size, 'M')
+})
+
+test('normalizes Instagram DM webhook payload into Omni memory rows', () => {
+  const normalized = normalizeMetaWebhookPayload({
+    object: 'instagram',
+    entry: [{
+      id: 'PLACEHOLDER_IG_PAGE_ID',
+      messaging: [{
+        sender: { id: 'ig_customer_1' },
+        recipient: { id: 'PLACEHOLDER_IG_PAGE_ID' },
+        timestamp: 1779470000000,
+        message: { mid: 'ig_mid_1', text: 'มีไซซ์ไหมคะ' },
+      }],
+    }],
+  })
+
+  assert.equal(normalized.customers[0].platform, 'instagram')
+  assert.equal(normalized.threads[0].pageId, 'page_ig_annalynn')
+  assert.equal(normalized.threads[0].platform, 'instagram')
+  assert.equal(normalized.messages[0].id, 'ig_msg_ig_mid_1')
+  assert.equal(normalized.messages[0].sourceRef, 'instagram_webhook:PLACEHOLDER_IG_PAGE_ID')
+})
+
+test('normalizes Instagram comment webhook payload into Omni comment rows', () => {
+  const normalized = normalizeMetaWebhookPayload({
+    object: 'instagram',
+    entry: [{
+      id: 'PLACEHOLDER_IG_PAGE_ID',
+      time: 1779470000,
+      changes: [{
+        field: 'comments',
+        value: {
+          media_id: 'ig_media_555',
+          comment_id: 'ig_comment_777',
+          from: { id: 'ig_customer_2', username: 'buyer_ig' },
+          text: 'เดรสดำไซซ์ M ยังมีไหม',
+          created_time: 1779470001,
+        },
+      }],
+    }],
+  })
+
+  assert.equal(normalized.customers[0].displayName, 'buyer_ig')
+  assert.equal(normalized.customers[0].platform, 'instagram')
+  assert.equal(normalized.threads[0].pageId, 'page_ig_annalynn')
+  assert.equal(normalized.threads[0].platform, 'instagram_comment')
+  assert.equal(normalized.threads[0].providerThreadId, 'ig_media_555')
+  assert.equal(normalized.messages[0].providerMessageId, 'ig_comment_777')
+  assert.equal(normalized.threads[0].originContext.productHint.color, 'ดำ')
+  assert.equal(normalized.threads[0].originContext.productHint.size, 'M')
 })
 
 test('omni service syncs Meta webhook messages into memory store', () => {
@@ -656,9 +837,51 @@ test('AI reply engine drafts guarded replies from thread memory', async () => {
   assert.equal(decision.intent, 'stock')
   assert.equal(decision.allowed, true)
   assert.match(decision.draftText, /เช็กสต็อก/)
+  assert.match(decision.draftText, /สี.*ไซซ์/)
+  assert.equal(decision.draftText.length > 80, true)
   assert.equal(decision.sourceIds.some((id) => id.startsWith('ks_')), true)
   assert.equal(decision.sourceIds.every((id) => id.startsWith('ks_')), true)
   assert.deepEqual(decision.evidenceIds, ['msg_1'])
+})
+
+test('AI reply engine asks narrowly when customer came from live without product identity', async () => {
+  const seed = createOmniSeed()
+  seed.customers.push({ id: 'cust_live_unknown', displayName: 'Live Customer', matchConfidence: 1 })
+  seed.threads.push({
+    id: 'thread_live_unknown',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'cust_live_unknown',
+    status: 'open',
+    intent: 'unknown',
+    risk: 'low',
+    unreadCount: 1,
+    messageCount: 1,
+    updatedAt: '2026-05-29T08:00:00.000Z',
+    originContext: {
+      channel: 'facebook_live',
+      sourceType: 'live',
+      live: { id: 'live_anna_001', clickedAt: '2026-05-29T08:00:00.000Z' },
+      replyFrame: 'ลูกค้ามาจากไลฟ์ ให้ถามกลับเฉพาะสินค้าในไลฟ์ถ้ายังระบุไม่ได้',
+    },
+  })
+  seed.messages.push({
+    id: 'msg_live_unknown',
+    threadId: 'thread_live_unknown',
+    direction: 'inbound',
+    authorName: 'Live Customer',
+    text: 'ตัวนี้มีไหม',
+    createdAt: '2026-05-29T08:00:00.000Z',
+    originContext: seed.threads.at(-1).originContext,
+  })
+  const service = createOmniService(seed)
+  const thread = service.getThread('thread_live_unknown')
+  const ai = createAiReplyEngine({ provider: 'local_rules', model: 'test' })
+  const decision = await ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
+
+  assert.equal(decision.originContext.sourceType, 'live')
+  assert.match(decision.draftText, /สนใจตัวไหนในไลฟ์/)
+  assert.doesNotMatch(decision.draftText, /ส่งรูป/)
 })
 
 test('AI reply engine calls Gemini natively for Vercel drafts', async () => {
@@ -677,7 +900,7 @@ test('AI reply engine calls Gemini natively for Vercel drafts', async () => {
         json: async () => ({
           candidates: [{
             content: {
-              parts: [{ text: 'มีค่ะ เดี๋ยวเช็กสีและไซซ์ให้ก่อนนะคะ' }],
+              parts: [{ text: 'ได้ค่ะ เดี๋ยวช่วยเช็กสีและไซซ์จากสินค้าที่สนใจให้ก่อนนะคะ ถ้าต้องการไซซ์ M สีดำ เดี๋ยวแอดมินช่วยตรวจสต็อกและราคาที่ถูกต้องให้ค่ะ' }],
             },
           }],
         }),
@@ -693,10 +916,49 @@ test('AI reply engine calls Gemini natively for Vercel drafts', async () => {
     assert.equal(decision.model, 'gemini-3-flash-preview')
     assert.equal(decision.intent, 'stock')
     assert.equal(decision.allowed, true)
-    assert.equal(decision.draftText, 'มีค่ะ เดี๋ยวเช็กสีและไซซ์ให้ก่อนนะคะ')
+    assert.equal(decision.draftText, 'ได้ค่ะ เดี๋ยวช่วยเช็กสีและไซซ์จากสินค้าที่สนใจให้ก่อนนะคะ ถ้าต้องการไซซ์ M สีดำ เดี๋ยวแอดมินช่วยตรวจสต็อกและราคาที่ถูกต้องให้ค่ะ')
     assert.match(calls[0].url, /generativelanguage.googleapis.com/)
     assert.match(calls[0].body.systemInstruction.parts[0].text, /ห้ามแต่งข้อมูล/)
+    assert.match(calls[0].body.systemInstruction.parts[0].text, /ช่วยลูกค้าให้ครบก่อน/)
+    assert.match(calls[0].body.systemInstruction.parts[0].text, /2-4 ประโยค/)
+    assert.match(calls[0].body.systemInstruction.parts[0].text, /ห้ามแทนตัวเองด้วยชื่อผู้ช่วย/)
+    assert.match(calls[0].body.systemInstruction.parts[0].text, /origin context/)
+    assert.match(calls[0].body.contents[0].parts[0].text, /บริบทที่มาของลูกค้า/)
+    assert.match(calls[0].body.contents[0].parts[0].text, /ad_seed_black_m/)
+    assert.match(calls[0].body.contents[0].parts[0].text, /เสื้อสีดำ/)
     assert.equal(calls[0].body.generationConfig.temperature, 0.2)
+  } finally {
+    if (previousKey === undefined) delete process.env.GOOGLE_API_KEY
+    else process.env.GOOGLE_API_KEY = previousKey
+  }
+})
+
+test('AI reply engine falls back when Gemini invents price or stock without source evidence', async () => {
+  const previousKey = process.env.GOOGLE_API_KEY
+  process.env.GOOGLE_API_KEY = 'test-gemini-key'
+  const service = createOmniService()
+  const thread = service.getThread('thread_1')
+  const ai = createAiReplyEngine({
+    provider: 'gemini',
+    model: 'gemini-3-flash-preview',
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({
+        candidates: [{
+          content: {
+            parts: [{ text: 'สินค้าพร้อมส่งค่ะ ราคาพิเศษวันนี้ 890 บาท สนใจสั่งซื้อแจ้งได้เลยค่ะ' }],
+          },
+        }],
+      }),
+    }),
+  })
+
+  try {
+    const decision = await ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
+
+    assert.match(decision.draftText, /เช็กสต็อก/)
+    assert.doesNotMatch(decision.draftText, /890/)
+    assert.doesNotMatch(decision.draftText, /พร้อมส่ง/)
   } finally {
     if (previousKey === undefined) delete process.env.GOOGLE_API_KEY
     else process.env.GOOGLE_API_KEY = previousKey

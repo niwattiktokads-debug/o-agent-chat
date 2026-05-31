@@ -1,14 +1,14 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import { FALLBACK_PAGE_PROFILES, loadPageRegistry } from './pageRegistry.js'
 
 const execFileAsync = promisify(execFile)
 const DEFAULT_HELPER = process.env.META_INBOX_HELPER || '/Users/babycuca/.codex/bin/meta-inbox-api'
 
-export const FACEBOOK_PAGE_PROFILES = {
-  man_kynd: { pageId: '189971841184132', pageName: 'MAN KYND', omniPageId: 'page_mankynd' },
-  anna_lynn: { pageId: '122106446570001676', pageName: 'Anna Lynn', omniPageId: 'page_annalynn' },
-  page_des: { pageId: '1137894522741329', pageName: 'Niwatha และ AI ชื่อเดส', omniPageId: 'page_des' },
-  fb_112154661515664: { pageId: '112154661515664', pageName: 'Viris Zamara', omniPageId: 'page_fb_112154661515664' },
+export const FACEBOOK_PAGE_PROFILES = FALLBACK_PAGE_PROFILES
+
+function pageProfiles() {
+  return loadPageRegistry()
 }
 
 async function defaultRunner(args) {
@@ -59,7 +59,7 @@ function normalizeMetaConversationPreview({ conversation, customer }) {
 }
 
 export function normalizeMetaConversations({ pageProfile, response, threadMessagesByConversationId = {} }) {
-  const profile = FACEBOOK_PAGE_PROFILES[pageProfile]
+  const profile = pageProfiles()[pageProfile]
   if (!profile) throw new Error(`unknown_facebook_page:${pageProfile}`)
 
   const conversations = response?.data || []
@@ -114,7 +114,7 @@ export function normalizeMetaConversations({ pageProfile, response, threadMessag
 }
 
 export async function listFacebookConversations({ pageProfile = 'anna_lynn', runner = defaultRunner } = {}) {
-  if (!FACEBOOK_PAGE_PROFILES[pageProfile]) throw new Error(`unknown_facebook_page:${pageProfile}`)
+  if (!pageProfiles()[pageProfile]) throw new Error(`unknown_facebook_page:${pageProfile}`)
   const payload = await runner(['list-conversations', `--page=${pageProfile}`])
   if (!payload?.ok) throw new Error(payload?.error || 'meta_inbox_failed')
   const threadMessagesByConversationId = {}
@@ -126,7 +126,7 @@ export async function listFacebookConversations({ pageProfile = 'anna_lynn', run
 }
 
 export async function sendFacebookReply({ pageProfile = 'anna_lynn', recipientId, message, runner = defaultRunner } = {}) {
-  if (!FACEBOOK_PAGE_PROFILES[pageProfile]) throw new Error(`unknown_facebook_page:${pageProfile}`)
+  if (!pageProfiles()[pageProfile]) throw new Error(`unknown_facebook_page:${pageProfile}`)
   if (!recipientId) throw new Error('recipient_id_required')
   if (!String(message || '').trim()) throw new Error('message_required')
   const payload = await runner([
@@ -137,5 +137,22 @@ export async function sendFacebookReply({ pageProfile = 'anna_lynn', recipientId
     '--approved',
   ])
   if (!payload?.ok) throw new Error(payload?.error || 'meta_send_reply_failed')
+  return payload
+}
+
+export async function sendFacebookCommentReply(input = {}, runnerArg = null) {
+  const { pageProfile = 'anna_lynn', commentId, message } = input
+  const runner = input.runner || runnerArg || defaultRunner
+  if (!pageProfiles()[pageProfile]) throw new Error(`unknown_facebook_page:${pageProfile}`)
+  if (!commentId) throw new Error('comment_id_required')
+  if (!String(message || '').trim()) throw new Error('message_required')
+  const payload = await runner([
+    'reply-comment',
+    `--page=${pageProfile}`,
+    `--comment-id=${commentId}`,
+    `--message=${String(message).trim()}`,
+    '--approved',
+  ])
+  if (!payload?.ok) throw new Error(payload?.error || 'meta_comment_reply_failed')
   return payload
 }

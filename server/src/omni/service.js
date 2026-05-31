@@ -348,6 +348,10 @@ function normalizeFacebookWebhookSync(snapshot, normalized) {
       unreadCount: (existing.unreadCount || 0) + inboundCount,
       messageCount: (existing.messageCount || 0) + threadMessages.length,
       updatedAt: thread.updatedAt || existing.updatedAt,
+      originContext: {
+        ...(existing.originContext || {}),
+        ...(thread.originContext || {}),
+      },
     }
   })
 

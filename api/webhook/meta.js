@@ -1,6 +1,6 @@
 import { normalizeMetaWebhookPayload } from '../../server/src/omni/metaWebhook.js'
 import { createAiReplyEngine } from '../../server/src/omni/aiReplyEngine.js'
-import { fetchOmniSnapshotFromSupabase, getWebhookSecret, json, readJsonBody, supabaseRpc } from '../_omniSupabase.js'
+import { fetchOmniSnapshotFromSupabase, getWebhookSecret, json, readJsonBody, recordActionAuditToSupabase, recordAiDecisionToSupabase, supabaseRpc } from '../_omniSupabase.js'
 
 const GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v23.0'
 const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`
@@ -86,8 +86,10 @@ async function autoReplyToMessengerInbox({ normalized, dryRun }) {
       results.push({ threadId, ok: false, sent: false, error: decision.error || 'ai_draft_failed' })
       continue
     }
+    const recorded = await recordDecision({ snapshot, thread, decision })
     if (!decision.allowed && process.env.OMNI_AI_AUTO_SEND_ALL !== '1') {
-      results.push({ threadId, ok: true, sent: false, decision, skipped: 'policy_requires_approval' })
+      const audit = await recordAutoReplyAudit({ thread, decision, recorded, sent: false, dryRun: false, sourceRef: 'vercel_webhook_meta_policy_skip' })
+      results.push({ threadId, ok: true, sent: false, decision, recorded: recorded.decision, audit: audit.audit, skipped: 'policy_requires_approval' })
       continue
     }
 
@@ -106,7 +108,8 @@ async function autoReplyToMessengerInbox({ normalized, dryRun }) {
     }
 
     if (dryRun) {
-      results.push({ threadId, ok: true, sent: false, dryRun: true, recipientIdPresent: true, pageProfile, decision })
+      const audit = await recordAutoReplyAudit({ thread, decision, recorded, sent: false, dryRun: true, sourceRef: 'vercel_webhook_meta_dry_run' })
+      results.push({ threadId, ok: true, sent: false, dryRun: true, recipientIdPresent: true, pageProfile, decision, recorded: recorded.decision, audit: audit.audit })
       continue
     }
 
@@ -115,12 +118,23 @@ async function autoReplyToMessengerInbox({ normalized, dryRun }) {
       recipientId,
       message: decision.draftText,
     })
+    const audit = await recordAutoReplyAudit({
+      thread,
+      decision,
+      recorded,
+      sent: sendResult.ok,
+      dryRun: false,
+      providerMessageId: sendResult.response?.message_id || null,
+      sourceRef: 'vercel_webhook_meta_auto_send',
+    })
     results.push({
       threadId,
       ok: sendResult.ok,
       sent: sendResult.ok,
       pageProfile,
       decision,
+      recorded: recorded.decision,
+      audit: audit.audit,
       error: sendResult.error,
       status: sendResult.status,
     })
@@ -139,6 +153,48 @@ function policyForThread(snapshot, thread) {
   const page = (snapshot.pages || []).find((item) => item.id === thread.pageId)
   const policyId = page?.policySetId || PAGE_POLICY_FALLBACKS[thread.pageId]
   return (snapshot.policySets || []).find((item) => item.id === policyId) || { autoSend: {} }
+}
+
+async function recordDecision({ snapshot, thread, decision }) {
+  try {
+    const page = (snapshot.pages || []).find((item) => item.id === thread.pageId)
+    const row = await recordAiDecisionToSupabase(decision, { agentProfileId: page?.agentProfileId || null })
+    return { ok: true, decision: row }
+  } catch (error) {
+    return { ok: false, decision: null, error: error.message || 'ai_decision_record_failed' }
+  }
+}
+
+async function recordAutoReplyAudit({ thread, decision, recorded, sent, dryRun, providerMessageId = null, sourceRef }) {
+  try {
+    const audit = await recordActionAuditToSupabase({
+      threadId: thread.id,
+      action: sent ? 'customer_message_sent' : 'ai_reply_draft_created',
+      actorType: 'ai',
+      actorId: decision.provider || 'omni_ai_reply',
+      before: {
+        threadStatus: thread.status,
+        unreadCount: thread.unreadCount || 0,
+      },
+      after: {
+        decisionId: recorded.decision?.id || decision.id || null,
+        intent: decision.intent || null,
+        risk: decision.risk || null,
+        confidence: decision.confidence || null,
+        sourceIds: decision.sourceIds || [],
+        originContext: decision.originContext || thread.originContext || {},
+        policyDecision: decision.allowed ? 'allowed' : 'not_allowed',
+        replyText: decision.draftText || '',
+        sent,
+        dryRun,
+        providerMessageId,
+      },
+      sourceRef,
+    })
+    return { ok: true, audit }
+  } catch (error) {
+    return { ok: false, audit: null, error: error.message || 'auto_reply_audit_record_failed' }
+  }
 }
 
 function recipientIdForThread(snapshot, thread) {

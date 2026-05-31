@@ -1,6 +1,7 @@
 import { normalizeMetaWebhookPayload } from './omni/metaWebhook.js'
 import { createAiReplyEngine } from './omni/aiReplyEngine.js'
-import { sendFacebookReply } from './omni/metaInboxClient.js'
+import { sendFacebookCommentReply, sendFacebookReply } from './omni/metaInboxClient.js'
+import { getProfileKeyForOmniPage } from './omni/pageRegistry.js'
 import { normalizeTikTokMessagingWebhookPayload } from './omni/tiktokMessagingClient.js'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
@@ -274,11 +275,18 @@ async function handleSudaRuleCommands({ room, hub, rows, lineHelperRunner = defa
 }
 
 function pageProfileForThread(thread) {
-  if (thread?.pageId === 'page_mankynd') return 'man_kynd'
-  if (thread?.pageId === 'page_annalynn') return 'anna_lynn'
-  if (thread?.pageId === 'page_des') return 'page_des'
-  if (thread?.pageId === 'page_fb_112154661515664') return 'fb_112154661515664'
-  return null
+  return getProfileKeyForOmniPage(thread?.pageId)
+}
+
+function isCommentThread(thread) {
+  return ['facebook_comment', 'instagram_comment'].includes(thread?.platform)
+}
+
+function commentIdForThread(thread) {
+  const inbound = (thread?.messages || [])
+    .filter((message) => message.direction === 'inbound' && message.providerMessageId)
+    .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))[0]
+  return inbound?.providerMessageId || thread?.providerThreadId || null
 }
 
 function compactText(value, limit = 160) {
@@ -359,7 +367,7 @@ function recoverAllowedFallbackDecision(decision) {
   }
 }
 
-async function draftThreadReply({ omni, ai, threadId, send = false, sendReply = sendFacebookReply }) {
+async function draftThreadReply({ omni, ai, threadId, send = false, sendReply = sendFacebookReply, sendCommentReply = sendFacebookCommentReply }) {
   const thread = omni.getThread(threadId)
   if (!thread) return { ok: false, error: 'thread_not_found', threadId }
   if (omni.isPageAutoReplyEnabled?.(thread.pageId) === false) {
@@ -387,6 +395,21 @@ async function draftThreadReply({ omni, ai, threadId, send = false, sendReply = 
   const pageProfile = pageProfileForThread(thread)
   if (!pageProfile) return { ...result, sent: false, sendSkipped: 'unsupported_page_for_auto_send' }
   if (!decision.allowed) return { ...result, sent: false, sendSkipped: 'decision_not_allowed' }
+  if (isCommentThread(thread)) {
+    const commentId = commentIdForThread(thread)
+    if (!commentId) return { ...result, sent: false, sendSkipped: 'missing_comment_id' }
+    const sendResult = await sendCommentReply({ pageProfile, commentId, message: decision.draftText })
+    const recordedOutbound = omni.recordOutboundMessage({
+      threadId: thread.id,
+      authorName: 'Anna Lynn AI',
+      text: decision.draftText,
+      providerMessageId: sendResult.response?.id || sendResult.response?.comment_id || null,
+      sourceRef: `meta_comment_send:${pageProfile}`,
+      decisionId: recorded.decision.id,
+      decision,
+    })
+    return { ...result, sent: true, sendResult, outbound: recordedOutbound.message, outboundAudit: recordedOutbound.audit, snapshot: recordedOutbound.snapshot }
+  }
   const recipientId = thread.customer?.providerCustomerId
   if (!recipientId) return { ...result, sent: false, sendSkipped: 'missing_recipient_id' }
 
@@ -407,6 +430,7 @@ export function mountWebhook(app, hub, room, options = {}) {
   const omni = options.omni || null
   const ai = options.ai || createAiReplyEngine()
   const sendReply = options.sendReply || sendFacebookReply
+  const sendCommentReply = options.sendCommentReply || sendFacebookCommentReply
   const metaVerifyToken = options.metaVerifyToken || process.env.META_VERIFY_TOKEN || ''
   const metaAutoReplyDefault = options.metaAutoReplyDefault ?? process.env.OMNI_META_WEBHOOK_AUTO_REPLY === '1'
   const metaAutoSendDefault = options.metaAutoSendDefault ?? process.env.OMNI_META_WEBHOOK_SEND === '1'
@@ -452,7 +476,7 @@ export function mountWebhook(app, hub, room, options = {}) {
       : req.query.send === '1' || req.body?.send === true || metaAutoSendDefault
     const autoReplies = shouldAutoReply
       ? await Promise.all(autoReplyThreadIds({ normalized, snapshot: result.snapshot }).map((threadId) => (
-        draftThreadReply({ omni, ai, threadId, send: shouldSend, sendReply })
+        draftThreadReply({ omni, ai, threadId, send: shouldSend, sendReply, sendCommentReply })
       )))
       : []
     hub.broadcast('omni', autoReplies.at(-1)?.snapshot || result.snapshot)
@@ -505,7 +529,7 @@ export function mountWebhook(app, hub, room, options = {}) {
     const snapshot = omni.snapshot()
     const threadId = req.body?.threadId || snapshot.threads.slice().sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))[0]?.id
     if (!threadId) return res.status(400).json({ ok: false, error: 'thread_id_required' })
-    const result = await draftThreadReply({ omni, ai, threadId, send: req.body?.send === true, sendReply })
+    const result = await draftThreadReply({ omni, ai, threadId, send: req.body?.send === true, sendReply, sendCommentReply })
     if (!result.ok) return res.status(404).json(result)
     hub.broadcast('omni', result.snapshot)
     res.json(result)

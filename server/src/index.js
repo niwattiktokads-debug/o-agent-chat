@@ -10,6 +10,7 @@ import { room } from './state.js'
 import { createSqliteOmniStore } from './omni/db/sqliteStore.js'
 import { createOmniService } from './omni/service.js'
 import { startChatRetentionScheduler } from './omni/retention.js'
+import { createSecurityMiddleware } from './security.js'
 
 loadEnvFile()
 
@@ -18,24 +19,21 @@ const OMNI_DB_PATH = process.env.OMNI_DB_PATH || new URL('../data/omni.sqlite', 
 const CLIENT_DIST_PATH = process.env.CLIENT_DIST_PATH || new URL('../../client/dist', import.meta.url).pathname
 const CORS_ORIGIN = process.env.OMNI_CORS_ORIGIN || ''
 const app = express()
-app.use((req, res, next) => {
-  if (CORS_ORIGIN) {
-    res.setHeader('Access-Control-Allow-Origin', CORS_ORIGIN)
-    res.setHeader('Vary', 'Origin')
-    res.setHeader('Access-Control-Allow-Headers', 'content-type')
-    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS')
-  }
-  if (req.method === 'OPTIONS') return res.sendStatus(204)
-  return next()
-})
-app.use(express.json())
+const security = createSecurityMiddleware({ allowedOrigins: CORS_ORIGIN })
+app.use(security.setSecurityHeaders)
+app.use(security.corsGuard)
+app.use(express.json({ limit: security.jsonLimit, strict: true }))
+app.use(express.urlencoded({ extended: false, limit: '16kb' }))
+security.mountAccessRoutes(app)
 
 const server = http.createServer(app)
-const wss = new WebSocketServer({ server, path: '/ws' })
+const wss = new WebSocketServer({ server, path: '/ws', verifyClient: security.verifyWebSocketClient })
 const hub = createHub(wss, room)
 const omniStore = createSqliteOmniStore({ dbPath: OMNI_DB_PATH })
 const omni = createOmniService({ store: omniStore })
 const retention = startChatRetentionScheduler({ omni })
+
+app.use(security.requireAccess)
 
 mountRoutes(app, hub, room, { omni })
 mountWebhook(app, hub, room, { omni })

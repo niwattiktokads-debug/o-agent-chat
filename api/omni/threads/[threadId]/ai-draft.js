@@ -1,5 +1,5 @@
 import { createAiReplyEngine } from '../../../../server/src/omni/aiReplyEngine.js'
-import { fetchOmniSnapshotFromSupabase, json, recordAiDecisionToSupabase } from '../../../_omniSupabase.js'
+import { fetchOmniSnapshotFromSupabase, json, recordActionAuditToSupabase, recordAiDecisionToSupabase } from '../../../_omniSupabase.js'
 
 const PAGE_POLICY_FALLBACKS = {
   page_annalynn: 'policy_annalynn',
@@ -34,14 +34,17 @@ export default async function handler(req, res) {
     const decision = await engine.draft({ thread, snapshot, policy })
     if (!decision.ok) return json(res, 400, decision)
     const recorded = await recordDecision({ snapshot, thread, decision })
+    const audit = await recordDraftAudit({ thread, decision, recorded })
 
     return json(res, 200, {
       ok: true,
       decision,
       recorded: recorded.decision,
+      audit: audit.audit,
       sent: false,
       runtime: 'vercel_serverless',
       recording: recorded.ok ? 'recorded_to_supabase' : recorded.error,
+      reviewLog: audit.ok ? 'recorded_to_supabase' : audit.error,
     })
   } catch (error) {
     return json(res, 500, { ok: false, error: error.message || 'ai_draft_failed' })
@@ -66,6 +69,36 @@ async function recordDecision({ snapshot, thread, decision }) {
     return { ok: true, decision: row }
   } catch (error) {
     return { ok: false, decision: null, error: error.message || 'ai_decision_record_failed' }
+  }
+}
+
+async function recordDraftAudit({ thread, decision, recorded }) {
+  try {
+    const audit = await recordActionAuditToSupabase({
+      threadId: thread.id,
+      action: 'ai_reply_draft_created',
+      actorType: 'ai',
+      actorId: decision.provider || 'omni_ai_reply',
+      before: {
+        threadStatus: thread.status,
+        unreadCount: thread.unreadCount || 0,
+      },
+      after: {
+        decisionId: recorded.decision?.id || decision.id || null,
+        intent: decision.intent || null,
+        risk: decision.risk || null,
+        confidence: decision.confidence || null,
+        sourceIds: decision.sourceIds || [],
+        originContext: decision.originContext || thread.originContext || {},
+        policyDecision: decision.allowed ? 'allowed' : 'not_allowed',
+        draftText: decision.draftText || '',
+        sent: false,
+      },
+      sourceRef: 'vercel_ai_draft',
+    })
+    return { ok: true, audit }
+  } catch (error) {
+    return { ok: false, audit: null, error: error.message || 'review_log_record_failed' }
   }
 }
 

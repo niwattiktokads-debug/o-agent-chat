@@ -4,6 +4,7 @@ export function createOmniSeed() {
   const pages = [
     { id: 'page_mankynd', name: 'MAN KYND', status: 'active', brandGroupId: 'brand_mankynd', policySetId: 'policy_mankynd', agentProfileId: 'agent_mankynd' },
     { id: 'page_annalynn', name: 'Anna Lynn', status: 'active', brandGroupId: 'brand_fashion', policySetId: 'policy_annalynn', agentProfileId: 'agent_annalynn' },
+    { id: 'page_ig_annalynn', name: 'Anna Lynn IG', status: 'active', brandGroupId: 'brand_fashion', policySetId: 'policy_annalynn', agentProfileId: 'agent_annalynn' },
     { id: 'page_annalynn_tiktok', name: 'AnnaLynn', status: 'active', brandGroupId: 'brand_fashion', policySetId: 'policy_annalynn', agentProfileId: 'agent_annalynn' },
     { id: 'page_des', name: 'เพจเดส', status: 'active', brandGroupId: 'brand_oagent', policySetId: 'policy_page_des', agentProfileId: 'agent_page_des' },
     { id: 'page_fb_112154661515664', name: 'Viris Zamara', shortName: 'VZ', status: 'active', brandGroupId: 'brand_shared', policySetId: 'policy_default', agentProfileId: 'agent_default' },
@@ -12,8 +13,9 @@ export function createOmniSeed() {
   return {
     pages,
     platformAccounts: [
-      { id: 'acct_fb_mankynd', pageId: 'page_mankynd', platform: 'facebook', provider: 'meta', status: 'healthy' },
+      { id: 'acct_fb_mankynd', pageId: 'page_mankynd', platform: 'facebook', provider: 'meta', providerAccountId: '189971841184132', status: 'healthy' },
       { id: 'acct_fb_annalynn', pageId: 'page_annalynn', platform: 'facebook', provider: 'meta', providerAccountId: '122106446570001676', status: 'healthy' },
+      { id: 'acct_ig_annalynn', pageId: 'page_ig_annalynn', platform: 'instagram', provider: 'instagram_messaging', providerAccountId: 'PLACEHOLDER_IG_PAGE_ID', status: 'pending_page_id' },
       { id: 'acct_fb_112154661515664', pageId: 'page_fb_112154661515664', platform: 'facebook', provider: 'meta', status: 'pending_token' },
       { id: 'acct_tt_shop', pageId: 'page_annalynn_tiktok', platform: 'tiktok', provider: 'tiktok_shop', providerAccountId: '7494912558026296148', status: 'healthy' },
       { id: 'acct_tt_annalynn_dm', pageId: 'page_annalynn_tiktok', platform: 'tiktok', provider: 'tiktok_business_messaging', providerAccountId: 'AnnaLynn', status: 'pending_oauth_approval' },
@@ -39,11 +41,41 @@ export function createOmniSeed() {
       { id: 'agent_reviewer', name: 'Risk Reviewer', provider: 'omni_ai_reply', model: 'configurable', role: 'reviewer' },
     ],
     threads: [
-      { id: 'thread_1', pageId: 'page_mankynd', platform: 'facebook', customerId: 'cust_1', status: 'draft_ready', intent: 'stock', risk: 'low', updatedAt: '2026-05-22T10:00:00.000Z' },
+      {
+        id: 'thread_1',
+        pageId: 'page_mankynd',
+        platform: 'facebook',
+        customerId: 'cust_1',
+        status: 'draft_ready',
+        intent: 'stock',
+        risk: 'low',
+        updatedAt: '2026-05-22T10:00:00.000Z',
+        originContext: {
+          channel: 'facebook_messenger',
+          sourceType: 'ad',
+          ad: { id: 'ad_seed_black_m', title: 'Black M launch ad', campaignName: 'Seed product test' },
+          productHint: { text: 'เสื้อสีดำ', color: 'ดำ', size: 'M' },
+          replyFrame: 'ลูกค้ามาจากแอดสินค้าเสื้อสีดำไซซ์ M ให้ตอบอิงสินค้านี้ก่อน',
+        },
+      },
       { id: 'thread_2', pageId: 'page_annalynn_tiktok', platform: 'tiktok', customerId: 'cust_2', status: 'needs_approval', intent: 'orderStatus', risk: 'medium', updatedAt: '2026-05-22T10:05:00.000Z' },
     ],
     messages: [
-      { id: 'msg_1', threadId: 'thread_1', direction: 'inbound', authorName: 'ลูกค้า A', text: 'มีไซซ์ M สีดำไหม', createdAt: '2026-05-22T10:00:00.000Z', providerMessageId: 'fb_mid_1' },
+      {
+        id: 'msg_1',
+        threadId: 'thread_1',
+        direction: 'inbound',
+        authorName: 'ลูกค้า A',
+        text: 'มีไซซ์ M สีดำไหม',
+        createdAt: '2026-05-22T10:00:00.000Z',
+        providerMessageId: 'fb_mid_1',
+        originContext: {
+          channel: 'facebook_messenger',
+          sourceType: 'ad',
+          ad: { id: 'ad_seed_black_m', title: 'Black M launch ad', campaignName: 'Seed product test' },
+          productHint: { text: 'เสื้อสีดำ', color: 'ดำ', size: 'M' },
+        },
+      },
       { id: 'msg_2', threadId: 'thread_2', direction: 'inbound', authorName: 'ลูกค้า B', text: 'ขอเลขพัสดุค่ะ', createdAt: '2026-05-22T10:05:00.000Z', providerMessageId: 'tt_mid_1' },
     ],
     customers: [

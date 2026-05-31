@@ -8,6 +8,7 @@ import { mountRoutes } from '../src/routes.js'
 import { mountWebhook } from '../src/webhook.js'
 import { createState } from '../src/state.js'
 import { createOmniService } from '../src/omni/service.js'
+import { createSecurityMiddleware } from '../src/security.js'
 
 const app = express()
 app.use(express.json())
@@ -52,6 +53,116 @@ test('GET /api/state returns snapshot', async () => {
   const { body } = await req('GET', '/api/state')
   assert.equal(body.leader, '—')
   assert.ok(Array.isArray(body.messages))
+})
+
+test('POST /api/omni/pages/registry appends a page registry entry', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'omni-route-pages-'))
+  const registryPath = join(dir, 'pages.json')
+  const localApp = express()
+  localApp.use(express.json())
+  mountRoutes(localApp, { broadcast: () => {} }, createState(), { pageRegistryPath: registryPath })
+  const localServer = localApp.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const response = await fetch(`http://localhost:${localPort}/api/omni/pages/registry`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        profileKey: 'fb_extra_route',
+        pageId: '999888777',
+        pageName: 'Extra Route Page',
+        omniPageId: 'page_extra_route',
+        platform: 'facebook',
+      }),
+    })
+    const body = await response.json()
+    const rows = JSON.parse(readFileSync(registryPath, 'utf8'))
+
+    assert.equal(response.status, 200)
+    assert.equal(body.ok, true)
+    assert.equal(body.page.profileKey, 'fb_extra_route')
+    assert.equal(body.registry.some((page) => page.profileKey === 'fb_extra_route'), true)
+    assert.equal(rows[0].omniPageId, 'page_extra_route')
+  } finally {
+    localServer.close()
+  }
+})
+
+test('security middleware sets headers and blocks disallowed cross-origin writes', async () => {
+  const localApp = express()
+  const security = createSecurityMiddleware({ allowedOrigins: 'https://omni.oagent.biz' })
+  localApp.use(security.setSecurityHeaders)
+  localApp.use(security.corsGuard)
+  localApp.use(express.json({ limit: security.jsonLimit, strict: true }))
+  localApp.post('/api/security-test', (_req, res) => res.json({ ok: true }))
+  const localServer = localApp.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const denied = await fetch(`http://localhost:${localPort}/api/security-test`, {
+      method: 'POST',
+      headers: { origin: 'https://evil.example', 'content-type': 'application/json' },
+      body: JSON.stringify({ ok: true }),
+    })
+    assert.equal(denied.status, 403)
+    assert.equal(denied.headers.get('x-frame-options'), 'DENY')
+
+    const allowed = await fetch(`http://localhost:${localPort}/api/security-test`, {
+      method: 'POST',
+      headers: { origin: 'https://omni.oagent.biz', 'content-type': 'application/json' },
+      body: JSON.stringify({ ok: true }),
+    })
+    assert.equal(allowed.status, 200)
+    assert.equal(allowed.headers.get('access-control-allow-origin'), 'https://omni.oagent.biz')
+    assert.equal(allowed.headers.get('cache-control'), 'no-store')
+  } finally {
+    localServer.close()
+  }
+})
+
+test('access password protects Omni UI and API while leaving provider webhooks public', async () => {
+  const localApp = express()
+  const security = createSecurityMiddleware({ accessPassword: 'test-password' })
+  localApp.use(express.json())
+  localApp.use(express.urlencoded({ extended: false }))
+  security.mountAccessRoutes(localApp)
+  localApp.use(security.requireAccess)
+  mountRoutes(localApp, { broadcast: () => {} }, createState())
+  mountWebhook(localApp, { broadcast: () => {} }, createState(), { metaVerifyToken: 'verify-token-test' })
+  const localServer = localApp.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const denied = await fetch(`http://localhost:${localPort}/api/state`)
+    assert.equal(denied.status, 401)
+    assert.equal((await denied.json()).error, 'access_password_required')
+
+    const webhook = await fetch(`http://localhost:${localPort}/webhook/meta?hub.mode=subscribe&hub.verify_token=verify-token-test&hub.challenge=abc123`)
+    assert.equal(webhook.status, 200)
+    assert.equal(await webhook.text(), 'abc123')
+
+    const badLogin = await fetch(`http://localhost:${localPort}/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify({ password: 'wrong' }),
+    })
+    assert.equal(badLogin.status, 401)
+
+    const login = await fetch(`http://localhost:${localPort}/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify({ password: 'test-password' }),
+    })
+    assert.equal(login.status, 200)
+    const cookie = login.headers.get('set-cookie')
+    assert.match(cookie, /omni_access=/)
+
+    const allowed = await fetch(`http://localhost:${localPort}/api/state`, {
+      headers: { cookie },
+    })
+    assert.equal(allowed.status, 200)
+    assert.equal((await allowed.json()).leader, '—')
+  } finally {
+    localServer.close()
+  }
 })
 
 test('GET /api/omni/connections includes ZORT Social parity options missing from the MVP', async () => {
@@ -1415,6 +1526,76 @@ test('POST /webhook/meta can send guarded auto reply for Anna Lynn only', async 
     assert.equal(sent[0].recipientId, 'customer_anna_send')
     assert.match(sent[0].message, /เช็กสต็อก/)
     assert.equal(localEvents.at(-1).event, 'omni')
+  } finally {
+    localServer.close()
+  }
+})
+
+test('POST /webhook/meta sends comment auto reply through comment endpoint', async () => {
+  const app = express()
+  app.use(express.json())
+  const sent = []
+  const fakeAi = {
+    draft: async () => ({
+      ok: true,
+      provider: 'test',
+      model: 'comment-test',
+      intent: 'faq',
+      risk: 'low',
+      confidence: 0.9,
+      action: 'draft_ready',
+      sourceIds: [],
+      reason: 'comment_test',
+      allowed: true,
+      draftText: 'ทัก inbox ได้เลยค่ะ เดี๋ยวแอดมินเช็กให้',
+    }),
+  }
+  mountWebhook(app, { broadcast: () => {} }, createState(), {
+    omni: createOmniService(),
+    ai: fakeAi,
+    metaVerifyToken: 'verify-token-test',
+    sendReply: async () => {
+      throw new Error('dm_send_should_not_be_called')
+    },
+    sendCommentReply: async (payload) => {
+      sent.push(payload)
+      return { ok: true, response: { id: 'comment_reply_1' } }
+    },
+  })
+  const localServer = app.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const response = await fetch(`http://localhost:${localPort}/webhook/meta?autoReply=1&send=1`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        object: 'page',
+        entry: [{
+          id: '122106446570001676',
+          changes: [{
+            field: 'feed',
+            value: {
+              item: 'comment',
+              verb: 'add',
+              post_id: '122106446570001676_555',
+              comment_id: '122106446570001676_555_888',
+              sender_id: 'customer_comment_send',
+              sender_name: 'Comment Customer',
+              message: 'สนใจค่ะ',
+              created_time: 1779470401,
+            },
+          }],
+        }],
+      }),
+    })
+    const body = await response.json()
+
+    assert.equal(response.status, 200)
+    assert.equal(body.result.autoReplies[0].sent, true)
+    assert.equal(body.result.autoReplies[0].outbound.sourceRef, 'meta_comment_send:anna_lynn')
+    assert.equal(sent[0].pageProfile, 'anna_lynn')
+    assert.equal(sent[0].commentId, '122106446570001676_555_888')
+    assert.match(sent[0].message, /ทัก inbox/)
   } finally {
     localServer.close()
   }

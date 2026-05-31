@@ -10,6 +10,7 @@ import { createMetaSocialRuntime } from './omni/metaSocialRuntime.js'
 import { lookupThaiAddressByPostcode } from './omni/thaiAddress.js'
 import { createZortCommerceRuntime } from './omni/zortCommerceRuntime.js'
 import { createLineSudaOagentNotifier } from './omni/lineSudaOagentNotifier.js'
+import { appendPageRegistryEntry } from './omni/pageRegistry.js'
 
 function normalizeLeader(input) {
   if (!input) return null
@@ -67,6 +68,16 @@ export function mountRoutes(app, hub, room, options = {}) {
 
   app.get('/api/omni/pages', (_req, res) => {
     res.json({ ok: true, pages: omni.listPages() })
+  })
+
+  app.post('/api/omni/pages/registry', (req, res) => {
+    try {
+      const result = appendPageRegistryEntry(req.body || {}, { registryPath: options.pageRegistryPath })
+      res.json(result)
+    } catch (error) {
+      const status = ['profile_key_exists', 'page_id_exists'].includes(error.message) ? 409 : 400
+      res.status(status).json({ ok: false, error: error.message || 'page_registry_append_failed' })
+    }
   })
 
   app.post('/api/omni/pages/:pageId/auto-reply', (req, res) => {
