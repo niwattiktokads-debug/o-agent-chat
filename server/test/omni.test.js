@@ -471,6 +471,9 @@ test('page registry merges file profiles with fallback profiles', () => {
 
   assert.equal(registry.anna_lynn.omniPageId, 'page_annalynn')
   assert.equal(registry.ig_anna_lynn.pageId, 'PLACEHOLDER_IG_PAGE_ID')
+  assert.equal(registry.ig_man_kynd.pageId, 'PLACEHOLDER_IG_MAN_KYND_PAGE_ID')
+  assert.equal(registry.ig_page_des.pageId, 'PLACEHOLDER_IG_PAGE_DES_PAGE_ID')
+  assert.equal(registry.ig_fb_112154661515664.pageId, 'PLACEHOLDER_IG_112154661515664_PAGE_ID')
   assert.equal(registry.fb_extra_page.omniPageId, 'page_extra')
 })
 

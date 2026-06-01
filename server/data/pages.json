@@ -33,5 +33,26 @@
     "pageName": "Anna Lynn IG",
     "omniPageId": "page_ig_annalynn",
     "platform": "instagram"
+  },
+  {
+    "profileKey": "ig_man_kynd",
+    "pageId": "PLACEHOLDER_IG_MAN_KYND_PAGE_ID",
+    "pageName": "MAN KYND IG",
+    "omniPageId": "page_ig_mankynd",
+    "platform": "instagram"
+  },
+  {
+    "profileKey": "ig_page_des",
+    "pageId": "PLACEHOLDER_IG_PAGE_DES_PAGE_ID",
+    "pageName": "Niwatha และ AI ชื่อเดส IG",
+    "omniPageId": "page_ig_page_des",
+    "platform": "instagram"
+  },
+  {
+    "profileKey": "ig_fb_112154661515664",
+    "pageId": "PLACEHOLDER_IG_112154661515664_PAGE_ID",
+    "pageName": "Viris Zamara IG",
+    "omniPageId": "page_ig_fb_112154661515664",
+    "platform": "instagram"
   }
 ]
