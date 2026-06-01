@@ -6,7 +6,24 @@ import { FALLBACK_PAGE_PROFILES, loadPageRegistry } from './pageRegistry.js'
 const execFileAsync = promisify(execFile)
 const DEFAULT_HELPER = process.env.META_INBOX_HELPER || '/Users/babycuca/.codex/bin/meta-inbox-api'
 const GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v23.0'
+const FACEBOOK_GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`
 const INSTAGRAM_GRAPH_BASE = `https://graph.instagram.com/${GRAPH_VERSION}`
+
+// Facebook page token env mapping
+const FB_PAGE_TOKEN_ENV = {
+  man_kynd: ['META_PAGE_TOKEN_MAN_KYND'],
+  anna_lynn: ['META_PAGE_TOKEN_ANNA_LYNN'],
+  page_des: ['META_PAGE_TOKEN_PAGE_DES'],
+  fb_112154661515664: ['META_PAGE_TOKEN_112154661515664'],
+}
+
+function fbPageAccessToken(pageProfile) {
+  const candidates = [...(FB_PAGE_TOKEN_ENV[pageProfile] || []), 'META_PAGE_ACCESS_TOKEN']
+  const envName = candidates.find((name) => process.env[name])
+  return envName
+    ? { ok: true, value: process.env[envName], source: envName }
+    : { ok: false, source: candidates }
+}
 
 const IG_PAGE_TOKEN_ENV = {
   ig_anna_lynn: ['META_PAGE_TOKEN_IG_ANNA_LYNN', 'IG_ANNA_LYNN_PAGE_TOKEN'],
@@ -164,38 +181,98 @@ export async function sendFacebookReply(input = {}, runnerArg = null) {
   const { pageProfile = 'anna_lynn', recipientId, message } = input
   if (!pageProfiles()[pageProfile]) throw new Error(`unknown_facebook_page:${pageProfile}`)
   if (!recipientId) throw new Error('recipient_id_required')
-  if (!String(message || '').trim()) throw new Error('message_required')
-  const helperPath = helperPathFrom(input)
-  if (!input.runner && !runnerArg && !helperExists(helperPath)) return helperUnavailable(helperPath)
-  const runner = input.runner || runnerArg || ((args) => defaultRunner(args, helperPath))
-  const payload = await runner([
-    'send-reply',
-    `--page=${pageProfile}`,
-    `--recipient-id=${recipientId}`,
-    `--message=${String(message).trim()}`,
-    '--approved',
-  ])
-  if (!payload?.ok) throw new Error(payload?.error || 'meta_send_reply_failed')
-  return payload
+  const text = String(message || '').trim()
+  if (!text) throw new Error('message_required')
+  // ถ้ามี custom runner inject มา (เช่นใน test) ให้ใช้ runner นั้นแทน
+  if (input.runner || runnerArg) {
+    const runner = input.runner || runnerArg
+    const payload = await runner([
+      'send-reply',
+      `--page=${pageProfile}`,
+      `--recipient-id=${recipientId}`,
+      `--message=${text}`,
+      '--approved',
+    ])
+    if (!payload?.ok) throw new Error(payload?.error || 'meta_send_reply_failed')
+    return payload
+  }
+  // Direct Graph API call (production path — no binary required)
+  const token = fbPageAccessToken(pageProfile)
+  if (!token.ok) {
+    return { ok: false, error: 'fb_page_token_missing', pageProfile, expectedEnv: token.source }
+  }
+  const url = new URL(`${FACEBOOK_GRAPH_BASE}/me/messages`)
+  url.searchParams.set('access_token', token.value)
+  let response
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ recipient: { id: recipientId }, message: { text } }),
+    })
+  } catch (networkError) {
+    return { ok: false, error: 'fb_graph_network_error', detail: networkError.message }
+  }
+  const responseText = await response.text()
+  const payload = responseText ? JSON.parse(responseText) : {}
+  if (!response.ok) {
+    return {
+      ok: false,
+      status: response.status,
+      error: payload?.error?.message || payload?.error || 'fb_graph_error',
+      response: payload,
+    }
+  }
+  return { ok: true, status: response.status, response: payload }
 }
 
 export async function sendFacebookCommentReply(input = {}, runnerArg = null) {
   const { pageProfile = 'anna_lynn', commentId, message } = input
   if (!pageProfiles()[pageProfile]) throw new Error(`unknown_facebook_page:${pageProfile}`)
   if (!commentId) throw new Error('comment_id_required')
-  if (!String(message || '').trim()) throw new Error('message_required')
-  const helperPath = helperPathFrom(input)
-  if (!input.runner && !runnerArg && !helperExists(helperPath)) return helperUnavailable(helperPath)
-  const runner = input.runner || runnerArg || ((args) => defaultRunner(args, helperPath))
-  const payload = await runner([
-    'reply-comment',
-    `--page=${pageProfile}`,
-    `--comment-id=${commentId}`,
-    `--message=${String(message).trim()}`,
-    '--approved',
-  ])
-  if (!payload?.ok) throw new Error(payload?.error || 'meta_comment_reply_failed')
-  return payload
+  const text = String(message || '').trim()
+  if (!text) throw new Error('message_required')
+  // ถ้ามี custom runner inject มา (เช่นใน test) ให้ใช้ runner นั้นแทน
+  if (input.runner || runnerArg) {
+    const runner = input.runner || runnerArg
+    const payload = await runner([
+      'reply-comment',
+      `--page=${pageProfile}`,
+      `--comment-id=${commentId}`,
+      `--message=${text}`,
+      '--approved',
+    ])
+    if (!payload?.ok) throw new Error(payload?.error || 'meta_comment_reply_failed')
+    return payload
+  }
+  // Direct Graph API call (production path — no binary required)
+  const token = fbPageAccessToken(pageProfile)
+  if (!token.ok) {
+    return { ok: false, error: 'fb_page_token_missing', pageProfile, expectedEnv: token.source }
+  }
+  const url = new URL(`${FACEBOOK_GRAPH_BASE}/${encodeURIComponent(commentId)}/comments`)
+  url.searchParams.set('access_token', token.value)
+  let response
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ message: text }),
+    })
+  } catch (networkError) {
+    return { ok: false, error: 'fb_graph_network_error', detail: networkError.message }
+  }
+  const responseText = await response.text()
+  const payload = responseText ? JSON.parse(responseText) : {}
+  if (!response.ok) {
+    return {
+      ok: false,
+      status: response.status,
+      error: payload?.error?.message || payload?.error || 'fb_graph_comment_error',
+      response: payload,
+    }
+  }
+  return { ok: true, status: response.status, response: payload }
 }
 
 export async function sendInstagramCommentReply(input = {}, _runnerArg = null) {
