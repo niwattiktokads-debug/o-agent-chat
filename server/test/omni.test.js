@@ -470,10 +470,10 @@ test('page registry merges file profiles with fallback profiles', () => {
   const registry = loadPageRegistry({ registryPath })
 
   assert.equal(registry.anna_lynn.omniPageId, 'page_annalynn')
-  assert.equal(registry.ig_anna_lynn.pageId, 'PLACEHOLDER_IG_PAGE_ID')
-  assert.equal(registry.ig_man_kynd.pageId, 'PLACEHOLDER_IG_MAN_KYND_PAGE_ID')
-  assert.equal(registry.ig_page_des.pageId, 'PLACEHOLDER_IG_PAGE_DES_PAGE_ID')
-  assert.equal(registry.ig_fb_112154661515664.pageId, 'PLACEHOLDER_IG_112154661515664_PAGE_ID')
+  assert.equal(registry.ig_anna_lynn.pageId, '17841456216401165')
+  assert.equal(registry.ig_man_kynd.pageId, '17841402222436331')
+  assert.equal(registry.ig_page_des.pageId, 'NOT_LINKED')
+  assert.equal(registry.ig_fb_112154661515664.pageId, '17841462136286560')
   assert.equal(registry.fb_extra_page.omniPageId, 'page_extra')
 })
 
@@ -817,10 +817,10 @@ test('normalizes Instagram DM webhook payload into Omni memory rows', () => {
   const normalized = normalizeMetaWebhookPayload({
     object: 'instagram',
     entry: [{
-      id: 'PLACEHOLDER_IG_PAGE_ID',
+      id: '17841456216401165',
       messaging: [{
         sender: { id: 'ig_customer_1' },
-        recipient: { id: 'PLACEHOLDER_IG_PAGE_ID' },
+        recipient: { id: '17841456216401165' },
         timestamp: 1779470000000,
         message: { mid: 'ig_mid_1', text: 'มีไซซ์ไหมคะ' },
       }],
@@ -831,14 +831,14 @@ test('normalizes Instagram DM webhook payload into Omni memory rows', () => {
   assert.equal(normalized.threads[0].pageId, 'page_ig_annalynn')
   assert.equal(normalized.threads[0].platform, 'instagram')
   assert.equal(normalized.messages[0].id, 'ig_msg_ig_mid_1')
-  assert.equal(normalized.messages[0].sourceRef, 'instagram_webhook:PLACEHOLDER_IG_PAGE_ID')
+  assert.equal(normalized.messages[0].sourceRef, 'instagram_webhook:17841456216401165')
 })
 
 test('normalizes Instagram comment webhook payload into Omni comment rows', () => {
   const normalized = normalizeMetaWebhookPayload({
     object: 'instagram',
     entry: [{
-      id: 'PLACEHOLDER_IG_PAGE_ID',
+      id: '17841456216401165',
       time: 1779470000,
       changes: [{
         field: 'comments',
