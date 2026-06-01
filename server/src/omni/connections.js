@@ -1,13 +1,21 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { dirname } from 'node:path'
+import { homedir } from 'node:os'
+import { dirname, join } from 'node:path'
 
 const execFileAsync = promisify(execFile)
 const CSNAP_BASE_URL = process.env.CSNAP_BASE_URL || 'http://127.0.0.1:9876'
-const CSNAP_AUTH_FILE = process.env.CSNAP_AUTH_FILE || '/Users/babycuca/Projects/c-snap/data/.auth_token'
+const CSNAP_AUTH_FILE = process.env.CSNAP_AUTH_FILE || ''
 const META_INBOX_HELPER = process.env.META_INBOX_HELPER || '/Users/babycuca/.codex/bin/meta-inbox-api'
 const INSTAGRAM_MESSAGING_HELPER = process.env.INSTAGRAM_MESSAGING_HELPER || '/Users/babycuca/.codex/bin/instagram-messaging-api'
+const LINE_SUDA_OAGENT_HELPER = process.env.LINE_SUDA_OAGENT_HELPER || '/Users/babycuca/.codex/bin/line-suda-oagent'
+const TIKTOK_MESSAGING_HELPER = process.env.TIKTOK_MESSAGING_HELPER || '/Users/babycuca/.codex/bin/tiktok-messaging-api'
+const OMNI_AI_REPLY_HELPER = process.env.OMNI_AI_REPLY_HELPER || '/Users/babycuca/.codex/bin/omni-ai-reply'
+const PERPLEXITY_HELPER = process.env.PERPLEXITY_HELPER || '/Users/babycuca/.codex/bin/perplexity-api'
+const FLOWACCOUNT_HELPER = process.env.FLOWACCOUNT_HELPER || '/Users/babycuca/.codex/bin/flowaccount-oa-api'
+const ZORT_HELPER = process.env.ZORT_HELPER || '/Users/babycuca/.codex/bin/zort-api'
+const GEMINI_PROFILE_PATH = process.env.GEMINI_PROFILE_PATH || join(homedir(), '.gemini')
 const CUSTOM_CONNECTIONS_PATH = process.env.OMNI_CUSTOM_CONNECTIONS_PATH || new URL('../../data/custom-connections.json', import.meta.url).pathname
 
 const CONNECTIONS = [
@@ -19,8 +27,8 @@ const CONNECTIONS = [
     pageId: '122106446570001676',
     group: 'customer_channel',
     description: 'Facebook Messenger inbox, webhook, and approved customer replies for Anna Lynn.',
-    helper: '/Users/babycuca/.codex/bin/meta-inbox-api',
-    verify: { command: '/Users/babycuca/.codex/bin/meta-inbox-api', args: ['verify', '--page=anna_lynn'] },
+    helper: META_INBOX_HELPER,
+    verify: { command: META_INBOX_HELPER, args: ['verify', '--page=anna_lynn'] },
     fields: [
       { id: 'page_token', label: 'Page access token', credentialName: 'FB Anna Lynn Page Token -OA', secret: true, required: true },
       { id: 'app_secret', label: 'Meta app secret', credentialName: 'Meta App Secret FB -MP', secret: true, required: false },
@@ -44,8 +52,8 @@ const CONNECTIONS = [
     pageId: '189971841184132',
     group: 'customer_channel',
     description: 'Facebook Messenger inbox and comment/reply control for MAN KYND.',
-    helper: '/Users/babycuca/.codex/bin/meta-inbox-api',
-    verify: { command: '/Users/babycuca/.codex/bin/meta-inbox-api', args: ['verify', '--page=man_kynd'] },
+    helper: META_INBOX_HELPER,
+    verify: { command: META_INBOX_HELPER, args: ['verify', '--page=man_kynd'] },
     fields: [
       { id: 'page_token', label: 'Page access token', credentialName: 'FB Page Token MAN KYND -MP', secret: true, required: true },
       { id: 'app_secret', label: 'Meta app secret', credentialName: 'Meta App Secret FB -MP', secret: true, required: false },
@@ -66,8 +74,8 @@ const CONNECTIONS = [
     provider: 'instagram',
     group: 'customer_channel',
     description: 'Instagram DM sales channel for chat-to-order workflows. Requires Instagram Professional account linked to Facebook, then channel verify and warehouse/user access mapping.',
-    helper: '/Users/babycuca/.codex/bin/instagram-messaging-api',
-    verify: { command: '/Users/babycuca/.codex/bin/instagram-messaging-api', args: ['verify'] },
+    helper: INSTAGRAM_MESSAGING_HELPER,
+    verify: { command: INSTAGRAM_MESSAGING_HELPER, args: ['verify'] },
     fields: [
       { id: 'instagram_user_id', label: 'Instagram user ID', credentialName: 'Instagram User ID -OA', secret: false, required: true },
       { id: 'access_token', label: 'Instagram access token', credentialName: 'Instagram Access Token -OA', secret: true, required: true },
@@ -88,8 +96,8 @@ const CONNECTIONS = [
     provider: 'line_suda_oagent',
     group: 'customer_channel',
     description: 'LINE Official Account สุดา for O-agent group alerts, approval-gated group intake, and per-group /su response rules.',
-    helper: '/Users/babycuca/.codex/bin/line-suda-oagent',
-    verify: { command: '/Users/babycuca/.codex/bin/line-suda-oagent', args: ['verify'] },
+    helper: LINE_SUDA_OAGENT_HELPER,
+    verify: { command: LINE_SUDA_OAGENT_HELPER, args: ['verify'] },
     fields: [
       { id: 'channel_access_token', label: 'Channel access token', credentialName: 'LINE Channel Access Token -EP', secret: true, required: true },
       { id: 'oagent_group_id', label: 'O-agent group ID', credentialName: 'LINE O-agent Winn Group ID -OA', secret: true, required: false },
@@ -165,8 +173,8 @@ const CONNECTIONS = [
     provider: 'tiktok_sale_page',
     group: 'marketplace_channel',
     description: 'TikTok sale page tracking lane for campaign attribution, order source mapping, and future TikTok Shop/Business Messaging bridge.',
-    helper: '/Users/babycuca/.codex/bin/tiktok-messaging-api',
-    verify: { command: '/Users/babycuca/.codex/bin/tiktok-messaging-api', args: ['verify'] },
+    helper: TIKTOK_MESSAGING_HELPER,
+    verify: { command: TIKTOK_MESSAGING_HELPER, args: ['verify'] },
     fields: [
       { id: 'app_id', label: 'TikTok Business app ID', credentialName: 'TikTok Business App ID -OA', secret: false, required: true },
       { id: 'app_secret', label: 'TikTok Business app secret', credentialName: 'TikTok Business App Secret -OA', secret: true, required: true },
@@ -253,9 +261,9 @@ const CONNECTIONS = [
     provider: 'gemini_cli',
     group: 'ai_provider',
     description: 'Local AI reply provider through Google Code Assist OAuth. Best current local path.',
-    helper: '/Users/babycuca/.codex/bin/omni-ai-reply',
+    helper: OMNI_AI_REPLY_HELPER,
     verify: {
-      command: '/Users/babycuca/.codex/bin/omni-ai-reply',
+      command: OMNI_AI_REPLY_HELPER,
       args: ['verify'],
       env: { OMNI_AI_PROVIDER: 'gemini_cli', OMNI_AI_MODEL: 'gemini-3-flash-preview' },
     },
@@ -271,8 +279,8 @@ const CONNECTIONS = [
     provider: 'openai',
     group: 'ai_provider',
     description: 'Cloud-ready AI reply provider for Omni customer responses.',
-    helper: '/Users/babycuca/.codex/bin/omni-ai-reply',
-    verify: { command: '/Users/babycuca/.codex/bin/omni-ai-reply', args: ['verify'], env: { OMNI_AI_PROVIDER: 'openai' } },
+    helper: OMNI_AI_REPLY_HELPER,
+    verify: { command: OMNI_AI_REPLY_HELPER, args: ['verify'], env: { OMNI_AI_PROVIDER: 'openai' } },
     fields: [
       { id: 'api_key', label: 'OpenAI API key', credentialName: 'OpenAI API Key', envName: 'OPENAI_API_KEY', secret: true, required: true },
     ],
@@ -285,8 +293,8 @@ const CONNECTIONS = [
     provider: 'perplexity',
     group: 'research_provider',
     description: 'Web-grounded research provider for reusable content and support workflows.',
-    helper: '/Users/babycuca/.codex/bin/perplexity-api',
-    verify: { command: '/Users/babycuca/.codex/bin/perplexity-api', args: ['verify'] },
+    helper: PERPLEXITY_HELPER,
+    verify: { command: PERPLEXITY_HELPER, args: ['verify'] },
     fields: [
       { id: 'api_key', label: 'Perplexity API key', credentialName: 'Perplexity API Key -OA', envName: 'PERPLEXITY_API_KEY', secret: true, required: true },
     ],
@@ -299,8 +307,8 @@ const CONNECTIONS = [
     provider: 'flowaccount',
     group: 'finance_provider',
     description: 'Finance/accounting verification path for O-Agent documents and customer/order workflows.',
-    helper: '/Users/babycuca/.codex/bin/flowaccount-oa-api',
-    verify: { command: '/Users/babycuca/.codex/bin/flowaccount-oa-api', args: ['company-info'] },
+    helper: FLOWACCOUNT_HELPER,
+    verify: { command: FLOWACCOUNT_HELPER, args: ['company-info'] },
     fields: [
       { id: 'client_id', label: 'Client ID', credentialName: 'FlowAccount Client ID -OA', secret: true, required: true },
       { id: 'client_secret', label: 'Client secret', credentialName: 'FlowAccount Client Secret -OA', secret: true, required: true },
@@ -315,8 +323,8 @@ const CONNECTIONS = [
     provider: 'zort',
     group: 'commerce_backend',
     description: 'API-first stock master and order backend for Omni Facebook Order Assist. ใช้เช็กสินค้า สร้างออเดอร์ และตัดสต็อกผ่าน approval guard.',
-    helper: '/Users/babycuca/.codex/bin/zort-api',
-    verify: { command: '/Users/babycuca/.codex/bin/zort-api', args: ['verify'] },
+    helper: ZORT_HELPER,
+    verify: { command: ZORT_HELPER, args: ['verify'] },
     fields: [
       { id: 'store_name', label: 'Store name', credentialName: 'ZORT Store Name -OA', envName: 'ZORT_STORE_NAME', secret: false, required: true },
       { id: 'api_key', label: 'API key', credentialName: 'ZORT API Key -OA', envName: 'ZORT_API_KEY', secret: true, required: true },
@@ -421,6 +429,7 @@ function maskPresence(value) {
 }
 
 async function readCnapAuth() {
+  if (!CSNAP_AUTH_FILE) throw new Error('csnap_auth_file_not_configured')
   if (!existsSync(CSNAP_AUTH_FILE)) throw new Error('csnap_auth_missing')
   return readFileSync(CSNAP_AUTH_FILE, 'utf8').trim()
 }
@@ -451,7 +460,7 @@ async function listCredentials() {
 
 function fieldStatus(field, credentials) {
   if (field.readOnly) {
-    const exists = field.id === 'local_oauth' ? existsSync('/Users/babycuca/.gemini') : false
+    const exists = field.id === 'local_oauth' && GEMINI_PROFILE_PATH ? existsSync(GEMINI_PROFILE_PATH) : false
     return {
       id: field.id,
       label: field.label,

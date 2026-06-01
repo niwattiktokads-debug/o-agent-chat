@@ -400,6 +400,7 @@ async function draftThreadReply({ omni, ai, threadId, send = false, sendReply = 
     if (!commentId) return { ...result, sent: false, sendSkipped: 'missing_comment_id' }
     const isInstagramComment = thread.platform === 'instagram_comment'
     const sendResult = await (isInstagramComment ? sendIgCommentReply : sendCommentReply)({ pageProfile, commentId, message: decision.draftText })
+    if (!sendResult?.ok) return { ...result, sent: false, sendSkipped: sendResult?.error || 'send_failed', sendResult }
     const recordedOutbound = omni.recordOutboundMessage({
       threadId: thread.id,
       authorName: 'Anna Lynn AI',
@@ -415,6 +416,7 @@ async function draftThreadReply({ omni, ai, threadId, send = false, sendReply = 
   if (!recipientId) return { ...result, sent: false, sendSkipped: 'missing_recipient_id' }
 
   const sendResult = await sendReply({ pageProfile, recipientId, message: decision.draftText })
+  if (!sendResult?.ok) return { ...result, sent: false, sendSkipped: sendResult?.error || 'send_failed', sendResult }
   const recordedOutbound = omni.recordOutboundMessage({
     threadId: thread.id,
     authorName: 'Anna Lynn AI',

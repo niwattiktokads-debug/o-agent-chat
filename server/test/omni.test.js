@@ -8,7 +8,7 @@ import { OMNI_STATUSES, validatePage } from '../src/omni/schema.js'
 import { createOmniSeed } from '../src/omni/seed.js'
 import { createAdapterRegistry } from '../src/omni/adapters.js'
 import { createOmniService } from '../src/omni/service.js'
-import { listFacebookConversations, normalizeMetaConversations, sendFacebookCommentReply, sendInstagramCommentReply } from '../src/omni/metaInboxClient.js'
+import { listFacebookConversations, normalizeMetaConversations, sendFacebookCommentReply, sendFacebookReply, sendInstagramCommentReply } from '../src/omni/metaInboxClient.js'
 import { loadPageRegistry } from '../src/omni/pageRegistry.js'
 import { createMetaSocialRuntime } from '../src/omni/metaSocialRuntime.js'
 import { createAiReplyEngine } from '../src/omni/aiReplyEngine.js'
@@ -475,6 +475,34 @@ test('page registry merges file profiles with fallback profiles', () => {
   assert.equal(registry.ig_page_des.pageId, 'PLACEHOLDER_IG_PAGE_DES_PAGE_ID')
   assert.equal(registry.ig_fb_112154661515664.pageId, 'PLACEHOLDER_IG_112154661515664_PAGE_ID')
   assert.equal(registry.fb_extra_page.omniPageId, 'page_extra')
+})
+
+test('Facebook reply connector skips send when meta helper binary is unavailable', async () => {
+  const helperPath = join(mkdtempSync(join(tmpdir(), 'meta-helper-missing-')), 'meta-inbox-api')
+  const result = await sendFacebookReply({
+    pageProfile: 'anna_lynn',
+    recipientId: 'recipient_123',
+    message: 'ทัก inbox ได้เลยค่ะ',
+    helperPath,
+  })
+
+  assert.equal(result.ok, false)
+  assert.equal(result.error, 'helper_not_available')
+  assert.equal(result.helperPath, helperPath)
+})
+
+test('Facebook comment connector skips send when meta helper binary is unavailable', async () => {
+  const helperPath = join(mkdtempSync(join(tmpdir(), 'meta-helper-missing-')), 'meta-inbox-api')
+  const result = await sendFacebookCommentReply({
+    pageProfile: 'anna_lynn',
+    commentId: 'comment_123',
+    message: 'ทัก inbox ได้เลยค่ะ',
+    helperPath,
+  })
+
+  assert.equal(result.ok, false)
+  assert.equal(result.error, 'helper_not_available')
+  assert.equal(result.helperPath, helperPath)
 })
 
 test('Facebook comment connector calls meta helper through injectable runner', async () => {

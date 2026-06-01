@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { promisify } from 'node:util'
 import { FALLBACK_PAGE_PROFILES, loadPageRegistry } from './pageRegistry.js'
 
@@ -11,8 +12,25 @@ function pageProfiles() {
   return loadPageRegistry()
 }
 
-async function defaultRunner(args) {
-  const { stdout } = await execFileAsync(DEFAULT_HELPER, args, {
+function helperPathFrom(input = {}) {
+  return input.helperPath || process.env.META_INBOX_HELPER || DEFAULT_HELPER
+}
+
+function helperExists(helperPath) {
+  try {
+    return Boolean(helperPath && existsSync(helperPath))
+  } catch (_error) {
+    return false
+  }
+}
+
+function helperUnavailable(helperPath) {
+  console.warn(`[meta-inbox-api] binary not found at ${helperPath} — send skipped`)
+  return { ok: false, error: 'helper_not_available', helperPath }
+}
+
+async function defaultRunner(args, helperPath = helperPathFrom()) {
+  const { stdout } = await execFileAsync(helperPath, args, {
     maxBuffer: 1024 * 1024 * 8,
     env: process.env,
   })
@@ -125,10 +143,14 @@ export async function listFacebookConversations({ pageProfile = 'anna_lynn', run
   return normalizeMetaConversations({ pageProfile, response: payload.response, threadMessagesByConversationId })
 }
 
-export async function sendFacebookReply({ pageProfile = 'anna_lynn', recipientId, message, runner = defaultRunner } = {}) {
+export async function sendFacebookReply(input = {}, runnerArg = null) {
+  const { pageProfile = 'anna_lynn', recipientId, message } = input
   if (!pageProfiles()[pageProfile]) throw new Error(`unknown_facebook_page:${pageProfile}`)
   if (!recipientId) throw new Error('recipient_id_required')
   if (!String(message || '').trim()) throw new Error('message_required')
+  const helperPath = helperPathFrom(input)
+  if (!input.runner && !runnerArg && !helperExists(helperPath)) return helperUnavailable(helperPath)
+  const runner = input.runner || runnerArg || ((args) => defaultRunner(args, helperPath))
   const payload = await runner([
     'send-reply',
     `--page=${pageProfile}`,
@@ -142,10 +164,12 @@ export async function sendFacebookReply({ pageProfile = 'anna_lynn', recipientId
 
 export async function sendFacebookCommentReply(input = {}, runnerArg = null) {
   const { pageProfile = 'anna_lynn', commentId, message } = input
-  const runner = input.runner || runnerArg || defaultRunner
   if (!pageProfiles()[pageProfile]) throw new Error(`unknown_facebook_page:${pageProfile}`)
   if (!commentId) throw new Error('comment_id_required')
   if (!String(message || '').trim()) throw new Error('message_required')
+  const helperPath = helperPathFrom(input)
+  if (!input.runner && !runnerArg && !helperExists(helperPath)) return helperUnavailable(helperPath)
+  const runner = input.runner || runnerArg || ((args) => defaultRunner(args, helperPath))
   const payload = await runner([
     'reply-comment',
     `--page=${pageProfile}`,
@@ -160,11 +184,13 @@ export async function sendFacebookCommentReply(input = {}, runnerArg = null) {
 // TODO: requires meta-inbox-api binary update to support reply-ig-comment
 export async function sendInstagramCommentReply(input = {}, runnerArg = null) {
   const { pageProfile = 'ig_anna_lynn', commentId, message } = input
-  const runner = input.runner || runnerArg || defaultRunner
   const profile = pageProfiles()[pageProfile]
   if (!profile || profile.platform !== 'instagram') throw new Error(`unknown_instagram_page:${pageProfile}`)
   if (!commentId) throw new Error('comment_id_required')
   if (!String(message || '').trim()) throw new Error('message_required')
+  const helperPath = helperPathFrom(input)
+  if (!input.runner && !runnerArg && !helperExists(helperPath)) return helperUnavailable(helperPath)
+  const runner = input.runner || runnerArg || ((args) => defaultRunner(args, helperPath))
   const payload = await runner([
     'reply-ig-comment',
     `--page=${pageProfile}`,
