@@ -342,11 +342,14 @@ function autoReplyThreadIds({ normalized, snapshot }) {
   const pagesById = new Map((snapshot?.pages || []).map((page) => [page.id, page]))
   const ids = []
   for (const thread of normalized.threads || []) {
+    const isComment = ['facebook_comment', 'facebook_video_comment', 'instagram_comment'].includes(thread.platform)
     const resolved = threads.find((candidate) => (
-      candidate.platform === 'facebook' &&
+      (isComment
+        ? ['facebook_comment', 'facebook_video_comment', 'instagram_comment'].includes(candidate.platform)
+        : candidate.platform === 'facebook') &&
       candidate.pageId === thread.pageId &&
       candidate.customerId === thread.customerId &&
-      !String(candidate.id || '').startsWith('fb_webhook_')
+      (isComment || !String(candidate.id || '').startsWith('fb_webhook_'))
     )) || threads.find((candidate) => candidate.id === thread.id)
     const page = pagesById.get(resolved?.pageId || thread.pageId)
     if (page?.autoReplyEnabled === false) continue
