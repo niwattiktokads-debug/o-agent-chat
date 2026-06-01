@@ -4,6 +4,7 @@ const DEFAULT_MODEL = process.env.OMNI_AI_MODEL || 'guarded-draft-v1'
 const DEFAULT_HELPER = process.env.OMNI_AI_REPLY_HELPER || '/Users/babycuca/.codex/bin/omni-ai-reply'
 const AUTO_SEND_ALL = process.env.OMNI_AI_AUTO_SEND_ALL === '1'
 const GEMINI_API_BASE = process.env.GEMINI_API_BASE || 'https://generativelanguage.googleapis.com/v1beta'
+const OPENAI_API_BASE = process.env.OPENAI_API_BASE || 'https://api.openai.com/v1'
 const MAX_DRAFT_CHARS = Number(process.env.OMNI_AI_MAX_DRAFT_CHARS || 480)
 
 const PAGE_AGENT_FALLBACKS = {
@@ -313,6 +314,65 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
     }
   }
 
+  async function draftWithOpenAI({ thread, snapshot, policy, baseDecision }) {
+    const apiKey = process.env.OPENAI_API_KEY
+    if (!apiKey) return { ...baseDecision, ok: false, error: 'openai_api_key_missing' }
+    const prompt = buildCustomerReplyPrompt({ thread, snapshot, policy, baseDecision })
+    const url = `${OPENAI_API_BASE}/chat/completions`
+    const response = await fetchImpl(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model,
+        temperature: Number(process.env.OMNI_AI_TEMPERATURE || 0.2),
+        max_tokens: Number(process.env.OMNI_AI_MAX_OUTPUT_TOKENS || 1024),
+        messages: [
+          { role: 'system', content: prompt.system },
+          { role: 'user', content: prompt.user },
+        ],
+      }),
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      return {
+        ...baseDecision,
+        ok: true,
+        provider: 'openai',
+        model,
+        draftText: baseDecision.draftText,
+        confidence: Math.min(baseDecision.confidence || 0.7, 0.68),
+        reason: `openai_error_fallback:${payload?.error?.message || response.status}`,
+        helperError: payload?.error?.message || `openai_http_${response.status}`,
+      }
+    }
+    const text = payload?.choices?.[0]?.message?.content?.trim() || ''
+    if (!text) {
+      return {
+        ...baseDecision,
+        ok: true,
+        provider: 'openai',
+        model,
+        draftText: baseDecision.draftText,
+        confidence: Math.min(baseDecision.confidence || 0.7, 0.68),
+        reason: 'openai_empty_fallback',
+      }
+    }
+    const parsed = parseAiJson(text)
+    const trustedContext = [
+      JSON.stringify(baseDecision.originContext || {}),
+      ...relevantKnowledge(baseDecision.intent, snapshot).map((source) => source.content || ''),
+    ].join('\n')
+    const draftText = guardedDraftText(parsed?.draftText || text, baseDecision.draftText, { trustedContext })
+    return {
+      ...baseDecision,
+      provider: 'openai',
+      model,
+      draftText,
+      confidence: Math.max(0, Math.min(1, Number(parsed?.confidence || baseDecision.confidence || 0.74))),
+      reason: parsed?.reason || 'openai_guarded_text_draft',
+    }
+  }
+
   async function draftWithGemini({ thread, snapshot, policy, baseDecision }) {
     const apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY
     if (!apiKey) return { ...baseDecision, ok: false, error: 'gemini_api_key_missing' }
@@ -415,6 +475,7 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
 
       if (provider === 'local_rules') return baseDecision
       if (provider === 'gemini') return draftWithGemini({ thread, snapshot, policy, baseDecision })
+      if (provider === 'openai') return draftWithOpenAI({ thread, snapshot, policy, baseDecision })
       return draftWithHelper({ thread, snapshot, policy, baseDecision })
     },
   }
