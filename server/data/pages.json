@@ -55,5 +55,19 @@
     "pageName": "Viris Zamara IG",
     "omniPageId": "page_ig_fb_112154661515664",
     "platform": "instagram"
+  },
+  {
+    "profileKey": "vz_viris_zamara",
+    "pageId": "112979362131792",
+    "pageName": "VZ by viris zamara.",
+    "omniPageId": "page_vz_viris_zamara",
+    "platform": "facebook"
+  },
+  {
+    "profileKey": "ig_vz_viris_zamara",
+    "pageId": "17841400330305192",
+    "pageName": "VZ by viris zamara. IG",
+    "omniPageId": "page_ig_vz_viris_zamara",
+    "platform": "instagram"
   }
 ]
