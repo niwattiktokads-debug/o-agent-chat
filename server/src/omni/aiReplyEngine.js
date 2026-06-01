@@ -3,6 +3,15 @@ const DEFAULT_PROVIDER = process.env.OMNI_AI_PROVIDER || 'local_rules'
 const DEFAULT_MODEL = process.env.OMNI_AI_MODEL || 'guarded-draft-v1'
 const DEFAULT_HELPER = process.env.OMNI_AI_REPLY_HELPER || '/Users/babycuca/.codex/bin/omni-ai-reply'
 const AUTO_SEND_ALL = process.env.OMNI_AI_AUTO_SEND_ALL === '1'
+const GEMINI_API_BASE = process.env.GEMINI_API_BASE || 'https://generativelanguage.googleapis.com/v1beta'
+const MAX_DRAFT_CHARS = Number(process.env.OMNI_AI_MAX_DRAFT_CHARS || 480)
+
+const PAGE_AGENT_FALLBACKS = {
+  page_annalynn: 'แอดมิน Anna Lynn',
+  page_annalynn_tiktok: 'แอดมิน Anna Lynn',
+  page_mankynd: 'แอดมิน MAN KYND',
+  page_des: 'แอดมินเพจเดส',
+}
 
 function latestInboundMessage(thread, snapshot) {
   return (snapshot.messages || [])
@@ -26,12 +35,32 @@ function riskForIntent(intent, policy, autoSendAll = AUTO_SEND_ALL) {
   return 'low'
 }
 
-function draftForIntent(intent) {
-  if (intent === 'stock') return 'เดี๋ยวเช็กสต็อกให้ค่ะ ขอทราบสีและไซซ์ที่ต้องการอีกครั้งนะคะ'
-  if (intent === 'price') return 'เดี๋ยวสรุปราคาและโปรที่ใช้ได้ให้ค่ะ'
-  if (intent === 'orderStatus') return 'ขอเช็กสถานะคำสั่งซื้อและเลขพัสดุให้ก่อนนะคะ'
-  if (intent === 'refund') return 'เรื่องคืนเงินหรือยกเลิกออเดอร์จะส่งให้แอดมินตรวจสอบก่อนนะคะ'
-  return 'รับทราบค่ะ เดี๋ยวช่วยดูรายละเอียดให้นะคะ'
+function originProductLabel(originContext = {}) {
+  const hint = originContext.productHint || {}
+  const live = originContext.live || {}
+  const base = String(hint.text || live.productName || live.sku || originContext.post?.title || originContext.ad?.title || '').trim()
+  const color = hint.color && !base.includes(hint.color) ? `สี${hint.color}` : ''
+  const size = hint.size && !new RegExp(`(?:ไซซ์\\s*)?${hint.size}\\b`, 'i').test(base) ? `ไซซ์ ${hint.size}` : ''
+  const sku = live.sku && !base.includes(live.sku) ? live.sku : ''
+  return [base, color, size, sku].filter(Boolean).join(' ').trim()
+}
+
+function draftForIntent(intent, originContext = null) {
+  const productLabel = originProductLabel(originContext || {})
+  const isLive = originContext?.sourceType === 'live'
+  if (intent === 'stock') {
+    if (productLabel) return `ได้ค่ะ เดี๋ยวช่วยเช็กสต็อก ${productLabel} ให้ก่อนนะคะ ถ้าต้องการตัวนี้ แอดมินจะตรวจสี ไซซ์ และจำนวนคงเหลือให้ชัดเจนก่อนตอบกลับค่ะ`
+    if (isLive) return 'สนใจตัวไหนในไลฟ์คะ บอกชื่อ สี ไซซ์ หรือช่วงเวลาที่เห็นได้เลยค่ะ เดี๋ยวแอดมินช่วยเช็กให้ตรงตัวก่อนตอบกลับค่ะ'
+    return 'ได้ค่ะ เดี๋ยวช่วยเช็กสต็อก สี และไซซ์ให้ก่อนนะคะ รบกวนบอกสี/ไซซ์ที่ต้องการ หรือส่งรูปสินค้าที่สนใจมาได้เลยค่ะ'
+  }
+  if (intent === 'price') {
+    if (productLabel) return `ได้ค่ะ เดี๋ยวช่วยเช็กราคา โปร และค่าส่งสำหรับ ${productLabel} ให้ถูกต้องก่อนนะคะ แอดมินจะสรุปให้ชัดเจนก่อนตอบกลับค่ะ`
+    if (isLive) return 'สนใจตัวไหนในไลฟ์คะ บอกชื่อ สี ไซซ์ หรือช่วงเวลาที่เห็นได้เลยค่ะ เดี๋ยวแอดมินช่วยเช็กราคาและโปรให้ตรงตัวก่อนตอบกลับค่ะ'
+    return 'ได้ค่ะ เดี๋ยวสรุปราคา โปร และค่าส่งที่ใช้ได้ให้ชัดเจนนะคะ ถ้าสนใจรุ่นไหนเป็นพิเศษ ส่งชื่อรุ่นหรือรูปมาได้เลยค่ะ'
+  }
+  if (intent === 'orderStatus') return 'ได้ค่ะ เดี๋ยวช่วยเช็กสถานะคำสั่งซื้อให้ก่อนนะคะ เพื่อความถูกต้อง รบกวนส่งเลขออเดอร์ใน inbox แล้วแอดมินจะแจ้งสถานะกลับไปค่ะ'
+  if (intent === 'refund') return 'รับทราบค่ะ เคสคืนเงิน ยกเลิก หรือเคลม ต้องให้แอดมินตรวจสอบรายละเอียดก่อนนะคะ เดี๋ยวส่งเรื่องให้ตรวจและจะแจ้งขั้นตอนที่ถูกต้องกลับไปค่ะ'
+  return 'รับทราบค่ะ เดี๋ยวช่วยดูรายละเอียดให้ครบก่อนนะคะ ถ้ามีรุ่น สี ไซซ์ หรือเลขออเดอร์ที่เกี่ยวข้อง ส่งเพิ่มมาได้เลยค่ะ'
 }
 
 function relevantKnowledge(intent, snapshot) {
@@ -52,7 +81,176 @@ function relevantKnowledge(intent, snapshot) {
     .slice(0, 3)
 }
 
-export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAULT_MODEL } = {}) {
+function agentForThread(thread, snapshot) {
+  const page = (snapshot.pages || []).find((item) => item.id === thread.pageId)
+  const agent = (snapshot.agentProfiles || []).find((item) => item.id === page?.agentProfileId) || null
+  return agent || { name: PAGE_AGENT_FALLBACKS[thread.pageId] || 'น้องอันนา' }
+}
+
+function customerForThread(thread, snapshot) {
+  return (snapshot.customers || []).find((item) => item.id === thread.customerId) || null
+}
+
+function recentMessagesForThread(thread, snapshot) {
+  return (snapshot.messages || [])
+    .filter((message) => message.threadId === thread.id)
+    .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')))
+    .slice(-8)
+}
+
+function compactOriginContext(thread, messages = []) {
+  const latestWithOrigin = messages
+    .slice()
+    .reverse()
+    .find((message) => message.originContext && Object.keys(message.originContext).length)
+  const origin = {
+    ...(thread.originContext || {}),
+    ...(latestWithOrigin?.originContext || {}),
+  }
+  if (!Object.keys(origin).length) return null
+  return {
+    channel: origin.channel || thread.platform || null,
+    sourceType: origin.sourceType || null,
+    ref: origin.ref || null,
+    ad: origin.ad || null,
+    post: origin.post || null,
+    live: origin.live || null,
+    productHint: origin.productHint || null,
+    replyFrame: origin.replyFrame || null,
+  }
+}
+
+function originContextText(origin) {
+  if (!origin) return '(ไม่มี origin context จากแอด/โพสต์/ไลฟ์)'
+  return [
+    `channel: ${origin.channel || '-'}`,
+    `source_type: ${origin.sourceType || '-'}`,
+    origin.ref ? `ref: ${origin.ref}` : '',
+    origin.ad?.id || origin.ad?.title ? `ad: ${[origin.ad?.id, origin.ad?.title].filter(Boolean).join(' · ')}` : '',
+    origin.ad?.campaignName ? `campaign: ${origin.ad.campaignName}` : '',
+    origin.post?.id || origin.post?.title ? `post: ${[origin.post?.id, origin.post?.title].filter(Boolean).join(' · ')}` : '',
+    origin.post?.text ? `post_text: ${String(origin.post.text).slice(0, 240)}` : '',
+    origin.live?.id || origin.live?.productName || origin.live?.sku
+      ? `live: ${[
+        origin.live?.id,
+        origin.live?.videoId ? `video ${origin.live.videoId}` : '',
+        origin.live?.productId ? `product ${origin.live.productId}` : '',
+        origin.live?.sku ? `sku ${origin.live.sku}` : '',
+        origin.live?.productName,
+        origin.live?.color ? `สี ${origin.live.color}` : '',
+        origin.live?.size ? `ไซซ์ ${origin.live.size}` : '',
+      ].filter(Boolean).join(' · ')}`
+      : '',
+    origin.live?.clickedAt ? `live_clicked_at: ${origin.live.clickedAt}` : '',
+    origin.productHint?.text || origin.productHint?.color || origin.productHint?.size
+      ? `product_hint: ${[
+        origin.productHint?.text,
+        origin.productHint?.color ? `สี ${origin.productHint.color}` : '',
+        origin.productHint?.size ? `ไซซ์ ${origin.productHint.size}` : '',
+      ].filter(Boolean).join(' · ')}`
+      : '',
+    origin.replyFrame ? `reply_frame: ${origin.replyFrame}` : '',
+  ].filter(Boolean).join('\n')
+}
+
+function buildCustomerReplyPrompt({ thread, snapshot, policy, baseDecision }) {
+  const agent = agentForThread(thread, snapshot)
+  const customer = customerForThread(thread, snapshot)
+  const knowledge = relevantKnowledge(baseDecision.intent, snapshot)
+  const recentMessages = recentMessagesForThread(thread, snapshot)
+  const origin = compactOriginContext(thread, recentMessages)
+  const messages = recentMessages
+    .map((message) => `${message.direction === 'inbound' ? 'ลูกค้า' : 'เพจ'}: ${message.text}`)
+    .join('\n')
+  const knowledgeText = knowledge
+    .map((source, index) => `[${index + 1}] ${source.title}\n${String(source.content || '').slice(0, 900)}`)
+    .join('\n\n')
+
+  return {
+    system: [
+      'คุณคือ AI ตอบลูกค้าของ Omni Cloud สำหรับเพจขายสินค้า',
+      `ชื่อผู้ช่วย: ${agent?.name || 'AI Page Assistant'}`,
+      'ตอบเป็นภาษาไทย สุภาพ ช่วยลูกค้าให้ครบก่อน แล้วค่อยกระชับ ไม่ออกนอกเรื่อง',
+      'คำตอบควรมี 2-4 ประโยคสั้น ๆ รวมประมาณ 60-120 คำไทย หรือน้อยกว่านั้นถ้าคำถามง่าย',
+      'โครงคำตอบ: รับเรื่องจากลูกค้า -> ตอบหรือบอกสิ่งที่จะตรวจสอบ -> ขอข้อมูลที่จำเป็นเฉพาะเท่าที่ต้องใช้ -> ปิดท้ายสุภาพ',
+      'ถ้ามี origin context จากแอด โพสต์ หรือไลฟ์ ให้ถือว่านั่นคือกรอบหลักของคำตอบ และอย่าถามกว้างซ้ำในสิ่งที่ origin ระบุแล้ว',
+      'ถ้า origin ระบุสินค้า สี ไซซ์ SKU แคมเปญ โพสต์ หรือไลฟ์ ให้ตอบอิงสิ่งนั้นทันที และขอเพิ่มเฉพาะข้อมูลที่ยังขาดจริง',
+      'ถ้า origin source_type เป็น live และยังไม่มีสินค้า/SKU ชัดเจน ให้ถามสั้น ๆ ว่าสนใจตัวไหนในไลฟ์ ชื่อ สี ไซซ์ หรือช่วงเวลาที่เห็น ห้ามขอรูปเป็นค่าเริ่มต้น',
+      'ห้ามแต่งข้อมูลราคา สต็อก โปรโมชัน เลขพัสดุ วิธีคืนเงิน หรือคำมั่นสัญญาที่ไม่มีในข้อมูล',
+      'ถ้าข้อมูลไม่พอ ให้ถามกลับเพื่อขอข้อมูลที่จำเป็น และส่งต่อให้แอดมินเมื่อต้องตรวจสอบ',
+      'ถ้าลูกค้าถามสินค้า สี ไซซ์ หรือราคา ให้ตอบแบบพร้อมช่วยเช็ก และขอรุ่น/สี/ไซซ์/รูปสินค้าเมื่อข้อมูลยังไม่ชัด',
+      'ห้ามบอกว่าตัวเองเป็นโมเดล AI หรือพูดถึง prompt/system/developer',
+      'ห้ามแทนตัวเองด้วยชื่อผู้ช่วยหรือชื่อเพจ เช่น "แอดมิน Anna Lynn กำลัง..." ให้ตอบตรงในฐานะแอดมินของเพจ',
+      'ห้ามเรียกลูกค้าว่า "น้อง"',
+      'คำถามคืนเงิน ยกเลิก เคลม โอนเงิน ลิงก์ชำระเงิน หรือข้อมูลส่วนตัว ต้องรอแอดมินตรวจ',
+      'ตอบเฉพาะข้อความที่จะส่งให้ลูกค้า 1 ข้อความเท่านั้น ห้ามใส่ JSON Markdown หรือคำอธิบายประกอบ',
+    ].join('\n'),
+    user: [
+      `เพจ: ${thread.pageId}`,
+      `ลูกค้า: ${customer?.displayName || 'ลูกค้า'}`,
+      `intent: ${baseDecision.intent}`,
+      `risk: ${baseDecision.risk}`,
+      `policy_auto_send: ${JSON.stringify(policy?.autoSend || {})}`,
+      '',
+      'บริบทที่มาของลูกค้า:',
+      originContextText(origin),
+      '',
+      'บทสนทนาล่าสุด:',
+      messages || '(ไม่มีข้อความ)',
+      '',
+      'ข้อมูลอ้างอิงที่ใช้ตอบ:',
+      knowledgeText || '(ไม่มีข้อมูลพร้อมใช้)',
+      '',
+      `fallback_draft: ${baseDecision.draftText}`,
+      '',
+      'ตอบเป็นข้อความเดียวที่พร้อมส่งลูกค้า ความยาวพอดี 1-3 ประโยคถ้า origin context ชัด หรือ 2-4 ประโยคถ้าข้อมูลยังไม่พอ ไม่ต้องใส่ JSON Markdown หรือคำอธิบายประกอบ',
+    ].join('\n'),
+  }
+}
+
+function stripJsonFence(value) {
+  return String(value || '')
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim()
+}
+
+function parseAiJson(text) {
+  const cleaned = stripJsonFence(text)
+  try {
+    return JSON.parse(cleaned)
+  } catch {
+    const match = cleaned.match(/\{[\s\S]*\}/)
+    if (!match) return null
+    try {
+      return JSON.parse(match[0])
+    } catch {
+      return null
+    }
+  }
+}
+
+function hasTrustedPrice(text) {
+  return /(?:฿|บาท|THB)\s*\d|\d[\d,.]*\s*(?:บาท|฿|THB)/i.test(String(text || ''))
+}
+
+function hasStockAssertion(text) {
+  return /(มีสินค้า|สินค้าพร้อม|พร้อมส่ง|ยังมี|มีของ|มีค่ะ|มีครับ)/i.test(String(text || ''))
+}
+
+function guardedDraftText(text, fallback, { trustedContext = '' } = {}) {
+  const draft = String(text || '').replace(/\s+/g, ' ').trim()
+  if (draft.length < 4) return fallback
+  if (/^here is\b/i.test(draft) || /^```/.test(draft) || /"draftText"\s*:/.test(draft)) return fallback
+  if (/(AI Page Assistant|language model|โมเดล|prompt|system|developer)/i.test(draft)) return fallback
+  if (/(และ|หรือ|กับ|ของ|ให้|ว่า|น้อง)$/i.test(draft)) return fallback
+  if (hasTrustedPrice(draft) && !hasTrustedPrice(trustedContext)) return fallback
+  if (hasStockAssertion(draft) && !/(พร้อมส่ง|มีสินค้า|stock|available|คงเหลือ|สต็อก)/i.test(trustedContext)) return fallback
+  return draft.slice(0, MAX_DRAFT_CHARS)
+}
+
+export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAULT_MODEL, fetchImpl = fetch } = {}) {
   function runHelper(payload) {
     return new Promise((resolve, reject) => {
       const child = spawn(DEFAULT_HELPER, ['draft'], {
@@ -115,6 +313,77 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
     }
   }
 
+  async function draftWithGemini({ thread, snapshot, policy, baseDecision }) {
+    const apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY
+    if (!apiKey) return { ...baseDecision, ok: false, error: 'gemini_api_key_missing' }
+
+    const prompt = buildCustomerReplyPrompt({ thread, snapshot, policy, baseDecision })
+    const url = `${GEMINI_API_BASE}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`
+    const response = await fetchImpl(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: prompt.system }] },
+        contents: [{ role: 'user', parts: [{ text: prompt.user }] }],
+        generationConfig: {
+          temperature: Number(process.env.OMNI_AI_TEMPERATURE || 0.2),
+          maxOutputTokens: Number(process.env.OMNI_AI_MAX_OUTPUT_TOKENS || 1024),
+          thinkingConfig: {
+            thinkingBudget: Number(process.env.OMNI_AI_THINKING_BUDGET || 0),
+          },
+        },
+      }),
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      return {
+        ...baseDecision,
+        ok: true,
+        provider: 'gemini',
+        model,
+        draftText: baseDecision.draftText,
+        confidence: Math.min(baseDecision.confidence || 0.7, 0.68),
+        reason: `gemini_error_fallback:${payload?.error?.message || payload?.error || response.status}`,
+        helperError: payload?.error?.message || payload?.error || `gemini_http_${response.status}`,
+      }
+    }
+    if (!payload?.candidates?.length) {
+      return {
+        ...baseDecision,
+        ok: true,
+        provider: 'gemini',
+        model,
+        draftText: baseDecision.draftText,
+        confidence: Math.min(baseDecision.confidence || 0.7, 0.68),
+        reason: 'gemini_empty_fallback',
+        error: payload?.error?.message || payload?.error || `gemini_http_${response.status}`,
+      }
+    }
+    const candidate = payload?.candidates?.[0] || {}
+    const text = candidate?.content?.parts
+      ?.map((part) => part.text || '')
+      .join('')
+      .trim()
+    const parsed = parseAiJson(text)
+    const finishedCleanly = !candidate.finishReason || candidate.finishReason === 'STOP'
+    const trustedContext = [
+      JSON.stringify(baseDecision.originContext || {}),
+      ...relevantKnowledge(baseDecision.intent, snapshot).map((source) => source.content || ''),
+    ].join('\n')
+    const draftText = finishedCleanly
+      ? guardedDraftText(parsed?.draftText || text, baseDecision.draftText, { trustedContext })
+      : baseDecision.draftText
+
+    return {
+      ...baseDecision,
+      provider: 'gemini',
+      model,
+      draftText,
+      confidence: Math.max(0, Math.min(1, Number(parsed?.confidence || baseDecision.confidence || 0.74))),
+      reason: finishedCleanly ? (parsed?.reason || 'gemini_guarded_text_draft') : `gemini_fallback_${candidate.finishReason}`,
+    }
+  }
+
   return {
     provider,
     model,
@@ -125,6 +394,7 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
       const risk = riskForIntent(intent, policy)
       const allowed = AUTO_SEND_ALL || (Boolean(policy?.autoSend?.[intent]) && risk === 'low')
       const knowledge = relevantKnowledge(intent, snapshot)
+      const originContext = compactOriginContext(thread, recentMessagesForThread(thread, snapshot))
 
       const baseDecision = {
         ok: true,
@@ -136,13 +406,15 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
         action: allowed ? 'draft_ready' : 'needs_approval',
         confidence: intent === 'faq' ? 0.72 : 0.82,
         allowed,
-        draftText: draftForIntent(intent),
+        draftText: draftForIntent(intent, originContext),
         reason: allowed ? 'policy_allows_low_risk_intent' : 'guard_requires_human_or_more_data',
         sourceIds: knowledge.map((source) => source.id),
         evidenceIds: inbound?.id ? [inbound.id] : [],
+        originContext,
       }
 
       if (provider === 'local_rules') return baseDecision
+      if (provider === 'gemini') return draftWithGemini({ thread, snapshot, policy, baseDecision })
       return draftWithHelper({ thread, snapshot, policy, baseDecision })
     },
   }

@@ -4,11 +4,15 @@
  */
 import React, { useEffect, useMemo, useState } from 'react'
 import {
+  addConnectionOption,
+  deleteConnectionOption,
   createConnectionAiDraft,
   fetchConnectionConversations,
   fetchConnectionThread,
   fetchConnections,
+  fetchLineSudaGroupRules,
   saveConnectionSecrets,
+  saveLineSudaGroupRules,
   sendConnectionReply,
   verifyConnection,
 } from '../../lib/omniApi.js'
@@ -19,7 +23,22 @@ const GROUP_LABELS = {
   ai_provider: 'AI',
   research_provider: 'ค้นเว็บ',
   finance_provider: 'การเงิน',
+  commerce_backend: 'คลัง/ออเดอร์',
+  marketplace_channel: 'มาร์เก็ตเพลส',
+  social_automation: 'โซเชียลอัตโนมัติ',
+  custom_provider: 'กำหนดเอง',
 }
+
+const CONNECTION_GROUP_OPTIONS = [
+  { value: 'customer_channel', label: 'ช่องทางลูกค้า' },
+  { value: 'ai_provider', label: 'AI' },
+  { value: 'research_provider', label: 'ค้นเว็บ' },
+  { value: 'finance_provider', label: 'การเงิน' },
+  { value: 'commerce_backend', label: 'คลัง/ออเดอร์' },
+  { value: 'marketplace_channel', label: 'มาร์เก็ตเพลส' },
+  { value: 'social_automation', label: 'โซเชียลอัตโนมัติ' },
+  { value: 'custom_provider', label: 'กำหนดเอง' },
+]
 
 function StatusPill({ status }) {
   const map = {
@@ -81,6 +100,93 @@ function FieldRow({ connectionId, field, value, onChange }) {
         <StatusPill status={field.status === 'configured' ? 'healthy' : 'needs_key'} />
       </div>
     </label>
+  )
+}
+
+function AddConnectionPanel({ values, busy, error, onChange, onCancel, onSubmit }) {
+  return (
+    <form onSubmit={onSubmit} className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-bold text-[var(--color-ink)]">เพิ่มตัวเลือกการเชื่อมต่อ</h2>
+          <p className="mt-1 text-xs leading-5 text-[var(--color-muted)]">สร้างเป็น custom option ก่อน ถ้าจะใช้ production automation ค่อยเพิ่ม helper/manifest ภายหลัง</p>
+        </div>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded-[var(--radius-md)] border border-[var(--color-rule)] px-3 py-2 text-sm font-semibold text-[var(--color-ink)] transition hover:bg-[var(--color-panel-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]"
+        >
+          ยกเลิก
+        </button>
+      </div>
+      {error ? <div className="mt-3 rounded-[var(--radius-sm)] bg-[var(--color-danger-soft)] p-3 text-xs font-semibold text-[var(--color-danger)]">{error}</div> : null}
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <label className="grid gap-2">
+          <span className="text-xs font-semibold text-[var(--color-muted)]">ชื่อการเชื่อมต่อ</span>
+          <input
+            value={values.title}
+            onChange={(event) => onChange('title', event.target.value)}
+            className="h-10 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 text-sm text-[var(--color-ink)] outline-none focus-visible:border-[var(--color-focus)] focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]"
+            placeholder="เช่น LINE OA"
+          />
+        </label>
+        <label className="grid gap-2">
+          <span className="text-xs font-semibold text-[var(--color-muted)]">Provider key</span>
+          <input
+            value={values.provider}
+            onChange={(event) => onChange('provider', event.target.value)}
+            className="h-10 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 font-mono text-sm text-[var(--color-ink)] outline-none focus-visible:border-[var(--color-focus)] focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]"
+            placeholder="เช่น line"
+          />
+        </label>
+        <label className="grid gap-2">
+          <span className="text-xs font-semibold text-[var(--color-muted)]">ประเภท</span>
+          <select
+            value={values.group}
+            onChange={(event) => onChange('group', event.target.value)}
+            className="h-10 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 text-sm text-[var(--color-ink)] outline-none focus-visible:border-[var(--color-focus)] focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]"
+          >
+            {CONNECTION_GROUP_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        <label className="grid gap-2">
+          <span className="text-xs font-semibold text-[var(--color-muted)]">Credential name</span>
+          <input
+            value={values.credentialName}
+            onChange={(event) => onChange('credentialName', event.target.value)}
+            className="h-10 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 text-sm text-[var(--color-ink)] outline-none focus-visible:border-[var(--color-focus)] focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]"
+            placeholder="เว้นว่างได้"
+          />
+        </label>
+        <label className="grid gap-2 md:col-span-2">
+          <span className="text-xs font-semibold text-[var(--color-muted)]">คำอธิบาย</span>
+          <textarea
+            value={values.description}
+            onChange={(event) => onChange('description', event.target.value)}
+            className="min-h-[76px] rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm leading-6 text-[var(--color-ink)] outline-none focus-visible:border-[var(--color-focus)] focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]"
+            placeholder="ใช้เชื่อมต่ออะไร และอยู่หลัง approval guard แบบไหน"
+          />
+        </label>
+        <label className="grid gap-2 md:col-span-2">
+          <span className="text-xs font-semibold text-[var(--color-muted)]">Helper / setup note</span>
+          <input
+            value={values.helper}
+            onChange={(event) => onChange('helper', event.target.value)}
+            className="h-10 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 font-mono text-sm text-[var(--color-ink)] outline-none focus-visible:border-[var(--color-focus)] focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]"
+            placeholder="เว้นว่างได้"
+          />
+        </label>
+      </div>
+      <div className="mt-4 flex justify-end">
+        <button
+          type="submit"
+          disabled={busy}
+          className="rounded-[var(--radius-md)] bg-[var(--color-accent)] px-3 py-2 text-sm font-semibold text-[var(--color-accent-ink)] transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)] disabled:cursor-not-allowed disabled:opacity-55"
+        >
+          {busy ? 'กำลังบันทึก' : 'บันทึกตัวเลือก'}
+        </button>
+      </div>
+    </form>
   )
 }
 
@@ -153,7 +259,7 @@ function LiveInboxPanel({
                 </div>
                 <div className="mt-3 max-h-[320px] space-y-2 overflow-y-auto pr-1">
                   {messages.length ? messages.map((message) => (
-                    <div key={message.id} className={`rounded-[var(--radius-sm)] border border-[var(--color-rule)] p-3 ${message.direction === 'outbound' ? 'bg-[var(--color-panel)]' : 'bg-white'}`}>
+                    <div key={message.id} className={`rounded-[var(--radius-sm)] border border-[var(--color-rule)] p-3 ${message.direction === 'outbound' ? 'bg-[var(--color-panel)]' : 'bg-[var(--color-panel-2)]'}`}>
                       <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-[var(--color-muted)]">
                         <span className="font-semibold">{message.authorName}</span>
                         <span>{message.direction}</span>
@@ -200,6 +306,151 @@ function LiveInboxPanel({
   )
 }
 
+const EMPTY_LINE_RULES = {
+  duty: '',
+  questionPattern: '',
+  defaultReply: '',
+  replyRules: '',
+}
+
+function normalizeLineRules(value = {}) {
+  return {
+    duty: value.duty || '',
+    questionPattern: value.questionPattern || '',
+    defaultReply: value.defaultReply || '',
+    replyRules: value.replyRules || '',
+  }
+}
+
+function lineRulesStatusLabel(status) {
+  if (status === 'response_rules_recorded') return 'พร้อมส่ง'
+  if (status === 'pending_group_usage_rules') return 'กรอกกฎไม่ครบ'
+  return 'รอบอสกำหนดกฎ'
+}
+
+function LineSudaRulesPanel({
+  connection,
+  state,
+  selectedGroupId,
+  draft,
+  onLoad,
+  onSelectGroup,
+  onDraftChange,
+  onSave,
+}) {
+  if (connection.provider !== 'line_suda_oagent') return null
+  const groups = state.groups || []
+  const selected = groups.find((group) => group.groupId === selectedGroupId) || groups[0] || null
+  const form = draft || normalizeLineRules(selected?.responseRules)
+  return (
+    <section className="border-t border-[var(--color-rule)] px-4 py-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-bold text-[var(--color-ink)]">กฎคำถามและคำตอบรายกลุ่ม</h3>
+          <p className="mt-1 text-xs leading-5 text-[var(--color-muted)]">สุดาจะไม่ส่งข้อความใด ๆ ในกลุ่มจนกว่าตั้งครบ: หน้าที่, รูปแบบคำถาม, รูปแบบตอบ และกฎตอบ</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => onLoad(connection.id)}
+          disabled={state.busy === 'load'}
+          className="rounded-[var(--radius-md)] border border-[var(--color-rule)] px-3 py-2 text-sm font-semibold text-[var(--color-ink)] transition hover:bg-[var(--color-panel-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)] disabled:opacity-55"
+        >
+          {state.busy === 'load' ? 'กำลังโหลด' : 'รีเฟรชกลุ่ม'}
+        </button>
+      </div>
+      {state.error ? <div className="mt-3 rounded-[var(--radius-sm)] bg-[var(--color-danger-soft)] p-3 text-xs font-semibold text-[var(--color-danger)]">{state.error}</div> : null}
+      {state.notice ? <div className="mt-3 rounded-[var(--radius-sm)] bg-[var(--color-live-soft)] p-3 text-xs font-semibold text-[var(--color-live)]">{state.notice}</div> : null}
+      <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(220px,320px)_minmax(0,1fr)]">
+        <div className="min-w-0 rounded-[var(--radius-sm)] border border-[var(--color-rule)] bg-[var(--color-panel-2)]">
+          {groups.length ? groups.map((group) => (
+            <button
+              key={group.groupId}
+              type="button"
+              onClick={() => onSelectGroup(connection.id, group)}
+              className={`block w-full border-b border-[var(--color-rule)] px-3 py-3 text-left transition last:border-b-0 hover:bg-[var(--color-panel)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)] ${selected?.groupId === group.groupId ? 'bg-[var(--color-ai-soft)]' : ''}`}
+            >
+              <div className="flex min-w-0 items-center justify-between gap-2">
+                <span className="truncate text-sm font-bold text-[var(--color-ink)]">{group.groupName || 'ไม่ทราบชื่อกลุ่ม'}</span>
+                <span className="shrink-0 text-xs text-[var(--color-muted)]">{group.memberCount == null ? '-' : `${group.memberCount} คน`}</span>
+              </div>
+              <div className="mt-1 truncate font-mono text-[11px] text-[var(--color-muted)]">{group.groupIdMasked || group.groupId}</div>
+              <div className="mt-1 text-xs font-semibold text-[var(--color-ink-2)]">{lineRulesStatusLabel(group.status)}</div>
+            </button>
+          )) : (
+            <div className="p-3 text-sm leading-6 text-[var(--color-muted)]">ยังไม่พบกลุ่มจาก webhook กดรีเฟรชหลังเพิ่มสุดาเข้ากลุ่มแล้วพิมพ์ข้อความในกลุ่ม</div>
+          )}
+        </div>
+        <form className="min-w-0 rounded-[var(--radius-sm)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] p-3" onSubmit={(event) => {
+          event.preventDefault()
+          if (selected) onSave(connection.id, selected.groupId)
+        }}>
+          {selected ? (
+            <>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <div className="text-sm font-bold text-[var(--color-ink)]">{selected.groupName || 'ไม่ทราบชื่อกลุ่ม'}</div>
+                  <div className="mt-1 font-mono text-[11px] text-[var(--color-muted)]">{selected.groupIdMasked || selected.groupId}</div>
+                </div>
+                <StatusPill status={selected.status === 'response_rules_recorded' ? 'healthy' : 'ready_to_verify'} />
+              </div>
+              <div className="mt-3 grid gap-3">
+                <label className="grid gap-2">
+                  <span className="text-xs font-semibold text-[var(--color-muted)]">หน้าที่</span>
+                  <textarea
+                    value={form.duty}
+                    onChange={(event) => onDraftChange(connection.id, 'duty', event.target.value)}
+                    className="min-h-[64px] rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm leading-6 text-[var(--color-ink)] outline-none focus-visible:border-[var(--color-focus)] focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]"
+                    placeholder="เช่น แจ้งเตือนงานผลิตและถามสถานะวิน"
+                  />
+                </label>
+                <label className="grid gap-2">
+                  <span className="text-xs font-semibold text-[var(--color-muted)]">รูปแบบคำถาม</span>
+                  <textarea
+                    value={form.questionPattern}
+                    onChange={(event) => onDraftChange(connection.id, 'questionPattern', event.target.value)}
+                    className="min-h-[64px] rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm leading-6 text-[var(--color-ink)] outline-none focus-visible:border-[var(--color-focus)] focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]"
+                    placeholder="เช่น สถานะงานผลิต / วินส่งไปยัง / ต้องตามใคร"
+                  />
+                </label>
+                <label className="grid gap-2">
+                  <span className="text-xs font-semibold text-[var(--color-muted)]">รูปแบบตอบ</span>
+                  <textarea
+                    value={form.defaultReply}
+                    onChange={(event) => onDraftChange(connection.id, 'defaultReply', event.target.value)}
+                    className="min-h-[76px] rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm leading-6 text-[var(--color-ink)] outline-none focus-visible:border-[var(--color-focus)] focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]"
+                    placeholder="เช่น สรุปสถานะล่าสุด + ระบุคนรับผิดชอบ + ถามเพิ่มถ้าข้อมูลไม่ครบ"
+                  />
+                </label>
+                <label className="grid gap-2">
+                  <span className="text-xs font-semibold text-[var(--color-muted)]">กฎตอบ</span>
+                  <textarea
+                    value={form.replyRules}
+                    onChange={(event) => onDraftChange(connection.id, 'replyRules', event.target.value)}
+                    className="min-h-[76px] rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm leading-6 text-[var(--color-ink)] outline-none focus-visible:border-[var(--color-focus)] focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]"
+                    placeholder="เช่น สุภาพ สั้น ห้ามเดาสถานะ ห้ามบอกว่าจบถ้าไม่มีหลักฐาน"
+                  />
+                </label>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                <div className="text-xs leading-5 text-[var(--color-muted)]">ต้องครบ 4 ช่องก่อน helper จึงปลดล็อกการส่งข้อความในกลุ่มนี้</div>
+                <button
+                  type="submit"
+                  disabled={state.busy === 'save'}
+                  className="rounded-[var(--radius-md)] bg-[var(--color-accent)] px-3 py-2 text-sm font-semibold text-[var(--color-accent-ink)] transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)] disabled:opacity-55"
+                >
+                  {state.busy === 'save' ? 'กำลังบันทึก' : 'บันทึกกฎกลุ่ม'}
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="text-sm leading-6 text-[var(--color-muted)]">เลือกกลุ่มด้านซ้ายเพื่อแก้รูปแบบคำถามและคำตอบ</div>
+          )}
+        </form>
+      </div>
+    </section>
+  )
+}
+
 function ConnectionCard({
   connection,
   draftValues,
@@ -208,15 +459,23 @@ function ConnectionCard({
   expanded,
   inbox,
   selectedConversationId,
+  lineRulesState,
+  selectedLineGroupId,
+  lineRulesDraft,
   onToggle,
   onFieldChange,
   onSave,
   onVerify,
+  onDelete,
   onLoadConversations,
   onOpenThread,
   onDraftReply,
   onDraftTextChange,
   onSendReply,
+  onLoadLineRules,
+  onSelectLineGroup,
+  onLineRuleDraftChange,
+  onSaveLineRules,
 }) {
   const hasWritableFields = connection.fields.some((field) => !field.readOnly)
   const hasDraftValue = Object.values(draftValues[connection.id] || {}).some((value) => String(value || '').trim())
@@ -262,6 +521,17 @@ function ConnectionCard({
           >
             {busy === 'save' ? 'กำลังบันทึก' : 'บันทึก key'}
           </button>
+          {connection.canDelete ? (
+            <button
+              type="button"
+              onClick={() => onDelete(connection.id)}
+              disabled={busy === 'delete'}
+              aria-label={`ลบ ${connection.title}`}
+              className="rounded-[var(--radius-md)] border border-[var(--color-danger)] px-3 py-2 text-sm font-semibold text-[var(--color-danger)] transition hover:bg-[var(--color-danger-soft)] active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)] disabled:cursor-not-allowed disabled:opacity-55"
+            >
+              {busy === 'delete' ? 'กำลังลบ' : 'ลบ'}
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -305,6 +575,16 @@ function ConnectionCard({
             onDraftTextChange={onDraftTextChange}
             onSendReply={onSendReply}
           />
+          <LineSudaRulesPanel
+            connection={connection}
+            state={lineRulesState || {}}
+            selectedGroupId={selectedLineGroupId}
+            draft={lineRulesDraft}
+            onLoad={onLoadLineRules}
+            onSelectGroup={onSelectLineGroup}
+            onDraftChange={onLineRuleDraftChange}
+            onSave={onSaveLineRules}
+          />
           <div className="grid gap-3 border-t border-[var(--color-rule)] p-4 lg:grid-cols-[minmax(0,1fr)_minmax(220px,320px)]">
             <div className="text-xs leading-5 text-[var(--color-muted)]">
               {connection.productionNotes.map((note) => <div key={note}>- {note}</div>)}
@@ -338,9 +618,20 @@ function ConnectionCard({
   )
 }
 
-export default function ConnectionsPage({ onOpenInbox, onOpenChat, onOpenAiTrain }) {
+export default function ConnectionsPage({ onOpenInbox, onOpenChat, onOpenAiTrain, showPageNav = true, embedded = false }) {
   const [payload, setPayload] = useState(null)
   const [activeGroup, setActiveGroup] = useState('all')
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [addForm, setAddForm] = useState({
+    title: '',
+    provider: '',
+    group: 'customer_channel',
+    description: '',
+    helper: '',
+    credentialName: '',
+  })
+  const [addError, setAddError] = useState('')
+  const [addBusy, setAddBusy] = useState(false)
   const [draftValues, setDraftValues] = useState({})
   const [busyById, setBusyById] = useState({})
   const [results, setResults] = useState({})
@@ -348,6 +639,9 @@ export default function ConnectionsPage({ onOpenInbox, onOpenChat, onOpenAiTrain
   const [expandedById, setExpandedById] = useState({})
   const [inboxById, setInboxById] = useState({})
   const [selectedConversationById, setSelectedConversationById] = useState({})
+  const [lineRulesById, setLineRulesById] = useState({})
+  const [selectedLineGroupById, setSelectedLineGroupById] = useState({})
+  const [lineRuleDraftById, setLineRuleDraftById] = useState({})
 
   useEffect(() => {
     let ignore = false
@@ -372,6 +666,10 @@ export default function ConnectionsPage({ onOpenInbox, onOpenChat, onOpenAiTrain
 
   function toggleConnection(connectionId) {
     setExpandedById((current) => ({ ...current, [connectionId]: !current[connectionId] }))
+    const connection = (payload?.connections || []).find((item) => item.id === connectionId)
+    if (connection?.provider === 'line_suda_oagent' && !lineRulesById[connectionId]?.loaded) {
+      onLoadLineRules(connectionId)
+    }
   }
 
   function setAllVisibleExpanded(nextExpanded) {
@@ -387,6 +685,45 @@ export default function ConnectionsPage({ onOpenInbox, onOpenChat, onOpenAiTrain
       ...current,
       [connectionId]: { ...(current[connectionId] || {}), [fieldId]: value },
     }))
+  }
+
+  function onAddFormChange(key, value) {
+    setAddForm((current) => ({ ...current, [key]: value }))
+  }
+
+  async function onAddConnection(event) {
+    event.preventDefault()
+    setAddError('')
+    setAddBusy(true)
+    try {
+      await addConnectionOption(addForm)
+      setPayload(await fetchConnections())
+      setActiveGroup(addForm.group || 'all')
+      setShowAddForm(false)
+      setAddForm({ title: '', provider: '', group: 'customer_channel', description: '', helper: '', credentialName: '' })
+    } catch (err) {
+      setAddError(err.message || 'connection_add_failed')
+    } finally {
+      setAddBusy(false)
+    }
+  }
+
+  async function onDeleteConnection(connectionId) {
+    setError('')
+    setBusyById((current) => ({ ...current, [connectionId]: 'delete' }))
+    try {
+      await deleteConnectionOption(connectionId)
+      setPayload(await fetchConnections())
+      setExpandedById((current) => {
+        const next = { ...current }
+        delete next[connectionId]
+        return next
+      })
+    } catch (err) {
+      setError(err.message || 'connection_delete_failed')
+    } finally {
+      setBusyById((current) => ({ ...current, [connectionId]: null }))
+    }
   }
 
   async function onSave(connectionId) {
@@ -561,23 +898,109 @@ export default function ConnectionsPage({ onOpenInbox, onOpenChat, onOpenAiTrain
     }
   }
 
-  return (
-    <div className="min-h-full overflow-x-clip bg-[var(--color-paper)] text-[var(--color-ink)]">
-      <header className="border-b border-[var(--color-rule)] bg-[var(--color-panel)] px-4 py-3">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-xs font-semibold text-[var(--color-muted)]">Omni Connections</p>
-            <h1 className="text-xl font-bold text-[var(--color-ink)]">การเชื่อมต่อและ API</h1>
-          </div>
-          <nav className="flex flex-wrap gap-2" aria-label="Omni pages">
-            <button type="button" className="rounded-[var(--radius-md)] border border-[var(--color-rule)] px-3 py-2 text-sm font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]" onClick={onOpenInbox}>กล่องรวม</button>
-            <button type="button" className="rounded-[var(--radius-md)] border border-[var(--color-rule)] px-3 py-2 text-sm font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]" onClick={onOpenAiTrain}>สอน AI</button>
-            <button type="button" className="rounded-[var(--radius-md)] border border-[var(--color-rule)] px-3 py-2 text-sm font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]" onClick={onOpenChat}>แชททีม</button>
-          </nav>
-        </div>
-      </header>
+  async function onLoadLineRules(connectionId) {
+    setLineRulesById((current) => ({
+      ...current,
+      [connectionId]: { ...(current[connectionId] || {}), busy: 'load', error: '', notice: '' },
+    }))
+    try {
+      const result = await fetchLineSudaGroupRules()
+      const groups = result.groups || []
+      const selected = groups.find((group) => group.groupId === selectedLineGroupById[connectionId]) || groups[0] || null
+      setLineRulesById((current) => ({
+        ...current,
+        [connectionId]: { ...result, groups, loaded: true, busy: null, error: '', notice: '' },
+      }))
+      if (selected) {
+        setSelectedLineGroupById((current) => ({ ...current, [connectionId]: selected.groupId }))
+        setLineRuleDraftById((current) => ({
+          ...current,
+          [connectionId]: normalizeLineRules(selected.responseRules),
+        }))
+      }
+    } catch (err) {
+      setLineRulesById((current) => ({
+        ...current,
+        [connectionId]: { ...(current[connectionId] || {}), busy: null, error: err.message || 'line_rules_load_failed', notice: '' },
+      }))
+    }
+  }
 
-      <main className="mx-auto grid max-w-7xl gap-5 px-4 py-5 xl:grid-cols-[260px_minmax(0,1fr)]">
+  function onSelectLineGroup(connectionId, group) {
+    setSelectedLineGroupById((current) => ({ ...current, [connectionId]: group.groupId }))
+    setLineRuleDraftById((current) => ({
+      ...current,
+      [connectionId]: normalizeLineRules(group.responseRules),
+    }))
+    setLineRulesById((current) => ({
+      ...current,
+      [connectionId]: { ...(current[connectionId] || {}), error: '', notice: '' },
+    }))
+  }
+
+  function onLineRuleDraftChange(connectionId, field, value) {
+    setLineRuleDraftById((current) => ({
+      ...current,
+      [connectionId]: { ...(current[connectionId] || EMPTY_LINE_RULES), [field]: value },
+    }))
+  }
+
+  async function onSaveLineRules(connectionId, groupId) {
+    setLineRulesById((current) => ({
+      ...current,
+      [connectionId]: { ...(current[connectionId] || {}), busy: 'save', error: '', notice: '' },
+    }))
+    try {
+      const result = await saveLineSudaGroupRules(groupId, normalizeLineRules(lineRuleDraftById[connectionId]))
+      setLineRulesById((current) => {
+        const state = current[connectionId] || {}
+        const groups = (state.groups || []).map((group) => (group.groupId === groupId ? result.group : group))
+        if (!groups.some((group) => group.groupId === groupId)) groups.unshift(result.group)
+        const ready = result.group?.status === 'response_rules_recorded'
+        return {
+          ...current,
+          [connectionId]: {
+            ...state,
+            groups,
+            busy: null,
+            error: '',
+            notice: ready
+              ? `บันทึกกฎกลุ่ม ${result.group?.groupName || groupId} แล้ว พร้อมส่งข้อความ`
+              : `บันทึกกฎกลุ่ม ${result.group?.groupName || groupId} แล้ว แต่ยังไม่ปลดล็อกการส่ง`,
+          },
+        }
+      })
+      setLineRuleDraftById((current) => ({
+        ...current,
+        [connectionId]: normalizeLineRules(result.group?.responseRules),
+      }))
+    } catch (err) {
+      setLineRulesById((current) => ({
+        ...current,
+        [connectionId]: { ...(current[connectionId] || {}), busy: null, error: err.message || 'line_rules_save_failed', notice: '' },
+      }))
+    }
+  }
+
+  return (
+    <div className={embedded ? 'min-w-0 bg-[var(--color-paper)] text-[var(--color-ink)]' : 'h-full min-h-0 overflow-y-auto overflow-x-clip bg-[var(--color-paper)] p-4 text-[var(--color-ink)] lg:p-6'}>
+      {!embedded ? (
+        <header className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--color-rule)] pb-4">
+          <div>
+            <h1 className="text-xl font-bold text-[var(--color-ink)]">การเชื่อมต่อและ API</h1>
+            <p className="mt-1 text-sm text-[var(--color-ink-2)]">ตั้งค่า provider, ตรวจ health และเชื่อม flow จริงในดีไซน์เดียวกับ Settings</p>
+          </div>
+          {showPageNav ? (
+            <nav className="flex flex-wrap gap-2" aria-label="Omni pages">
+              <button type="button" className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]" onClick={onOpenInbox}>กล่องรวม</button>
+              <button type="button" className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]" onClick={onOpenAiTrain}>สอน AI</button>
+              <button type="button" className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]" onClick={onOpenChat}>แชททีม</button>
+            </nav>
+          ) : null}
+        </header>
+      ) : null}
+
+      <main className={`${embedded ? 'mt-0' : 'mt-4'} grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)]`}>
         <aside className="min-w-0">
           <div className="sticky top-4 space-y-4">
             <section className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] p-4">
@@ -624,6 +1047,13 @@ export default function ConnectionsPage({ onOpenInbox, onOpenChat, onOpenAiTrain
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
+                  onClick={() => setShowAddForm(true)}
+                  className="rounded-[var(--radius-md)] border border-[var(--color-rule)] px-3 py-2 text-sm font-semibold text-[var(--color-ink)] transition hover:bg-[var(--color-panel-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]"
+                >
+                  เพิ่มตัวเลือก
+                </button>
+                <button
+                  type="button"
                   onClick={() => setAllVisibleExpanded(false)}
                   className="rounded-[var(--radius-md)] border border-[var(--color-rule)] px-3 py-2 text-sm font-semibold text-[var(--color-ink)] transition hover:bg-[var(--color-panel-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]"
                 >
@@ -639,27 +1069,50 @@ export default function ConnectionsPage({ onOpenInbox, onOpenChat, onOpenAiTrain
               </div>
             </div>
           ) : null}
-          {connections.map((connection) => (
-            <ConnectionCard
-              key={connection.id}
-              connection={connection}
-              draftValues={draftValues}
-              result={results[connection.id]}
-              busy={busyById[connection.id]}
-              expanded={Boolean(expandedById[connection.id])}
-              inbox={inboxById}
-              selectedConversationId={selectedConversationById[connection.id]}
-              onToggle={toggleConnection}
-              onFieldChange={onFieldChange}
-              onSave={onSave}
-              onVerify={onVerify}
-              onLoadConversations={onLoadConversations}
-              onOpenThread={onOpenThread}
-              onDraftReply={onDraftReply}
-              onDraftTextChange={onDraftTextChange}
-              onSendReply={onSendReply}
+          {showAddForm ? (
+            <AddConnectionPanel
+              values={addForm}
+              busy={addBusy}
+              error={addError}
+              onChange={onAddFormChange}
+              onCancel={() => {
+                setShowAddForm(false)
+                setAddError('')
+              }}
+              onSubmit={onAddConnection}
             />
-          ))}
+          ) : null}
+          <div className="grid gap-3">
+            {connections.map((connection) => (
+              <ConnectionCard
+                key={connection.id}
+                connection={connection}
+                draftValues={draftValues}
+                result={results[connection.id]}
+                busy={busyById[connection.id]}
+                expanded={Boolean(expandedById[connection.id])}
+                inbox={inboxById}
+                selectedConversationId={selectedConversationById[connection.id]}
+                lineRulesState={lineRulesById[connection.id]}
+                selectedLineGroupId={selectedLineGroupById[connection.id]}
+                lineRulesDraft={lineRuleDraftById[connection.id]}
+                onToggle={toggleConnection}
+                onFieldChange={onFieldChange}
+                onSave={onSave}
+                onVerify={onVerify}
+                onDelete={onDeleteConnection}
+                onLoadConversations={onLoadConversations}
+                onOpenThread={onOpenThread}
+                onDraftReply={onDraftReply}
+                onDraftTextChange={onDraftTextChange}
+                onSendReply={onSendReply}
+                onLoadLineRules={onLoadLineRules}
+                onSelectLineGroup={onSelectLineGroup}
+                onLineRuleDraftChange={onLineRuleDraftChange}
+                onSaveLineRules={onSaveLineRules}
+              />
+            ))}
+          </div>
         </section>
       </main>
     </div>

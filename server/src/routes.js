@@ -5,6 +5,12 @@ import { listFacebookConversations } from './omni/metaInboxClient.js'
 import { createOmniService } from './omni/service.js'
 import { listTikTokOrders } from './omni/tiktokOrderClient.js'
 import { createConnectionRuntime } from './omni/connections.js'
+import { parseCfComment } from './omni/cfParser.js'
+import { createMetaSocialRuntime } from './omni/metaSocialRuntime.js'
+import { lookupThaiAddressByPostcode } from './omni/thaiAddress.js'
+import { createZortCommerceRuntime } from './omni/zortCommerceRuntime.js'
+import { createLineSudaOagentNotifier } from './omni/lineSudaOagentNotifier.js'
+import { appendPageRegistryEntry } from './omni/pageRegistry.js'
 
 function normalizeLeader(input) {
   if (!input) return null
@@ -20,16 +26,58 @@ function normalizePageSize(value) {
   return parsed
 }
 
+function normalizeAddressLimit(value) {
+  const parsed = Number(value || 200)
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 500) return 200
+  return parsed
+}
+
 export function mountRoutes(app, hub, room, options = {}) {
   const omni = options.omni || createOmniService()
   const adapters = createAdapterRegistry()
   const ai = options.ai || createAiReplyEngine()
   const connections = options.connections || createConnectionRuntime()
+  const social = options.social || createMetaSocialRuntime()
+  const commerce = options.commerce || createZortCommerceRuntime()
+  const sudaOagentNotifier = options.sudaOagentNotifier || createLineSudaOagentNotifier()
+
+  function reportToCsv(report) {
+    const rows = ['hour,inbound,outbound,total']
+    for (const row of report.byHour || []) rows.push([row.hour, row.inbound, row.outbound, row.total].join(','))
+    return `${rows.join('\n')}\n`
+  }
+
+  function cfReviewItem(reason, item, extra = {}) {
+    return {
+      reason,
+      commentId: item.commentId || null,
+      rawText: item.rawText || item.text || '',
+      sku: item.sku || '',
+      keyword: item.keyword || '',
+      quantity: item.quantity || 1,
+      customer: item.customer || null,
+      ...extra,
+    }
+  }
+
+  function canDraftFromZortProduct(product) {
+    return Boolean(product?.id && product?.sku && Number(product.sellPrice ?? product.unitPrice ?? 0) > 0)
+  }
 
   app.get('/api/health', (_req, res) => res.json({ ok: true }))
 
   app.get('/api/omni/pages', (_req, res) => {
     res.json({ ok: true, pages: omni.listPages() })
+  })
+
+  app.post('/api/omni/pages/registry', (req, res) => {
+    try {
+      const result = appendPageRegistryEntry(req.body || {}, { registryPath: options.pageRegistryPath })
+      res.json(result)
+    } catch (error) {
+      const status = ['profile_key_exists', 'page_id_exists'].includes(error.message) ? 409 : 400
+      res.status(status).json({ ok: false, error: error.message || 'page_registry_append_failed' })
+    }
   })
 
   app.post('/api/omni/pages/:pageId/auto-reply', (req, res) => {
@@ -129,6 +177,8 @@ export function mountRoutes(app, hub, room, options = {}) {
   app.post('/api/omni/threads/:threadId/ai-draft', async (req, res) => {
     const thread = omni.getThread(req.params.threadId)
     if (!thread) return res.status(404).json({ ok: false, error: 'thread_not_found' })
+    const settings = omni.getSettings()
+    if (settings.ai?.enabled === false) return res.status(409).json({ ok: false, error: 'ai_disabled' })
     const snapshot = omni.snapshot()
     const policy = omni.getPolicyForThread(thread)
     const decision = await ai.draft({ thread, snapshot, policy })
@@ -160,10 +210,233 @@ export function mountRoutes(app, hub, room, options = {}) {
     res.json(result)
   })
 
+  app.post('/api/omni/threads/:threadId/order-address-intake', async (req, res) => {
+    try {
+      const result = await omni.createOrderAddressIntake({
+        threadId: req.params.threadId,
+        text: req.body?.text || '',
+        createConfirmationDraft: req.body?.createConfirmationDraft,
+        authorName: req.body?.authorName || 'AI',
+      })
+      if (!result.ok) {
+        const status = result.error === 'thread_not_found' ? 404
+          : result.error === 'order_address_intake_disabled' ? 409
+            : 400
+        return res.status(status).json(result)
+      }
+      if (result.snapshot) hub.broadcast('omni', result.snapshot)
+      res.json(result)
+    } catch (error) {
+      res.status(400).json({ ok: false, error: error.message || 'order_address_intake_failed' })
+    }
+  })
+
   app.get('/api/omni/connectors/health', async (_req, res) => {
     const providers = adapters.list()
     const health = await Promise.all(providers.map((provider) => adapters.get(provider).healthcheck()))
     res.json({ ok: true, health })
+  })
+
+  app.get('/api/omni/notifications/suda-oagent/health', async (_req, res) => {
+    const result = await sudaOagentNotifier.verify()
+    res.status(sudaOagentNotifier.responseStatus(result)).json(result)
+  })
+
+  app.get('/api/omni/notifications/suda-oagent/chat-url', async (_req, res) => {
+    const result = await sudaOagentNotifier.chatUrl()
+    res.status(sudaOagentNotifier.responseStatus(result)).json(result)
+  })
+
+  app.post('/api/omni/notifications/suda-oagent/group-id', async (req, res) => {
+    const result = await sudaOagentNotifier.setGroupId(req.body?.groupId)
+    res.status(sudaOagentNotifier.responseStatus(result)).json(result)
+  })
+
+  app.post('/api/omni/notifications/suda-oagent/task-summary', async (req, res) => {
+    const result = await sudaOagentNotifier.sendTaskSummary({ dryRun: req.body?.dryRun === true })
+    res.status(sudaOagentNotifier.responseStatus(result)).json(result)
+  })
+
+  app.get('/api/omni/notifications/suda-oagent/group-rules', async (_req, res) => {
+    const result = await sudaOagentNotifier.listGroupRules()
+    res.status(sudaOagentNotifier.responseStatus(result)).json(result)
+  })
+
+  app.post('/api/omni/notifications/suda-oagent/group-rules/:groupId', async (req, res) => {
+    const result = await sudaOagentNotifier.saveGroupRules(req.params.groupId, req.body?.responseRules || {})
+    res.status(sudaOagentNotifier.responseStatus(result)).json(result)
+  })
+
+  app.get('/api/omni/settings', (_req, res) => {
+    res.json({ ok: true, settings: omni.getSettings() })
+  })
+
+  app.post('/api/omni/settings', (req, res) => {
+    const result = omni.updateSettings({ settings: req.body?.settings || {}, updatedBy: req.body?.updatedBy || 'boss' })
+    hub.broadcast('omni', result.snapshot)
+    res.json(result)
+  })
+
+  app.get('/api/omni/reports/message-volume', (req, res) => {
+    const report = omni.messageVolumeReport({ from: req.query.from, to: req.query.to, pageId: req.query.pageId })
+    if (req.query.format === 'csv') {
+      res.setHeader('content-type', 'text/csv; charset=utf-8')
+      res.setHeader('content-disposition', 'attachment; filename="omni-message-volume.csv"')
+      return res.send(reportToCsv(report))
+    }
+    res.json({ ok: true, report })
+  })
+
+  app.get('/api/omni/social/posts', async (req, res) => {
+    try {
+      const result = await social.listPagePosts({
+        pageProfile: String(req.query.pageProfile || req.query.page || 'man_kynd'),
+        limit: normalizePageSize(req.query.limit),
+      })
+      res.json(result)
+    } catch (error) {
+      res.status(400).json({ ok: false, error: error.message || 'social_posts_failed' })
+    }
+  })
+
+  app.get('/api/omni/social/posts/:postId/comments', async (req, res) => {
+    try {
+      const result = await social.listPostComments({
+        objectId: req.params.postId,
+        pageProfile: String(req.query.pageProfile || req.query.page || 'man_kynd'),
+        limit: normalizePageSize(req.query.limit),
+      })
+      res.json(result)
+    } catch (error) {
+      res.status(400).json({ ok: false, error: error.message || 'social_comments_failed' })
+    }
+  })
+
+  app.post('/api/omni/social/posts/:postId/capture', async (req, res) => {
+    try {
+      const settings = omni.getSettings()
+      if (settings.postCf?.enabled === false) return res.status(409).json({ ok: false, error: 'post_cf_disabled' })
+      const pageProfile = String(req.body?.pageProfile || req.query.pageProfile || req.query.page || 'man_kynd')
+      const comments = await social.listPostComments({
+        objectId: req.params.postId,
+        pageProfile,
+        limit: normalizePageSize(req.body?.limit || req.query.limit || 50),
+      })
+      const parseResults = (comments.comments || []).map((comment) => parseCfComment(comment, { keywords: settings.postCf?.keywords }))
+      const parsed = parseResults.filter((result) => result.ok)
+      const reviewItems = parseResults
+        .filter((result) => !result.ok && !['empty_comment', 'not_cf_comment'].includes(result.reason))
+        .map((result) => cfReviewItem(result.reason, result))
+      const drafts = []
+      for (const item of parsed) {
+        const products = await commerce.searchProducts({ keyword: item.keyword, sku: item.sku, limit: 5 })
+        const product = products.products?.[0] || null
+        if (!canDraftFromZortProduct(product)) {
+          reviewItems.push(cfReviewItem(product ? 'zort_product_price_missing' : 'zort_product_not_found', item, { products: products.products || [] }))
+          continue
+        }
+        if (settings.postCf?.autoCreateDrafts === false) {
+          reviewItems.push(cfReviewItem('auto_create_disabled', item, { zortProduct: product }))
+          continue
+        }
+        const draft = omni.createOrderDraft({
+          platform: 'facebook',
+          customer: item.customer,
+          customerId: item.customer.id,
+          customerName: item.customer.displayName,
+          sourceRef: `meta_post_cf:${req.params.postId}:${item.commentId}`,
+          sourcePostId: req.params.postId,
+          sourceCommentId: item.commentId,
+          items: [{
+            sku: product?.sku || item.sku || item.keyword,
+            name: product?.name || item.keyword,
+            quantity: item.quantity,
+            unitPrice: product?.sellPrice || 0,
+            zortProductId: product?.id || null,
+            zortProduct: product,
+            sourceCommentId: item.commentId,
+          }],
+        })
+        if (draft.ok) drafts.push(draft.order)
+      }
+      hub.broadcast('omni', omni.snapshot())
+      res.json({
+        ok: true,
+        mode: req.body?.mode || 'post_comment_capture',
+        postId: req.params.postId,
+        summary: { commentCount: comments.comments.length, parsedCount: parsed.length, draftCount: drafts.length, reviewCount: reviewItems.length },
+        parsed,
+        reviewItems,
+        drafts,
+        snapshot: omni.snapshot(),
+      })
+    } catch (error) {
+      res.status(400).json({ ok: false, error: error.message || 'post_cf_capture_failed' })
+    }
+  })
+
+  app.get('/api/omni/social/live', async (req, res) => {
+    try {
+      const settings = omni.getSettings()
+      if (settings.liveCf?.enabled === false) return res.status(409).json({ ok: false, error: 'live_cf_disabled' })
+      const result = await social.listLiveCommentSources({
+        pageProfile: String(req.query.pageProfile || req.query.page || 'man_kynd'),
+        limit: normalizePageSize(req.query.limit),
+      })
+      res.json(result)
+    } catch (error) {
+      res.status(400).json({ ok: false, error: error.message || 'live_cf_failed' })
+    }
+  })
+
+  app.get('/api/omni/zort/products', async (req, res) => {
+    try {
+      const result = await commerce.searchProducts({
+        keyword: String(req.query.q || req.query.keyword || ''),
+        sku: String(req.query.sku || ''),
+        limit: normalizePageSize(req.query.limit),
+      })
+      res.json(result)
+    } catch (error) {
+      res.status(400).json({ ok: false, error: error.message || 'zort_products_failed' })
+    }
+  })
+
+  app.get('/api/omni/thai-address/postcodes/:postcode', async (req, res) => {
+    try {
+      const result = await lookupThaiAddressByPostcode(req.params.postcode, {
+        limit: normalizeAddressLimit(req.query.limit),
+      })
+      if (!result.ok) {
+        const status = result.error === 'thai_postcode_not_found' ? 404 : 400
+        return res.status(status).json(result)
+      }
+      res.json(result)
+    } catch (error) {
+      res.status(400).json({ ok: false, error: error.message || 'thai_address_lookup_failed' })
+    }
+  })
+
+  app.post('/api/omni/order-drafts', (req, res) => {
+    const result = omni.createOrderDraft({ ...(req.body || {}), createdBy: req.body?.createdBy || 'boss' })
+    if (!result.ok) return res.status(400).json(result)
+    hub.broadcast('omni', result.snapshot)
+    res.json(result)
+  })
+
+  app.post('/api/omni/order-drafts/:orderId/approve', async (req, res) => {
+    const result = await omni.approveOrderDraft({
+      orderId: req.params.orderId,
+      approved: req.body?.approved,
+      approvedBy: req.body?.approvedBy || 'boss',
+      createExternalOrder: ({ order, uniquenumber, approved }) => commerce.createOrder({ order, uniquenumber, approved }),
+    })
+    if (!result.ok) {
+      const status = result.error === 'approval_required' ? 403 : result.error === 'zort_order_create_disabled' ? 409 : 400
+      return res.status(status).json(result)
+    }
+    hub.broadcast('omni', result.snapshot)
+    res.json(result)
   })
 
   app.get('/api/omni/connections', async (_req, res) => {
@@ -171,6 +444,14 @@ export function mountRoutes(app, hub, room, options = {}) {
       res.json(await connections.list())
     } catch (error) {
       res.status(500).json({ ok: false, error: error.message || 'connections_list_failed' })
+    }
+  })
+
+  app.post('/api/omni/connections', async (req, res) => {
+    try {
+      res.json(await connections.add(req.body || {}))
+    } catch (error) {
+      res.status(400).json({ ok: false, error: error.message || 'connection_add_failed' })
     }
   })
 
@@ -191,6 +472,15 @@ export function mountRoutes(app, hub, room, options = {}) {
     } catch (error) {
       const status = error.message === 'connection_not_found' ? 404 : 400
       res.status(status).json({ ok: false, error: error.message || 'connection_secret_save_failed' })
+    }
+  })
+
+  app.delete('/api/omni/connections/:connectionId', async (req, res) => {
+    try {
+      res.json(await connections.remove(req.params.connectionId))
+    } catch (error) {
+      const status = error.message === 'connection_not_found' ? 404 : 400
+      res.status(status).json({ ok: false, error: error.message || 'connection_delete_failed' })
     }
   })
 
@@ -216,6 +506,8 @@ export function mountRoutes(app, hub, room, options = {}) {
 
   app.post('/api/omni/connections/:connectionId/conversations/:conversationId/ai-draft', async (req, res) => {
     try {
+      const settings = omni.getSettings()
+      if (settings.ai?.enabled === false) return res.status(409).json({ ok: false, error: 'ai_disabled' })
       const thread = await connections.readThread(req.params.connectionId, req.params.conversationId, { limit: 20 })
       const messages = thread.messages.map((message) => ({
         id: message.id,

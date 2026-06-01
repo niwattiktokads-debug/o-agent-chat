@@ -1,0 +1,12 @@
+{
+  "name": "omni-server",
+  "version": "0.0.3",
+  "description": "Omni Chat Server",
+  "scripts": {
+    "start": "node server/src/index.js",
+    "install:server": "npm --prefix server install --omit=dev"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

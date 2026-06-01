@@ -1,0 +1,59 @@
+[
+  {
+    "profileKey": "man_kynd",
+    "pageId": "189971841184132",
+    "pageName": "MAN KYND",
+    "omniPageId": "page_mankynd",
+    "platform": "facebook"
+  },
+  {
+    "profileKey": "anna_lynn",
+    "pageId": "122106446570001676",
+    "pageName": "Anna Lynn",
+    "omniPageId": "page_annalynn",
+    "platform": "facebook"
+  },
+  {
+    "profileKey": "page_des",
+    "pageId": "1137894522741329",
+    "pageName": "Niwatha และ AI ชื่อเดส",
+    "omniPageId": "page_des",
+    "platform": "facebook"
+  },
+  {
+    "profileKey": "fb_112154661515664",
+    "pageId": "112154661515664",
+    "pageName": "Viris Zamara",
+    "omniPageId": "page_fb_112154661515664",
+    "platform": "facebook"
+  },
+  {
+    "profileKey": "ig_anna_lynn",
+    "pageId": "17841456216401165",
+    "pageName": "Anna Lynn IG",
+    "omniPageId": "page_ig_annalynn",
+    "platform": "instagram"
+  },
+  {
+    "profileKey": "ig_man_kynd",
+    "pageId": "17841402222436331",
+    "pageName": "MAN KYND IG",
+    "omniPageId": "page_ig_mankynd",
+    "platform": "instagram"
+  },
+  {
+    "profileKey": "ig_page_des",
+    "pageId": "NOT_LINKED",
+    "status": "pending_ig_link",
+    "pageName": "Niwatha และ AI ชื่อเดส IG",
+    "omniPageId": "page_ig_page_des",
+    "platform": "instagram"
+  },
+  {
+    "profileKey": "ig_fb_112154661515664",
+    "pageId": "17841462136286560",
+    "pageName": "Viris Zamara IG",
+    "omniPageId": "page_ig_fb_112154661515664",
+    "platform": "instagram"
+  }
+]

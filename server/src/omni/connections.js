@@ -1,11 +1,22 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import { homedir } from 'node:os'
+import { dirname, join } from 'node:path'
 
 const execFileAsync = promisify(execFile)
 const CSNAP_BASE_URL = process.env.CSNAP_BASE_URL || 'http://127.0.0.1:9876'
-const CSNAP_AUTH_FILE = process.env.CSNAP_AUTH_FILE || '/Users/babycuca/Projects/c-snap/data/.auth_token'
+const CSNAP_AUTH_FILE = process.env.CSNAP_AUTH_FILE || ''
 const META_INBOX_HELPER = process.env.META_INBOX_HELPER || '/Users/babycuca/.codex/bin/meta-inbox-api'
+const INSTAGRAM_MESSAGING_HELPER = process.env.INSTAGRAM_MESSAGING_HELPER || '/Users/babycuca/.codex/bin/instagram-messaging-api'
+const LINE_SUDA_OAGENT_HELPER = process.env.LINE_SUDA_OAGENT_HELPER || '/Users/babycuca/.codex/bin/line-suda-oagent'
+const TIKTOK_MESSAGING_HELPER = process.env.TIKTOK_MESSAGING_HELPER || '/Users/babycuca/.codex/bin/tiktok-messaging-api'
+const OMNI_AI_REPLY_HELPER = process.env.OMNI_AI_REPLY_HELPER || '/Users/babycuca/.codex/bin/omni-ai-reply'
+const PERPLEXITY_HELPER = process.env.PERPLEXITY_HELPER || '/Users/babycuca/.codex/bin/perplexity-api'
+const FLOWACCOUNT_HELPER = process.env.FLOWACCOUNT_HELPER || '/Users/babycuca/.codex/bin/flowaccount-oa-api'
+const ZORT_HELPER = process.env.ZORT_HELPER || '/Users/babycuca/.codex/bin/zort-api'
+const GEMINI_PROFILE_PATH = process.env.GEMINI_PROFILE_PATH || join(homedir(), '.gemini')
+const CUSTOM_CONNECTIONS_PATH = process.env.OMNI_CUSTOM_CONNECTIONS_PATH || new URL('../../data/custom-connections.json', import.meta.url).pathname
 
 const CONNECTIONS = [
   {
@@ -16,8 +27,8 @@ const CONNECTIONS = [
     pageId: '122106446570001676',
     group: 'customer_channel',
     description: 'Facebook Messenger inbox, webhook, and approved customer replies for Anna Lynn.',
-    helper: '/Users/babycuca/.codex/bin/meta-inbox-api',
-    verify: { command: '/Users/babycuca/.codex/bin/meta-inbox-api', args: ['verify', '--page=anna_lynn'] },
+    helper: META_INBOX_HELPER,
+    verify: { command: META_INBOX_HELPER, args: ['verify', '--page=anna_lynn'] },
     fields: [
       { id: 'page_token', label: 'Page access token', credentialName: 'FB Anna Lynn Page Token -OA', secret: true, required: true },
       { id: 'app_secret', label: 'Meta app secret', credentialName: 'Meta App Secret FB -MP', secret: true, required: false },
@@ -41,8 +52,8 @@ const CONNECTIONS = [
     pageId: '189971841184132',
     group: 'customer_channel',
     description: 'Facebook Messenger inbox and comment/reply control for MAN KYND.',
-    helper: '/Users/babycuca/.codex/bin/meta-inbox-api',
-    verify: { command: '/Users/babycuca/.codex/bin/meta-inbox-api', args: ['verify', '--page=man_kynd'] },
+    helper: META_INBOX_HELPER,
+    verify: { command: META_INBOX_HELPER, args: ['verify', '--page=man_kynd'] },
     fields: [
       { id: 'page_token', label: 'Page access token', credentialName: 'FB Page Token MAN KYND -MP', secret: true, required: true },
       { id: 'app_secret', label: 'Meta app secret', credentialName: 'Meta App Secret FB -MP', secret: true, required: false },
@@ -58,14 +69,201 @@ const CONNECTIONS = [
     productionNotes: ['Keep page token scoped to Meta tasks only.', 'Do not expose customer tokens in workspace files.'],
   },
   {
+    id: 'social_instagram',
+    title: 'Instagram · Social Chat',
+    provider: 'instagram',
+    group: 'customer_channel',
+    description: 'Instagram DM sales channel for chat-to-order workflows. Requires Instagram Professional account linked to Facebook, then channel verify and warehouse/user access mapping.',
+    helper: INSTAGRAM_MESSAGING_HELPER,
+    verify: { command: INSTAGRAM_MESSAGING_HELPER, args: ['verify'] },
+    fields: [
+      { id: 'instagram_user_id', label: 'Instagram user ID', credentialName: 'Instagram User ID -OA', secret: false, required: true },
+      { id: 'access_token', label: 'Instagram access token', credentialName: 'Instagram Access Token -OA', secret: true, required: true },
+    ],
+    docs: '/Users/babycuca/.codex/integrations/instagram_messaging_api.json',
+    endpoints: [
+      {
+        method: 'WEBHOOK',
+        path: '/webhook/meta/instagram',
+        purpose: 'รับ Instagram DM ผ่าน Meta webhook แล้วสร้าง thread ใน Omni',
+      },
+    ],
+    productionNotes: ['Instagram must be linked to Facebook before connection.', 'Map warehouse and allowed users before customer-facing order creation.'],
+  },
+  {
+    id: 'line_suda_oagent',
+    title: 'LINE OA · สุดา O-agent',
+    provider: 'line_suda_oagent',
+    group: 'customer_channel',
+    description: 'LINE Official Account สุดา for O-agent group alerts, approval-gated group intake, and per-group /su response rules.',
+    helper: LINE_SUDA_OAGENT_HELPER,
+    verify: { command: LINE_SUDA_OAGENT_HELPER, args: ['verify'] },
+    fields: [
+      { id: 'channel_access_token', label: 'Channel access token', credentialName: 'LINE Channel Access Token -EP', secret: true, required: true },
+      { id: 'oagent_group_id', label: 'O-agent group ID', credentialName: 'LINE O-agent Winn Group ID -OA', secret: true, required: false },
+    ],
+    docs: '/Users/babycuca/.codex/integrations/line_suda_oagent_alerts.json',
+    endpoints: [
+      {
+        method: 'WEBHOOK',
+        path: '/webhook/line/suda-oagent',
+        purpose: 'รับ join/message event จาก LINE OA สุดาเข้า Omni',
+      },
+      {
+        method: 'GET',
+        path: '/api/omni/notifications/suda-oagent/group-rules',
+        purpose: 'อ่านกฎคำถามและคำตอบตั้งต้นรายกลุ่ม',
+      },
+    ],
+    productionNotes: [
+      'ไม่ใช้ n8n เป็น route หลัก',
+      'กฎตอบรายกลุ่มเก็บใน Omni staging และใช้เป็น context ของ /su',
+      'helper ห้ามส่งข้อความทุกชนิดเข้ากลุ่มจนกว่าตั้งครบ หน้าที่/รูปแบบคำถาม/รูปแบบตอบ/กฎตอบ',
+      'การส่งข้อความเข้ากลุ่มใช้ LINE Push API ในนามสุดา',
+    ],
+  },
+  {
+    id: 'line_oa',
+    title: 'LINE OA · Chat + Order',
+    provider: 'line_oa',
+    group: 'customer_channel',
+    description: 'LINE Official Account chat channel for replying, creating orders, and sending order/payment summaries from one screen.',
+    helper: 'runtime gap: add line-oa-api helper using LINE Messaging API',
+    verify: null,
+    fields: [
+      { id: 'channel_id', label: 'Channel ID', credentialName: 'LINE OA Channel ID -OA', secret: false, required: true },
+      { id: 'channel_secret', label: 'Channel secret', credentialName: 'LINE OA Channel Secret -OA', secret: true, required: true },
+      { id: 'channel_access_token', label: 'Channel access token', credentialName: 'LINE OA Channel Access Token -OA', secret: true, required: true },
+    ],
+    docs: 'https://zortout.com/docs/lineoa-system-guide',
+    endpoints: [
+      {
+        method: 'WEBHOOK',
+        path: '/webhook/line/oa',
+        purpose: 'รับข้อความ LINE OA เข้า Omni inbox และ route ไป order/payment guard',
+      },
+    ],
+    productionNotes: ['LINE OA must enable Messaging API, chat, webhook, and manual chat mode.', 'Reply cost follows LINE OA message quota/broadcast rules.'],
+  },
+  {
+    id: 'line_shopping_myshop',
+    title: 'LINE Shopping · MyShop',
+    provider: 'line_shopping',
+    group: 'marketplace_channel',
+    description: 'LINE Shopping/MyShop order and stock bridge so Omni can sync marketplace orders into one stock source.',
+    helper: 'runtime gap: add line-shopping helper when LINE MyShop API access is approved',
+    verify: null,
+    fields: [
+      { id: 'shop_id', label: 'LINE Shopping shop ID', credentialName: 'LINE Shopping Shop ID -OA', secret: false, required: true },
+      { id: 'access_token', label: 'LINE Shopping access token', credentialName: 'LINE Shopping Access Token -OA', secret: true, required: true },
+    ],
+    docs: 'https://zortout.com/docs/zort-social-chat',
+    endpoints: [
+      {
+        method: 'SYNC',
+        path: '/api/omni/marketplaces/line-shopping/orders',
+        purpose: 'ดึงออเดอร์ LINE Shopping และ sync stock กับ ZORT stock master',
+      },
+    ],
+    productionNotes: ['Use ZORT as stock master before enabling automatic stock deduction.', 'Order import is read-only until approval guard is wired.'],
+  },
+  {
+    id: 'tiktok_sale_page',
+    title: 'TikTok · Sale Page Tracking',
+    provider: 'tiktok_sale_page',
+    group: 'marketplace_channel',
+    description: 'TikTok sale page tracking lane for campaign attribution, order source mapping, and future TikTok Shop/Business Messaging bridge.',
+    helper: TIKTOK_MESSAGING_HELPER,
+    verify: { command: TIKTOK_MESSAGING_HELPER, args: ['verify'] },
+    fields: [
+      { id: 'app_id', label: 'TikTok Business app ID', credentialName: 'TikTok Business App ID -OA', secret: false, required: true },
+      { id: 'app_secret', label: 'TikTok Business app secret', credentialName: 'TikTok Business App Secret -OA', secret: true, required: true },
+      { id: 'access_token', label: 'TikTok Business access token', credentialName: 'TikTok Business Messaging Access Token -OA', secret: true, required: true },
+    ],
+    docs: '/Users/babycuca/.codex/integrations/tiktok_business_messaging.json',
+    endpoints: [
+      {
+        method: 'WEBHOOK',
+        path: '/webhook/tiktok/business-messaging',
+        purpose: 'รับ TikTok message/order signal เข้า Omni และผูกกับ campaign/source tracking',
+      },
+    ],
+    productionNotes: ['Business Messaging/OAuth approval is required before live use.', 'Keep sale-page tracking separate from auto-send until smoke tests pass.'],
+  },
+  {
+    id: 'facebook_post_cf',
+    title: 'Facebook Post CF · Auto Order',
+    provider: 'facebook_post_cf',
+    group: 'social_automation',
+    description: 'Facebook post CF automation lane: watch connected posts, map CF keywords to products, create guarded orders, and send summary links back through chat.',
+    helper: 'runtime gap: extend meta-inbox-api with post comment CF parser',
+    verify: null,
+    fields: [
+      { id: 'page_token', label: 'Facebook page token', credentialName: 'FB Anna Lynn Page Token -OA', secret: true, required: true },
+      { id: 'cf_keyword_rule', label: 'Default CF keyword rule', credentialName: 'FB Post CF Rule -OA', secret: false, required: false },
+    ],
+    docs: 'https://zortout.com/docs/how-to-create-postsocialchat',
+    endpoints: [
+      {
+        method: 'WEBHOOK',
+        path: '/webhook/meta/comments',
+        purpose: 'ดึงคอมเมนต์ CF ใต้โพสต์มาเข้าคิวสร้าง order แบบมี approval guard',
+      },
+    ],
+    productionNotes: ['Do not connect a live post until products, CF codes, quantity, gifts, and stop/end states are configured.', 'Customer summary/payment links remain approval-gated.'],
+  },
+  {
+    id: 'facebook_live_cf',
+    title: 'Facebook Live CF · Realtime Order',
+    provider: 'facebook_live_cf',
+    group: 'social_automation',
+    description: 'Facebook Live CF lane for realtime comment capture, CF code matching, stock reservation, and post-live continuation planning.',
+    helper: 'runtime gap: extend meta-inbox-api with live comment CF stream',
+    verify: null,
+    fields: [
+      { id: 'page_token', label: 'Facebook page token', credentialName: 'FB Anna Lynn Page Token -OA', secret: true, required: true },
+      { id: 'live_cf_rule', label: 'Default live CF rule', credentialName: 'FB Live CF Rule -OA', secret: false, required: false },
+    ],
+    docs: 'https://zortout.com/docs/how-to-create-livesocialchat',
+    endpoints: [
+      {
+        method: 'STREAM',
+        path: '/webhook/meta/live-comments',
+        purpose: 'รับ CF ระหว่างไลฟ์แบบ realtime แล้วสร้าง order draft/stock hold',
+      },
+    ],
+    productionNotes: ['Support post-live selling as a separate post/order lane.', 'Realtime auto-order must stay behind stock and payment approval guards.'],
+  },
+  {
+    id: 'social_message_report',
+    title: 'Social Message Report',
+    provider: 'social_report',
+    group: 'social_automation',
+    description: 'Message-volume analytics lane for tracking admin replies by date/channel and exporting operational review data.',
+    helper: 'runtime gap: aggregate Omni outbound messages by channel/user/date',
+    verify: null,
+    fields: [
+      { id: 'export_sink', label: 'Report export sink', credentialName: 'Omni Social Message Report Sink -OA', secret: false, required: false },
+    ],
+    docs: 'https://zortout.com/docs/how-to-view-message-volume-reports',
+    endpoints: [
+      {
+        method: 'GET',
+        path: '/api/omni/reports/message-volume',
+        purpose: 'สรุปจำนวนข้อความตอบกลับตามช่วงเวลา ช่องทาง และผู้ใช้งาน',
+      },
+    ],
+    productionNotes: ['Count only messages sent through Omni for auditability.', 'Export must not expose full customer message bodies by default.'],
+  },
+  {
     id: 'omni_ai_gemini',
     title: 'AI Reply · Gemini CLI',
     provider: 'gemini_cli',
     group: 'ai_provider',
     description: 'Local AI reply provider through Google Code Assist OAuth. Best current local path.',
-    helper: '/Users/babycuca/.codex/bin/omni-ai-reply',
+    helper: OMNI_AI_REPLY_HELPER,
     verify: {
-      command: '/Users/babycuca/.codex/bin/omni-ai-reply',
+      command: OMNI_AI_REPLY_HELPER,
       args: ['verify'],
       env: { OMNI_AI_PROVIDER: 'gemini_cli', OMNI_AI_MODEL: 'gemini-3-flash-preview' },
     },
@@ -81,8 +279,8 @@ const CONNECTIONS = [
     provider: 'openai',
     group: 'ai_provider',
     description: 'Cloud-ready AI reply provider for Omni customer responses.',
-    helper: '/Users/babycuca/.codex/bin/omni-ai-reply',
-    verify: { command: '/Users/babycuca/.codex/bin/omni-ai-reply', args: ['verify'], env: { OMNI_AI_PROVIDER: 'openai' } },
+    helper: OMNI_AI_REPLY_HELPER,
+    verify: { command: OMNI_AI_REPLY_HELPER, args: ['verify'], env: { OMNI_AI_PROVIDER: 'openai' } },
     fields: [
       { id: 'api_key', label: 'OpenAI API key', credentialName: 'OpenAI API Key', envName: 'OPENAI_API_KEY', secret: true, required: true },
     ],
@@ -95,8 +293,8 @@ const CONNECTIONS = [
     provider: 'perplexity',
     group: 'research_provider',
     description: 'Web-grounded research provider for reusable content and support workflows.',
-    helper: '/Users/babycuca/.codex/bin/perplexity-api',
-    verify: { command: '/Users/babycuca/.codex/bin/perplexity-api', args: ['verify'] },
+    helper: PERPLEXITY_HELPER,
+    verify: { command: PERPLEXITY_HELPER, args: ['verify'] },
     fields: [
       { id: 'api_key', label: 'Perplexity API key', credentialName: 'Perplexity API Key -OA', envName: 'PERPLEXITY_API_KEY', secret: true, required: true },
     ],
@@ -109,8 +307,8 @@ const CONNECTIONS = [
     provider: 'flowaccount',
     group: 'finance_provider',
     description: 'Finance/accounting verification path for O-Agent documents and customer/order workflows.',
-    helper: '/Users/babycuca/.codex/bin/flowaccount-oa-api',
-    verify: { command: '/Users/babycuca/.codex/bin/flowaccount-oa-api', args: ['company-info'] },
+    helper: FLOWACCOUNT_HELPER,
+    verify: { command: FLOWACCOUNT_HELPER, args: ['company-info'] },
     fields: [
       { id: 'client_id', label: 'Client ID', credentialName: 'FlowAccount Client ID -OA', secret: true, required: true },
       { id: 'client_secret', label: 'Client secret', credentialName: 'FlowAccount Client Secret -OA', secret: true, required: true },
@@ -125,8 +323,8 @@ const CONNECTIONS = [
     provider: 'zort',
     group: 'commerce_backend',
     description: 'API-first stock master and order backend for Omni Facebook Order Assist. ใช้เช็กสินค้า สร้างออเดอร์ และตัดสต็อกผ่าน approval guard.',
-    helper: '/Users/babycuca/.codex/bin/zort-api',
-    verify: { command: '/Users/babycuca/.codex/bin/zort-api', args: ['verify'] },
+    helper: ZORT_HELPER,
+    verify: { command: ZORT_HELPER, args: ['verify'] },
     fields: [
       { id: 'store_name', label: 'Store name', credentialName: 'ZORT Store Name -OA', envName: 'ZORT_STORE_NAME', secret: false, required: true },
       { id: 'api_key', label: 'API key', credentialName: 'ZORT API Key -OA', envName: 'ZORT_API_KEY', secret: true, required: true },
@@ -163,11 +361,75 @@ function compact(value, limit = 360) {
   return text.length > limit ? `${text.slice(0, limit - 1)}…` : text
 }
 
+function slugify(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 48)
+}
+
+function safeString(value, limit = 240) {
+  return String(value || '').trim().slice(0, limit)
+}
+
+function readCustomConnections() {
+  if (!existsSync(CUSTOM_CONNECTIONS_PATH)) return []
+  try {
+    const parsed = JSON.parse(readFileSync(CUSTOM_CONNECTIONS_PATH, 'utf8'))
+    return Array.isArray(parsed?.connections) ? parsed.connections : []
+  } catch {
+    return []
+  }
+}
+
+function writeCustomConnections(connections) {
+  mkdirSync(dirname(CUSTOM_CONNECTIONS_PATH), { recursive: true })
+  writeFileSync(CUSTOM_CONNECTIONS_PATH, `${JSON.stringify({ connections }, null, 2)}\n`)
+}
+
+function allConnections() {
+  return [...CONNECTIONS, ...readCustomConnections()]
+}
+
+function normalizeCustomConnection(input = {}) {
+  const title = safeString(input.title, 80)
+  const provider = slugify(input.provider)
+  if (!title) throw new Error('connection_title_required')
+  if (!provider) throw new Error('connection_provider_required')
+  const group = slugify(input.group) || 'custom_provider'
+  const idBase = slugify(input.id || `${provider}_${title}`) || `custom_${Date.now()}`
+  const credentialName = safeString(input.credentialName, 120)
+  return {
+    id: idBase.startsWith('custom_') ? idBase : `custom_${idBase}`,
+    title,
+    provider,
+    group,
+    description: safeString(input.description, 240) || 'Custom connection option. Add credentials and runtime helper when ready.',
+    helper: safeString(input.helper, 180) || 'manual setup',
+    verify: null,
+    fields: credentialName ? [{
+      id: 'credential',
+      label: 'Credential',
+      credentialName,
+      secret: true,
+      required: false,
+    }] : [],
+    docs: safeString(input.docs, 180) || null,
+    endpoints: [],
+    productionNotes: ['Custom option. Add a reusable helper/manifest before production automation.'],
+    custom: true,
+    canDelete: true,
+  }
+}
+
 function maskPresence(value) {
   return value ? 'configured' : 'missing'
 }
 
 async function readCnapAuth() {
+  if (!CSNAP_AUTH_FILE) throw new Error('csnap_auth_file_not_configured')
   if (!existsSync(CSNAP_AUTH_FILE)) throw new Error('csnap_auth_missing')
   return readFileSync(CSNAP_AUTH_FILE, 'utf8').trim()
 }
@@ -198,7 +460,7 @@ async function listCredentials() {
 
 function fieldStatus(field, credentials) {
   if (field.readOnly) {
-    const exists = field.id === 'local_oauth' ? existsSync('/Users/babycuca/.gemini') : false
+    const exists = field.id === 'local_oauth' && GEMINI_PROFILE_PATH ? existsSync(GEMINI_PROFILE_PATH) : false
     return {
       id: field.id,
       label: field.label,
@@ -240,6 +502,8 @@ function summarizeConnection(connection, credentials, cSnapStatus) {
     docs: connection.docs,
     endpoints: connection.endpoints || [],
     productionNotes: connection.productionNotes,
+    custom: Boolean(connection.custom),
+    canDelete: Boolean(connection.canDelete),
     fields,
     cSnap: cSnapStatus,
     status: missingRequired.length ? 'needs_key' : 'ready_to_verify',
@@ -253,10 +517,25 @@ function safeMetaConnection(connectionId) {
   return connection
 }
 
+function safeInstagramConnection(connectionId) {
+  const connection = findConnection(connectionId)
+  if (connection.provider !== 'instagram') throw new Error('instagram_connection_required')
+  return connection
+}
+
 async function runMetaInbox(args) {
   const { stdout } = await execFileAsync(META_INBOX_HELPER, args, {
     env: process.env,
     timeout: Number(process.env.OMNI_META_HELPER_TIMEOUT_MS || 60000),
+    maxBuffer: 1024 * 1024 * 8,
+  })
+  return JSON.parse(stdout)
+}
+
+async function runInstagramMessaging(args) {
+  const { stdout } = await execFileAsync(INSTAGRAM_MESSAGING_HELPER, args, {
+    env: process.env,
+    timeout: Number(process.env.OMNI_INSTAGRAM_HELPER_TIMEOUT_MS || 60000),
     maxBuffer: 1024 * 1024 * 8,
   })
   return JSON.parse(stdout)
@@ -268,6 +547,21 @@ function summarizeConversation(row, pageId) {
   return {
     id: row.id,
     customerName: customer?.name || 'Facebook Customer',
+    customerId: customer?.id || null,
+    snippet: row.snippet || '',
+    updatedTime: row.updated_time || null,
+    unreadCount: row.unread_count || 0,
+    messageCount: row.message_count || 0,
+    link: row.link || null,
+  }
+}
+
+function summarizeInstagramConversation(row, ownUsername = '') {
+  const participants = row.participants?.data || []
+  const customer = participants.find((item) => item.username && item.username !== ownUsername) || participants[0] || null
+  return {
+    id: row.id,
+    customerName: customer?.username || 'Instagram Customer',
     customerId: customer?.id || null,
     snippet: row.snippet || '',
     updatedTime: row.updated_time || null,
@@ -292,6 +586,22 @@ function summarizeMessage(row, pageId) {
   }
 }
 
+function summarizeInstagramMessage(row, ownUsername = '') {
+  const fromUsername = row.from?.username || row.from?.name || ''
+  const fromSelf = ownUsername && fromUsername === ownUsername
+  const target = row.to?.data?.find((item) => item.username !== ownUsername) || row.to?.data?.[0] || null
+  return {
+    id: row.id,
+    direction: fromSelf ? 'outbound' : 'inbound',
+    senderId: row.from?.id || null,
+    authorName: fromUsername || (fromSelf ? 'Instagram Account' : 'Instagram Customer'),
+    recipientId: target?.id || null,
+    recipientName: target?.username || target?.name || null,
+    text: String(row.message || '').trim(),
+    createdTime: row.created_time || null,
+  }
+}
+
 async function listMetaConversations(connectionId, { limit = 5 } = {}) {
   const connection = safeMetaConnection(connectionId)
   const safeLimit = Math.min(20, Math.max(1, Number(limit) || 5))
@@ -302,6 +612,23 @@ async function listMetaConversations(connectionId, { limit = 5 } = {}) {
     connectionId,
     pageProfile: connection.pageProfile,
     conversations: (payload.response?.data || []).map((row) => summarizeConversation(row, connection.pageId)),
+  }
+}
+
+async function listInstagramConversations(connectionId, { limit = 5 } = {}) {
+  safeInstagramConnection(connectionId)
+  const safeLimit = Math.min(20, Math.max(1, Number(limit) || 5))
+  const [account, payload] = await Promise.all([
+    runInstagramMessaging(['verify']).catch(() => null),
+    runInstagramMessaging(['list-conversations', `--limit=${safeLimit}`]),
+  ])
+  if (!payload?.ok) throw new Error(payload?.error || payload?.reason || 'instagram_conversations_failed')
+  const ownUsername = account?.account?.username || ''
+  return {
+    ok: true,
+    connectionId,
+    pageProfile: 'instagram',
+    conversations: (payload.response?.data || []).map((row) => summarizeInstagramConversation(row, ownUsername)),
   }
 }
 
@@ -322,6 +649,25 @@ async function readMetaThread(connectionId, conversationId, { limit = 20 } = {})
     conversationId,
     pageProfile: connection.pageProfile,
     messages: (payload.response?.data || []).map((row) => summarizeMessage(row, connection.pageId)),
+  }
+}
+
+async function readInstagramThread(connectionId, conversationId, { limit = 20 } = {}) {
+  safeInstagramConnection(connectionId)
+  if (!conversationId) throw new Error('conversation_id_required')
+  const safeLimit = Math.min(50, Math.max(1, Number(limit) || 20))
+  const [account, payload] = await Promise.all([
+    runInstagramMessaging(['verify']).catch(() => null),
+    runInstagramMessaging(['read-thread', `--conversation-id=${conversationId}`, `--limit=${safeLimit}`]),
+  ])
+  if (!payload?.ok) throw new Error(payload?.error || payload?.reason || 'instagram_thread_failed')
+  const ownUsername = account?.account?.username || ''
+  return {
+    ok: true,
+    connectionId,
+    conversationId,
+    pageProfile: 'instagram',
+    messages: (payload.response?.messages?.data || []).map((row) => summarizeInstagramMessage(row, ownUsername)),
   }
 }
 
@@ -353,8 +699,35 @@ async function sendMetaReply(connectionId, conversationId, { message = '', appro
   }
 }
 
+async function sendInstagramReply(connectionId, conversationId, { message = '', approved = false } = {}) {
+  safeInstagramConnection(connectionId)
+  if (!conversationId) throw new Error('conversation_id_required')
+  const text = String(message || '').trim()
+  if (!text) throw new Error('message_required')
+  if (approved !== true) throw new Error('approval_required')
+  const thread = await readInstagramThread(connectionId, conversationId, { limit: 20 })
+  const latestInbound = thread.messages.find((row) => row.direction === 'inbound' && row.senderId)
+  if (!latestInbound?.senderId) throw new Error('recipient_id_not_found')
+  const payload = await runInstagramMessaging([
+    'send-reply',
+    `--recipient-id=${latestInbound.senderId}`,
+    `--message=${text}`,
+    '--approved',
+  ])
+  if (!payload?.ok) throw new Error(payload?.error || payload?.reason || 'instagram_send_reply_failed')
+  return {
+    ok: true,
+    connectionId,
+    conversationId,
+    pageProfile: 'instagram',
+    recipientId: latestInbound.senderId,
+    message: text,
+    response: payload.response || payload,
+  }
+}
+
 function findConnection(connectionId) {
-  const connection = CONNECTIONS.find((item) => item.id === connectionId)
+  const connection = allConnections().find((item) => item.id === connectionId)
   if (!connection) throw new Error('connection_not_found')
   return connection
 }
@@ -362,6 +735,17 @@ function findConnection(connectionId) {
 async function verifyConnection(connectionId) {
   const connection = findConnection(connectionId)
   const startedAt = new Date().toISOString()
+  if (!connection.verify?.command) {
+    return {
+      ok: false,
+      connectionId,
+      checkedAt: startedAt,
+      status: 'runtime_gap',
+      provider: connection.provider,
+      model: null,
+      summary: 'manual custom option: add helper/manifest before automated verify',
+    }
+  }
   try {
     const { stdout } = await execFileAsync(connection.verify.command, connection.verify.args, {
       env: { ...process.env, ...(connection.verify.env || {}) },
@@ -426,6 +810,32 @@ async function saveConnectionSecrets(connectionId, fields = {}) {
   return { ok: true, connectionId, saved, savedCount: saved.length }
 }
 
+async function addConnection(input = {}) {
+  const customConnections = readCustomConnections()
+  const connection = normalizeCustomConnection(input)
+  const existingIds = new Set([...CONNECTIONS, ...customConnections].map((item) => item.id))
+  let candidate = connection.id
+  let suffix = 2
+  while (existingIds.has(candidate)) {
+    candidate = `${connection.id}_${suffix}`
+    suffix += 1
+  }
+  const nextConnection = { ...connection, id: candidate }
+  writeCustomConnections([...customConnections, nextConnection])
+  return { ok: true, connection: nextConnection }
+}
+
+async function removeConnection(connectionId) {
+  const customConnections = readCustomConnections()
+  const connection = customConnections.find((item) => item.id === connectionId)
+  if (!connection) {
+    if (CONNECTIONS.some((item) => item.id === connectionId)) throw new Error('system_connection_locked')
+    throw new Error('connection_not_found')
+  }
+  writeCustomConnections(customConnections.filter((item) => item.id !== connectionId))
+  return { ok: true, removedId: connectionId }
+}
+
 export function createConnectionRuntime() {
   return {
     async list() {
@@ -433,13 +843,27 @@ export function createConnectionRuntime() {
       return {
         ok: true,
         cSnap: { ok: cSnap.ok, error: cSnap.error || null },
-        connections: CONNECTIONS.map((connection) => summarizeConnection(connection, cSnap.credentials, { ok: cSnap.ok })),
+        connections: allConnections().map((connection) => summarizeConnection(connection, cSnap.credentials, { ok: cSnap.ok })),
       }
     },
+    add: addConnection,
+    remove: removeConnection,
     verify: verifyConnection,
     saveSecrets: saveConnectionSecrets,
-    listConversations: listMetaConversations,
-    readThread: readMetaThread,
-    sendReply: sendMetaReply,
+    async listConversations(connectionId, options) {
+      const connection = findConnection(connectionId)
+      if (connection.provider === 'instagram') return listInstagramConversations(connectionId, options)
+      return listMetaConversations(connectionId, options)
+    },
+    async readThread(connectionId, conversationId, options) {
+      const connection = findConnection(connectionId)
+      if (connection.provider === 'instagram') return readInstagramThread(connectionId, conversationId, options)
+      return readMetaThread(connectionId, conversationId, options)
+    },
+    async sendReply(connectionId, conversationId, options) {
+      const connection = findConnection(connectionId)
+      if (connection.provider === 'instagram') return sendInstagramReply(connectionId, conversationId, options)
+      return sendMetaReply(connectionId, conversationId, options)
+    },
   }
 }

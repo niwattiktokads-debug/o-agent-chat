@@ -14,5 +14,8 @@ dist/
 *.db-wal
 *.sqlite
 *.sqlite3
-server/data/
+server/data/*
+!server/data/
+!server/data/pages.json
 server/.tmp-test/
+.vercel

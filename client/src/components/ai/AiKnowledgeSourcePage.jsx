@@ -1,15 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { deleteKnowledgeSource, fetchKnowledgeSources, fetchOmniSnapshot, saveKnowledgeSource } from '../../lib/omniApi.js'
 
-const navItems = [
-  ['Inbox', '12'],
-  ['AI Chatbot', ''],
-  ['Customers', ''],
-  ['Broadcast', ''],
-  ['Analytics', ''],
-  ['Settings', ''],
-]
-
 const trainMenu = ['Overview', 'Instructions', 'Knowledge Source', 'Testing', 'Deploy']
 
 const EMPTY_FORM = {
@@ -42,9 +33,9 @@ function labelStatus(status) {
 }
 
 function statusClass(status) {
-  if (status === 'ready') return 'bg-[#e8faf6] text-[#0f8f7b]'
-  if (status === 'needs_review') return 'bg-rose-50 text-rose-600'
-  return 'bg-[#fff3df] text-[#b7791f]'
+  if (status === 'ready') return 'bg-[var(--color-live-soft)] text-[var(--color-live)]'
+  if (status === 'needs_review') return 'bg-[var(--color-danger-soft)] text-[var(--color-danger)]'
+  return 'bg-[var(--color-warn-soft)] text-[var(--color-warn)]'
 }
 
 function termsFrom(value) {
@@ -88,7 +79,7 @@ function buildTestAnswer(source, prompt) {
   }
 }
 
-export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat, onOpenConnections }) {
+export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat, onOpenConnections, showPageNav = true }) {
   const [sources, setSources] = useState([])
   const [pages, setPages] = useState([])
   const [query, setQuery] = useState('')
@@ -220,18 +211,6 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat, onOpenC
     runTest(prompt, row.scope || 'all_pages', row)
   }
 
-  function handleNav(label) {
-    if (label === 'Inbox') {
-      onOpenInbox?.()
-      return
-    }
-    if (label === 'AI Chatbot') {
-      setActiveSection('Knowledge Source')
-      return
-    }
-    setNotice(`${label} ยังเป็นเมนู placeholder ของหน้า Zaapi-style ตอนนี้ใช้งานหลักอยู่ที่ AI Chatbot`)
-  }
-
   const stats = useMemo(() => {
     const ready = sources.filter((source) => source.status === 'ready').length
     const needsReview = sources.filter((source) => source.status === 'needs_review' || source.status === 'training').length
@@ -243,98 +222,60 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat, onOpenC
   const latestSources = sources.slice(0, 3)
 
   return (
-    <div className="flex h-full min-w-[1200px] bg-[#f6f8fb] text-[#17211e]">
-      <aside className="flex w-[68px] flex-col items-center border-r border-[#e5e9ef] bg-white py-4">
-        <div className="grid h-9 w-9 place-items-center rounded-xl bg-[#0f8f7b] text-sm font-bold text-white shadow-sm">OA</div>
-        <div className="mt-8 flex flex-1 flex-col gap-5 text-[#9aa5b1]">
-          {['⌂', '▦', '○', '✦', '↗', '⚙'].map((item, index) => (
-            <button
-              key={item}
-              type="button"
-              className="grid h-9 w-9 place-items-center rounded-xl text-lg hover:bg-[#f1f5f7]"
-              onClick={() => handleNav(navItems[index]?.[0] || 'Settings')}
-            >
-              {item}
-            </button>
-          ))}
-        </div>
-        <div className="grid h-9 w-9 place-items-center rounded-full bg-[#ffe9db] text-sm">B</div>
-      </aside>
-
-      <aside className="w-[248px] border-r border-[#e5e9ef] bg-white px-4 py-4">
-        <div className="flex items-center justify-between">
+    <main className="h-full min-w-0 overflow-y-auto bg-[var(--color-paper)] p-4 text-[var(--color-ink)] lg:p-6">
+      <section className="min-w-0">
+        <header className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--color-rule)] pb-4">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-[#9aa5b1]">Workspace</p>
-            <h1 className="mt-1 text-lg font-bold text-[#17211e]">O Agent</h1>
+            <h1 className="text-xl font-bold text-[var(--color-ink)]">สอน AI</h1>
+            <p className="mt-1 text-sm text-[var(--color-ink-2)]">จัดการ Knowledge Source, instruction, testing และ deploy readiness ในดีไซน์เดียวกับ Settings</p>
           </div>
-          <button type="button" className="grid h-9 w-9 place-items-center rounded-xl border border-[#e5e9ef] text-[#66737f]" onClick={() => document.getElementById('knowledge-search')?.focus()}>⌕</button>
-        </div>
-
-        <nav className="mt-7 space-y-1">
-          {navItems.map(([label, badge]) => (
-            <button
-              key={label}
-              type="button"
-              className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm font-semibold ${label === 'AI Chatbot' ? 'bg-[#e8faf6] text-[#0f8f7b]' : 'text-[#52606b] hover:bg-[#f6f8fb]'}`}
-              onClick={() => handleNav(label)}
-            >
-              <span>{label}</span>
-              {badge ? <span className="rounded-full bg-[#ecf1f4] px-2 py-0.5 text-xs text-[#66737f]">{badge}</span> : null}
-            </button>
-          ))}
-        </nav>
-
-        <div className="mt-8 rounded-2xl border border-[#dcefe9] bg-[#f1fbf8] p-4">
-          <p className="text-sm font-bold text-[#153d35]">AI training status</p>
-          <p className="mt-1 text-xs leading-5 text-[#5f746e]">{stats.total} sources connected. Auto-retrain is enabled for new customer answers.</p>
-          <div className="mt-3 h-2 rounded-full bg-white">
-            <div className="h-2 rounded-full bg-[#0f8f7b]" style={{ width: `${stats.total ? Math.round((stats.ready / stats.total) * 100) : 0}%` }} />
-          </div>
-        </div>
-      </aside>
-
-      <main className="min-w-0 flex-1">
-        <header className="flex h-[72px] items-center justify-between border-b border-[#e5e9ef] bg-white px-7">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-[#9aa5b1]">AI Chatbot</p>
-            <h2 className="text-xl font-bold">Train knowledge source</h2>
-          </div>
-          <div className="flex items-center gap-2">
-            <button type="button" className="rounded-xl border border-[#dce3e8] bg-white px-4 py-2 text-sm font-semibold text-[#52606b]" onClick={onOpenInbox}>Inbox</button>
-            <button type="button" className="rounded-xl border border-[#dce3e8] bg-white px-4 py-2 text-sm font-semibold text-[#52606b]" onClick={onOpenConnections}>Connections</button>
-            <button type="button" className="rounded-xl border border-[#dce3e8] bg-white px-4 py-2 text-sm font-semibold text-[#52606b]" onClick={onOpenChat}>Chat</button>
-            <button type="button" className="rounded-xl bg-[#0f8f7b] px-4 py-2 text-sm font-bold text-white shadow-sm" onClick={startNewSource}>Add source</button>
+          <div className="flex flex-wrap items-center gap-2">
+            {showPageNav ? (
+              <>
+                <button type="button" className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)]" onClick={onOpenInbox}>Inbox</button>
+                <button type="button" className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)]" onClick={onOpenConnections}>Connections</button>
+                <button type="button" className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)]" onClick={onOpenChat}>Chat</button>
+              </>
+            ) : null}
+            <button type="button" className="rounded-[var(--radius-md)] bg-[var(--color-accent)] px-3 py-2 text-sm font-semibold text-[var(--color-accent-ink)]" onClick={startNewSource}>Add source</button>
           </div>
         </header>
 
-        <div className="grid h-[calc(100%-72px)] grid-cols-[260px_1fr]">
-          <aside className="border-r border-[#e5e9ef] bg-[#fbfcfd] p-5">
-            <p className="mb-3 text-xs font-bold uppercase tracking-wide text-[#9aa5b1]">Training</p>
+        <div className="mt-4 grid gap-4 xl:grid-cols-[240px_minmax(0,1fr)]">
+          <aside className="h-fit rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] p-4">
+            <p className="mb-3 text-xs font-bold text-[var(--color-muted)]">Training</p>
             <div className="space-y-1">
               {trainMenu.map((item) => (
                 <button
                   key={item}
                   type="button"
-                  className={`w-full rounded-xl px-3 py-2.5 text-left text-sm font-semibold ${item === activeSection ? 'bg-white text-[#0f8f7b] shadow-sm ring-1 ring-[#e5e9ef]' : 'text-[#66737f] hover:bg-white'}`}
+                  className={`w-full rounded-[var(--radius-md)] px-3 py-2.5 text-left text-sm font-semibold ${item === activeSection ? 'bg-[var(--color-accent)] text-[var(--color-accent-ink)]' : 'text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)]'}`}
                   onClick={() => setActiveSection(item)}
                 >
                   {item}
                 </button>
               ))}
             </div>
+            <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] p-3">
+              <div className="text-sm font-bold text-[var(--color-ink)]">AI training status</div>
+              <div className="mt-1 text-xs leading-5 text-[var(--color-muted)]">{stats.total} sources · {stats.ready} ready · {stats.needsReview} review</div>
+              <div className="mt-3 h-2 rounded-[var(--radius-pill)] bg-[var(--color-panel)]">
+                <div className="h-2 rounded-[var(--radius-pill)] bg-[var(--color-accent)]" style={{ width: `${stats.total ? Math.round((stats.ready / stats.total) * 100) : 0}%` }} />
+              </div>
+            </div>
           </aside>
 
-          <section className="overflow-y-auto p-7">
-            <div className="mx-auto max-w-5xl">
-              {notice ? <div className="mb-4 rounded-2xl border border-[#dcefe9] bg-[#f1fbf8] px-4 py-3 text-sm font-semibold text-[#153d35]">{notice}</div> : null}
-              {error ? <div className="mb-4 rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">{error}</div> : null}
+          <section className="min-w-0">
+            <div>
+              {notice ? <div className="mb-4 rounded-[var(--radius-md)] border border-[var(--color-live)] bg-[var(--color-live-soft)] px-4 py-3 text-sm font-semibold text-[var(--color-live)]">{notice}</div> : null}
+              {error ? <div className="mb-4 rounded-[var(--radius-md)] border border-[var(--color-danger)] bg-[var(--color-danger-soft)] px-4 py-3 text-sm font-semibold text-[var(--color-danger)]">{error}</div> : null}
 
               {activeSection === 'Overview' ? (
                 <div className="grid gap-5">
                   <HeroCard stats={stats} onNew={startNewSource} />
-                  <div className="rounded-3xl border border-[#e5e9ef] bg-white p-5 shadow-sm">
-                    <h3 className="text-lg font-bold">ล่าสุดที่ AI ใช้ตอบได้</h3>
-                    <div className="mt-4 divide-y divide-[#eef2f5]">
+                  <div className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] p-4">
+                    <h3 className="text-sm font-bold text-[var(--color-ink)]">ล่าสุดที่ AI ใช้ตอบได้</h3>
+                    <div className="mt-3 divide-y divide-[var(--color-rule)]">
                       {latestSources.map((source) => (
                         <SourceMiniRow key={source.id} source={source} onTest={() => runSourceTest(source)} />
                       ))}
@@ -344,15 +285,15 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat, onOpenC
               ) : null}
 
               {activeSection === 'Instructions' ? (
-                <div className="rounded-3xl border border-[#e5e9ef] bg-white p-6 shadow-sm">
-                  <h3 className="text-2xl font-bold tracking-tight">Instructions</h3>
-                  <p className="mt-2 text-sm leading-6 text-[#66737f]">กติกาพื้นฐานที่ AI ต้องยึดก่อนหยิบ knowledge source ไปตอบลูกค้า</p>
+                <div className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] p-4">
+                  <h3 className="text-sm font-bold text-[var(--color-ink)]">Instructions</h3>
+                  <p className="mt-1 text-sm leading-6 text-[var(--color-ink-2)]">กติกาพื้นฐานที่ AI ต้องยึดก่อนหยิบ knowledge source ไปตอบลูกค้า</p>
                   <textarea
-                    className="mt-5 min-h-[260px] w-full rounded-2xl border border-[#dce3e8] px-4 py-3 text-sm leading-6 outline-none focus:border-[#0f8f7b]"
+                    className="mt-4 min-h-[260px] w-full rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm leading-6 text-[var(--color-ink)] outline-none focus-visible:border-[var(--color-focus)] focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]"
                     value={instructions}
                     onChange={(event) => setInstructions(event.target.value)}
                   />
-                  <button type="button" className="mt-4 rounded-xl bg-[#0f8f7b] px-4 py-2 text-sm font-bold text-white" onClick={() => setNotice('บันทึก instruction ในหน้า local แล้ว')}>
+                  <button type="button" className="mt-4 rounded-[var(--radius-md)] bg-[var(--color-accent)] px-3 py-2 text-sm font-semibold text-[var(--color-accent-ink)]" onClick={() => setNotice('บันทึก instruction ในหน้า local แล้ว')}>
                     Save instructions
                   </button>
                 </div>
@@ -402,38 +343,38 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat, onOpenC
             </div>
           </section>
         </div>
-      </main>
-    </div>
+      </section>
+    </main>
   )
 }
 
 function HeroCard({ stats, onNew }) {
   const quotaPercent = stats.quota ? Math.min(100, Math.round((stats.characters / stats.quota) * 100)) : 0
   return (
-    <div className="rounded-3xl border border-[#e5e9ef] bg-white p-6 shadow-sm">
+    <div className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] p-4">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h3 className="text-2xl font-bold tracking-tight">Knowledge Source</h3>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-[#66737f]">
+          <h3 className="text-sm font-bold text-[var(--color-ink)]">Knowledge Source</h3>
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-[var(--color-ink-2)]">
             Add trusted information for the AI chatbot to answer customers across Facebook, TikTok, Shopee, and order chats.
           </p>
         </div>
-        <button type="button" className="rounded-xl bg-[#0f8f7b] px-4 py-2.5 text-sm font-bold text-white shadow-sm" onClick={onNew}>+ New knowledge</button>
+        <button type="button" className="rounded-[var(--radius-md)] bg-[var(--color-accent)] px-3 py-2 text-sm font-semibold text-[var(--color-accent-ink)]" onClick={onNew}>+ New knowledge</button>
       </div>
 
-      <div className="mt-6 grid grid-cols-4 gap-3">
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {[
           ['Knowledge items', String(stats.total)],
           ['Ready to answer', String(stats.ready)],
           ['Needs review', String(stats.needsReview)],
           ['Characters', `${stats.characters.toLocaleString('en-US')} / ${stats.quota.toLocaleString('en-US')}`],
         ].map(([label, value]) => (
-          <div key={label} className="rounded-2xl border border-[#e5e9ef] bg-[#fbfcfd] p-4">
-            <p className="text-xs font-semibold text-[#8a96a3]">{label}</p>
-            <p className="mt-2 text-2xl font-bold">{value}</p>
+          <div key={label} className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] p-3">
+            <p className="text-xs font-semibold text-[var(--color-muted)]">{label}</p>
+            <p className="mt-2 text-lg font-bold text-[var(--color-ink)]">{value}</p>
             {label === 'Characters' ? (
-              <div className="mt-3 h-2 rounded-full bg-white">
-                <div className="h-2 rounded-full bg-[#0f8f7b]" style={{ width: `${quotaPercent}%` }} />
+              <div className="mt-3 h-2 rounded-[var(--radius-pill)] bg-[var(--color-panel)]">
+                <div className="h-2 rounded-[var(--radius-pill)] bg-[var(--color-accent)]" style={{ width: `${quotaPercent}%` }} />
               </div>
             ) : null}
           </div>
@@ -445,17 +386,17 @@ function HeroCard({ stats, onNew }) {
 
 function KnowledgeSourceEditor({ busy, form, setForm, pages = [], submitSource, startNewSource }) {
   return (
-    <form className="mt-5 grid gap-3 rounded-3xl border border-[#e5e9ef] bg-white px-5 py-4 shadow-sm" onSubmit={submitSource}>
-      <div className="grid grid-cols-[1fr_150px_180px] gap-3">
+    <form className="mt-4 grid gap-3 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] p-4" onSubmit={submitSource}>
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_150px_180px]">
         <input
           id="knowledge-title"
-          className="h-11 rounded-xl border border-[#dce3e8] px-3 text-sm outline-none focus:border-[#0f8f7b]"
+          className="h-10 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 text-sm text-[var(--color-ink)] outline-none focus-visible:border-[var(--color-focus)] focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]"
           placeholder="Knowledge title"
           value={form.title}
           onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
         />
         <select
-          className="h-11 rounded-xl border border-[#dce3e8] px-3 text-sm outline-none focus:border-[#0f8f7b]"
+          className="h-10 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 text-sm text-[var(--color-ink)] outline-none focus-visible:border-[var(--color-focus)] focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]"
           value={form.type}
           onChange={(event) => setForm((current) => ({ ...current, type: event.target.value }))}
         >
@@ -466,7 +407,7 @@ function KnowledgeSourceEditor({ busy, form, setForm, pages = [], submitSource, 
           <option value="order_policy">Order policy</option>
         </select>
         <select
-          className="h-11 rounded-xl border border-[#dce3e8] px-3 text-sm outline-none focus:border-[#0f8f7b]"
+          className="h-10 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 text-sm text-[var(--color-ink)] outline-none focus-visible:border-[var(--color-focus)] focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]"
           value={form.scope}
           onChange={(event) => setForm((current) => ({ ...current, scope: event.target.value }))}
         >
@@ -477,24 +418,24 @@ function KnowledgeSourceEditor({ busy, form, setForm, pages = [], submitSource, 
         </select>
       </div>
       <textarea
-        className="min-h-[92px] rounded-xl border border-[#dce3e8] px-3 py-2 text-sm leading-6 outline-none focus:border-[#0f8f7b]"
+        className="min-h-[92px] rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm leading-6 text-[var(--color-ink)] outline-none focus-visible:border-[var(--color-focus)] focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]"
         placeholder="Paste trusted answer, policy, product FAQ, or instruction for the AI"
         value={form.content}
         onChange={(event) => setForm((current) => ({ ...current, content: event.target.value }))}
       />
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <input
-          className="h-10 flex-1 rounded-xl border border-[#dce3e8] px-3 text-sm outline-none focus:border-[#0f8f7b]"
+          className="h-10 min-w-[220px] flex-1 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 text-sm text-[var(--color-ink)] outline-none focus-visible:border-[var(--color-focus)] focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]"
           placeholder="Tags, comma separated"
           value={form.tags}
           onChange={(event) => setForm((current) => ({ ...current, tags: event.target.value }))}
         />
         {form.id ? (
-          <button type="button" className="h-10 rounded-xl border border-[#dce3e8] px-4 text-sm font-bold text-[#52606b]" onClick={startNewSource}>
+          <button type="button" className="h-10 rounded-[var(--radius-md)] border border-[var(--color-rule)] px-3 text-sm font-semibold text-[var(--color-ink)] hover:bg-[var(--color-panel-2)]" onClick={startNewSource}>
             Cancel
           </button>
         ) : null}
-        <button type="submit" className="h-10 rounded-xl bg-[#0f8f7b] px-4 text-sm font-bold text-white disabled:opacity-50" disabled={busy}>
+        <button type="submit" className="h-10 rounded-[var(--radius-md)] bg-[var(--color-accent)] px-3 text-sm font-semibold text-[var(--color-accent-ink)] disabled:opacity-50" disabled={busy}>
           {busy ? 'Saving' : form.id ? 'Update source' : 'Save source'}
         </button>
       </div>
@@ -504,9 +445,9 @@ function KnowledgeSourceEditor({ busy, form, setForm, pages = [], submitSource, 
 
 function KnowledgeSourceList({ busy, query, setQuery, typeFilter, setTypeFilter, loadSources, sources, editSource, runSourceTest, removeSource }) {
   return (
-    <div className="mt-5 rounded-3xl border border-[#e5e9ef] bg-white shadow-sm">
-      <div className="flex items-center justify-between border-b border-[#eef2f5] px-5 py-4">
-        <div className="flex rounded-xl bg-[#f3f6f8] p-1 text-sm font-semibold text-[#66737f]">
+    <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)]">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-rule)] px-4 py-3">
+        <div className="flex rounded-[var(--radius-md)] bg-[var(--color-panel-2)] p-1 text-sm font-semibold text-[var(--color-ink-2)]">
           {[
             ['All', ''],
             ['Website', 'website'],
@@ -516,7 +457,7 @@ function KnowledgeSourceList({ busy, query, setQuery, typeFilter, setTypeFilter,
             <button
               key={label}
               type="button"
-              className={`rounded-lg px-4 py-2 ${typeFilter === value ? 'bg-white text-[#17211e] shadow-sm' : ''}`}
+              className={`rounded-[var(--radius-sm)] px-3 py-2 ${typeFilter === value ? 'bg-[var(--color-panel)] text-[var(--color-ink)]' : ''}`}
               onClick={() => {
                 setTypeFilter(value)
                 loadSources(query, value)
@@ -526,10 +467,10 @@ function KnowledgeSourceList({ busy, query, setQuery, typeFilter, setTypeFilter,
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <input
             id="knowledge-search"
-            className="h-10 w-72 rounded-xl border border-[#dce3e8] px-3 text-sm outline-none focus:border-[#0f8f7b]"
+            className="h-10 w-72 max-w-full rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 text-sm text-[var(--color-ink)] outline-none focus-visible:border-[var(--color-focus)] focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]"
             placeholder="Search knowledge"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
@@ -537,28 +478,28 @@ function KnowledgeSourceList({ busy, query, setQuery, typeFilter, setTypeFilter,
               if (event.key === 'Enter') loadSources(event.currentTarget.value)
             }}
           />
-          <button type="button" className="h-10 rounded-xl border border-[#dce3e8] px-3 text-sm font-semibold text-[#52606b]" onClick={() => loadSources(query)}>Search</button>
+          <button type="button" className="h-10 rounded-[var(--radius-md)] border border-[var(--color-rule)] px-3 text-sm font-semibold text-[var(--color-ink)] hover:bg-[var(--color-panel-2)]" onClick={() => loadSources(query)}>Search</button>
         </div>
       </div>
 
-      <div className="divide-y divide-[#eef2f5]">
+      <div className="divide-y divide-[var(--color-rule)]">
         {sources.map((row) => (
-          <article key={row.id} className="grid grid-cols-[1fr_110px_160px_120px_170px] items-center gap-4 px-5 py-4">
+          <article key={row.id} className="grid gap-3 px-4 py-3 lg:grid-cols-[minmax(0,1fr)_110px_160px_120px_170px] lg:items-center">
             <div>
-              <p className="font-bold text-[#17211e]">{row.title}</p>
-              <p className="mt-1 line-clamp-1 text-sm text-[#8a96a3]">{row.type} · {row.scope}</p>
+              <p className="font-bold text-[var(--color-ink)]">{row.title}</p>
+              <p className="mt-1 line-clamp-1 text-sm text-[var(--color-muted)]">{row.type} · {row.scope}</p>
             </div>
-            <span className="text-sm text-[#66737f]">{String(row.content || '').length.toLocaleString('en-US')} chars</span>
-            <span className="text-sm text-[#66737f]">{formatUpdated(row.updatedAt)}</span>
-            <span className={`w-fit rounded-full px-3 py-1 text-xs font-bold ${statusClass(row.status)}`}>{labelStatus(row.status)}</span>
+            <span className="text-sm text-[var(--color-ink-2)]">{String(row.content || '').length.toLocaleString('en-US')} chars</span>
+            <span className="text-sm text-[var(--color-ink-2)]">{formatUpdated(row.updatedAt)}</span>
+            <span className={`w-fit rounded-[var(--radius-pill)] px-2 py-1 text-xs font-semibold ${statusClass(row.status)}`}>{labelStatus(row.status)}</span>
             <div className="flex justify-end gap-2">
-              <button type="button" className="rounded-lg border border-[#dce3e8] px-3 py-1.5 text-sm font-semibold text-[#52606b]" onClick={() => editSource(row)}>Edit</button>
-              <button type="button" className="rounded-lg border border-[#dce3e8] px-3 py-1.5 text-sm font-semibold text-[#52606b]" onClick={() => runSourceTest(row)}>Test</button>
-              <button type="button" className="rounded-lg border border-rose-200 px-3 py-1.5 text-sm font-semibold text-rose-600 disabled:opacity-50" disabled={busy} onClick={() => removeSource(row.id)}>Delete</button>
+              <button type="button" className="rounded-[var(--radius-sm)] border border-[var(--color-rule)] px-3 py-1.5 text-sm font-semibold text-[var(--color-ink)] hover:bg-[var(--color-panel-2)]" onClick={() => editSource(row)}>Edit</button>
+              <button type="button" className="rounded-[var(--radius-sm)] border border-[var(--color-rule)] px-3 py-1.5 text-sm font-semibold text-[var(--color-ink)] hover:bg-[var(--color-panel-2)]" onClick={() => runSourceTest(row)}>Test</button>
+              <button type="button" className="rounded-[var(--radius-sm)] border border-[var(--color-danger)] px-3 py-1.5 text-sm font-semibold text-[var(--color-danger)] hover:bg-[var(--color-danger-soft)] disabled:opacity-50" disabled={busy} onClick={() => removeSource(row.id)}>Delete</button>
             </div>
           </article>
         ))}
-        {!sources.length ? <div className="px-5 py-8 text-sm text-[#66737f]">No knowledge sources found.</div> : null}
+        {!sources.length ? <div className="px-4 py-8 text-sm text-[var(--color-muted)]">No knowledge sources found.</div> : null}
       </div>
     </div>
   )
@@ -568,46 +509,46 @@ function SourceMiniRow({ source, onTest }) {
   return (
     <div className="flex items-center justify-between gap-4 py-3">
       <div>
-        <p className="font-bold text-[#17211e]">{source.title}</p>
-        <p className="mt-1 text-sm text-[#8a96a3]">{source.type} · {source.scope} · {formatUpdated(source.updatedAt)}</p>
+        <p className="font-bold text-[var(--color-ink)]">{source.title}</p>
+        <p className="mt-1 text-sm text-[var(--color-muted)]">{source.type} · {source.scope} · {formatUpdated(source.updatedAt)}</p>
       </div>
-      <button type="button" className="rounded-lg border border-[#dce3e8] px-3 py-1.5 text-sm font-semibold text-[#52606b]" onClick={onTest}>Test</button>
+      <button type="button" className="rounded-[var(--radius-sm)] border border-[var(--color-rule)] px-3 py-1.5 text-sm font-semibold text-[var(--color-ink)] hover:bg-[var(--color-panel-2)]" onClick={onTest}>Test</button>
     </div>
   )
 }
 
 function TestingPanel({ sources, testPrompt, setTestPrompt, testScope, setTestScope, testResult, onRun }) {
   return (
-    <div className="rounded-3xl border border-[#e5e9ef] bg-white p-6 shadow-sm">
-      <h3 className="text-2xl font-bold tracking-tight">Testing</h3>
-      <p className="mt-2 text-sm leading-6 text-[#66737f]">ลองถามเหมือนลูกค้าจริง เพื่อดูว่า AI เจอ source ไหนและควรตอบอย่างไร</p>
-      <div className="mt-5 grid grid-cols-[1fr_180px_auto] gap-3">
+    <div className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] p-4">
+      <h3 className="text-sm font-bold text-[var(--color-ink)]">Testing</h3>
+      <p className="mt-1 text-sm leading-6 text-[var(--color-ink-2)]">ลองถามเหมือนลูกค้าจริง เพื่อดูว่า AI เจอ source ไหนและควรตอบอย่างไร</p>
+      <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_180px_auto]">
         <input
-          className="h-11 rounded-xl border border-[#dce3e8] px-3 text-sm outline-none focus:border-[#0f8f7b]"
+          className="h-10 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 text-sm text-[var(--color-ink)] outline-none focus-visible:border-[var(--color-focus)] focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]"
           value={testPrompt}
           onChange={(event) => setTestPrompt(event.target.value)}
           placeholder="เช่น มีของไหม / เปลี่ยนคืนได้ไหม / ขอเลขพัสดุ"
         />
         <input
-          className="h-11 rounded-xl border border-[#dce3e8] px-3 text-sm outline-none focus:border-[#0f8f7b]"
+          className="h-10 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 text-sm text-[var(--color-ink)] outline-none focus-visible:border-[var(--color-focus)] focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]"
           value={testScope}
           onChange={(event) => setTestScope(event.target.value)}
           placeholder="all_pages"
         />
-        <button type="button" className="rounded-xl bg-[#0f8f7b] px-4 text-sm font-bold text-white" onClick={onRun}>Run test</button>
+        <button type="button" className="rounded-[var(--radius-md)] bg-[var(--color-accent)] px-3 text-sm font-semibold text-[var(--color-accent-ink)]" onClick={onRun}>Run test</button>
       </div>
 
-      <div className="mt-6 rounded-2xl border border-[#e5e9ef] bg-[#fbfcfd] p-5">
+      <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] p-4">
         {testResult ? (
           <>
             <div className="flex items-center justify-between gap-4">
-              <p className="font-bold">{testResult.title}</p>
-              <span className={`rounded-full px-3 py-1 text-xs font-bold ${statusClass(testResult.status)}`}>{labelStatus(testResult.status)}</span>
+              <p className="font-bold text-[var(--color-ink)]">{testResult.title}</p>
+              <span className={`rounded-[var(--radius-pill)] px-2 py-1 text-xs font-semibold ${statusClass(testResult.status)}`}>{labelStatus(testResult.status)}</span>
             </div>
-            <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-[#52606b]">{testResult.answer}</p>
+            <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-[var(--color-ink-2)]">{testResult.answer}</p>
           </>
         ) : (
-          <p className="text-sm text-[#66737f]">{sources.length} sources พร้อมให้ทดสอบ กด Run test หรือกด Test จากรายการ knowledge source</p>
+          <p className="text-sm text-[var(--color-muted)]">{sources.length} sources พร้อมให้ทดสอบ กด Run test หรือกด Test จากรายการ knowledge source</p>
         )}
       </div>
     </div>
@@ -617,24 +558,24 @@ function TestingPanel({ sources, testPrompt, setTestPrompt, testScope, setTestSc
 function DeployPanel({ stats, onOpenInbox }) {
   const ready = stats.total > 0 && stats.ready > 0
   return (
-    <div className="rounded-3xl border border-[#e5e9ef] bg-white p-6 shadow-sm">
-      <h3 className="text-2xl font-bold tracking-tight">Deploy</h3>
-      <p className="mt-2 text-sm leading-6 text-[#66737f]">สถานะสำหรับนำชุดความรู้ไปใช้กับ AI ใน Omni inbox</p>
-      <div className="mt-5 grid grid-cols-3 gap-3">
-        <div className="rounded-2xl border border-[#e5e9ef] bg-[#fbfcfd] p-4">
-          <p className="text-xs font-semibold text-[#8a96a3]">Local AI training</p>
-          <p className="mt-2 text-lg font-bold">{ready ? 'Ready' : 'Needs source'}</p>
+    <div className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] p-4">
+      <h3 className="text-sm font-bold text-[var(--color-ink)]">Deploy</h3>
+      <p className="mt-1 text-sm leading-6 text-[var(--color-ink-2)]">สถานะสำหรับนำชุดความรู้ไปใช้กับ AI ใน Omni inbox</p>
+      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        <div className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] p-3">
+          <p className="text-xs font-semibold text-[var(--color-muted)]">Local AI training</p>
+          <p className="mt-2 text-lg font-bold text-[var(--color-ink)]">{ready ? 'Ready' : 'Needs source'}</p>
         </div>
-        <div className="rounded-2xl border border-[#e5e9ef] bg-[#fbfcfd] p-4">
-          <p className="text-xs font-semibold text-[#8a96a3]">Ready sources</p>
-          <p className="mt-2 text-lg font-bold">{stats.ready}</p>
+        <div className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] p-3">
+          <p className="text-xs font-semibold text-[var(--color-muted)]">Ready sources</p>
+          <p className="mt-2 text-lg font-bold text-[var(--color-ink)]">{stats.ready}</p>
         </div>
-        <div className="rounded-2xl border border-[#e5e9ef] bg-[#fbfcfd] p-4">
-          <p className="text-xs font-semibold text-[#8a96a3]">Cloud deploy</p>
-          <p className="mt-2 text-lg font-bold">Pending</p>
+        <div className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] p-3">
+          <p className="text-xs font-semibold text-[var(--color-muted)]">Cloud deploy</p>
+          <p className="mt-2 text-lg font-bold text-[var(--color-ink)]">Pending</p>
         </div>
       </div>
-      <button type="button" className="mt-5 rounded-xl bg-[#0f8f7b] px-4 py-2 text-sm font-bold text-white" onClick={onOpenInbox}>Open inbox</button>
+      <button type="button" className="mt-4 rounded-[var(--radius-md)] bg-[var(--color-accent)] px-3 py-2 text-sm font-semibold text-[var(--color-accent-ink)]" onClick={onOpenInbox}>Open inbox</button>
     </div>
   )
 }

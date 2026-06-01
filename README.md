@@ -26,6 +26,37 @@ Vite proxies `/api` and `/ws` to `localhost:8787`.
 - Server: `cd server && npm test` (Node `node:test`)
 - UI: `cd client && npm test` (Vitest)
 
+## Cloud Runtime Without n8n
+Omni cloud path does not require n8n.
+
+Current split:
+- Vercel: frontend
+- Supabase: database and realtime change notifications
+- Node server: REST/webhook runtime only if a connector still needs server-side secrets or long-running work
+
+Enable Supabase Realtime in the frontend with:
+
+```bash
+VITE_OMNI_REALTIME_PROVIDER=supabase
+VITE_SUPABASE_URL=https://<project-ref>.supabase.co
+VITE_SUPABASE_ANON_KEY=<anon-key>
+```
+
+If the frontend calls a separate backend, also set:
+
+```bash
+VITE_OMNI_API_BASE_URL=https://<backend-host>
+VITE_OMNI_WS_BASE_URL=wss://<backend-host>
+```
+
+Run the Supabase schema first:
+
+```bash
+supabase/migrations/0001_omni_realtime.sql
+```
+
+The migration uses `omni_*` table names to avoid colliding with existing O-Agent Console tables.
+
 ## Omni Chat Retention
 ระบบลบข้อมูลแชทเก่าเก็บไว้ที่ backend: default คือข้อความแชทเก่ากว่า 180 วันจะถูกลบโดย job รายวัน แต่ข้อมูลลูกค้าสำคัญใน profile เช่น `phone`, `address`, `contactJson` จะถูกเก็บไว้ก่อนลบข้อความ
 
@@ -51,10 +82,33 @@ OMNI_AI_PROVIDER=local_rules
 OMNI_AI_MODEL=dex-local-rules-v1
 ```
 
+## Suda O-agent Task Alerts
+Omni Chat มี endpoint สำหรับแจ้งงานวินเข้า LINE OA `สุดา @537mpwyq` แล้ว โดยใช้ helper `/Users/babycuca/.codex/bin/line-suda-oagent` เป็นตัวกลางและไม่ใช้ n8n เป็นทางหลัก
+
+LINE webhook ของสุดารองรับ group intake แล้ว: เมื่อสุดาถูกเพิ่มเข้ากลุ่มใหม่ ระบบจะบันทึกรายละเอียดกลุ่มเข้า Omni/registry เท่านั้นโดย default และ helper จะห้ามส่งข้อความทุกชนิดเข้ากลุ่มนั้นจนกว่าจะตั้งครบ 4 ช่อง: `/su หน้าที่: ... / รูปแบบคำถาม: ... / รูปแบบตอบ: ... / กฎตอบ: ...`
+
+หน้า Settings > Connections มี card `LINE OA · สุดา O-agent` สำหรับแก้กฎคำถามและคำตอบรายกลุ่มจากในแอป โดยเขียนลงไฟล์ current rules เดียวกับ webhook
+
+รายละเอียดฟังก์ชันและคำสั่งทดสอบอยู่ที่ `docs/omni-suda-oagent-task-functions.md`
+
 ## Omni Manual Draft
 หน้า Inbox/Omni มีช่องพิมพ์ใต้ thread ที่เลือกแล้ว สามารถพิมพ์ข้อความและแนบภาพได้หลายรูป ระบบจะบันทึกเป็น `manual_draft` ใน Omni และอัปเดตหน้าจอทันที
 
 Draft นี้ยังเป็นโหมด manual ภายในหน้า Omni ส่วน webhook auto-send ใช้ flow แยกตาม env ด้านบน
+
+## Omni Order Address + ZORT Pointer
+งานออเดอร์ที่เกี่ยวกับ AI ดึงที่อยู่จากแชท, Thai postcode autofill, order draft, customer confirmation draft, และ ZORT approval guard ต้องอ่าน pointer นี้ก่อนแก้:
+
+`docs/omni-order-address-zort-readme.md`
+
+ไฟล์นี้มีรายการ post-install checklist, สิ่งที่ยังติดหลังติดตั้ง, endpoint, test, และ line pointer ของทุกฟังก์ชันเพื่อไม่ให้แก้ตกหล่น
+
+## Omni Facebook ZORT KGP Payment Flow
+Flow สำหรับ Facebook Inbox -> ZORT order -> KGP payment request -> Facebook payment link -> KGP webhook -> finance update ถูกบันทึกเป็น draft/contract เท่านั้น:
+
+`docs/facebook-zort-kgp-payment-flow.md`
+
+ห้ามเปิด live, ส่งลิงก์เงินจริง, mark paid, refund, หรือ cancel payment จนกว่า KGP credentials, webhook, sandbox smoke, และ Boss approval จะครบ
 
 ## API Contract (freeze)
 ```

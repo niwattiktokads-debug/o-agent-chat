@@ -4,6 +4,7 @@ export function createOmniSeed() {
   const pages = [
     { id: 'page_mankynd', name: 'MAN KYND', status: 'active', brandGroupId: 'brand_mankynd', policySetId: 'policy_mankynd', agentProfileId: 'agent_mankynd' },
     { id: 'page_annalynn', name: 'Anna Lynn', status: 'active', brandGroupId: 'brand_fashion', policySetId: 'policy_annalynn', agentProfileId: 'agent_annalynn' },
+    { id: 'page_ig_annalynn', name: 'Anna Lynn IG', status: 'active', brandGroupId: 'brand_fashion', policySetId: 'policy_annalynn', agentProfileId: 'agent_annalynn' },
     { id: 'page_annalynn_tiktok', name: 'AnnaLynn', status: 'active', brandGroupId: 'brand_fashion', policySetId: 'policy_annalynn', agentProfileId: 'agent_annalynn' },
     { id: 'page_des', name: 'เพจเดส', status: 'active', brandGroupId: 'brand_oagent', policySetId: 'policy_page_des', agentProfileId: 'agent_page_des' },
     { id: 'page_fb_112154661515664', name: 'Viris Zamara', shortName: 'VZ', status: 'active', brandGroupId: 'brand_shared', policySetId: 'policy_default', agentProfileId: 'agent_default' },
@@ -12,8 +13,9 @@ export function createOmniSeed() {
   return {
     pages,
     platformAccounts: [
-      { id: 'acct_fb_mankynd', pageId: 'page_mankynd', platform: 'facebook', provider: 'meta', status: 'healthy' },
+      { id: 'acct_fb_mankynd', pageId: 'page_mankynd', platform: 'facebook', provider: 'meta', providerAccountId: '189971841184132', status: 'healthy' },
       { id: 'acct_fb_annalynn', pageId: 'page_annalynn', platform: 'facebook', provider: 'meta', providerAccountId: '122106446570001676', status: 'healthy' },
+      { id: 'acct_ig_annalynn', pageId: 'page_ig_annalynn', platform: 'instagram', provider: 'instagram_messaging', providerAccountId: 'PLACEHOLDER_IG_PAGE_ID', status: 'pending_page_id' },
       { id: 'acct_fb_112154661515664', pageId: 'page_fb_112154661515664', platform: 'facebook', provider: 'meta', status: 'pending_token' },
       { id: 'acct_tt_shop', pageId: 'page_annalynn_tiktok', platform: 'tiktok', provider: 'tiktok_shop', providerAccountId: '7494912558026296148', status: 'healthy' },
       { id: 'acct_tt_annalynn_dm', pageId: 'page_annalynn_tiktok', platform: 'tiktok', provider: 'tiktok_business_messaging', providerAccountId: 'AnnaLynn', status: 'pending_oauth_approval' },
@@ -33,17 +35,47 @@ export function createOmniSeed() {
     agentProfiles: [
       { id: 'agent_default', name: 'Default Sales AI', provider: 'omni_ai_reply', model: 'configurable', role: 'page_primary' },
       { id: 'agent_mankynd', name: 'MAN KYND Page AI', provider: 'omni_ai_reply', model: 'configurable', role: 'page_primary' },
-      { id: 'agent_annalynn', name: 'Anna Lynn Page AI', provider: 'omni_ai_reply', model: 'configurable', role: 'page_primary' },
+      { id: 'agent_annalynn', name: 'น้องอันนา', provider: 'omni_ai_reply', model: 'configurable', role: 'page_primary' },
       { id: 'agent_page_des', name: 'Page Des AI', provider: 'omni_ai_reply', model: 'configurable', role: 'page_primary' },
       { id: 'agent_stock', name: 'Stock Specialist', provider: 'omni_ai_reply', model: 'configurable', role: 'stock_specialist' },
       { id: 'agent_reviewer', name: 'Risk Reviewer', provider: 'omni_ai_reply', model: 'configurable', role: 'reviewer' },
     ],
     threads: [
-      { id: 'thread_1', pageId: 'page_mankynd', platform: 'facebook', customerId: 'cust_1', status: 'draft_ready', intent: 'stock', risk: 'low', updatedAt: '2026-05-22T10:00:00.000Z' },
+      {
+        id: 'thread_1',
+        pageId: 'page_mankynd',
+        platform: 'facebook',
+        customerId: 'cust_1',
+        status: 'draft_ready',
+        intent: 'stock',
+        risk: 'low',
+        updatedAt: '2026-05-22T10:00:00.000Z',
+        originContext: {
+          channel: 'facebook_messenger',
+          sourceType: 'ad',
+          ad: { id: 'ad_seed_black_m', title: 'Black M launch ad', campaignName: 'Seed product test' },
+          productHint: { text: 'เสื้อสีดำ', color: 'ดำ', size: 'M' },
+          replyFrame: 'ลูกค้ามาจากแอดสินค้าเสื้อสีดำไซซ์ M ให้ตอบอิงสินค้านี้ก่อน',
+        },
+      },
       { id: 'thread_2', pageId: 'page_annalynn_tiktok', platform: 'tiktok', customerId: 'cust_2', status: 'needs_approval', intent: 'orderStatus', risk: 'medium', updatedAt: '2026-05-22T10:05:00.000Z' },
     ],
     messages: [
-      { id: 'msg_1', threadId: 'thread_1', direction: 'inbound', authorName: 'ลูกค้า A', text: 'มีไซซ์ M สีดำไหม', createdAt: '2026-05-22T10:00:00.000Z', providerMessageId: 'fb_mid_1' },
+      {
+        id: 'msg_1',
+        threadId: 'thread_1',
+        direction: 'inbound',
+        authorName: 'ลูกค้า A',
+        text: 'มีไซซ์ M สีดำไหม',
+        createdAt: '2026-05-22T10:00:00.000Z',
+        providerMessageId: 'fb_mid_1',
+        originContext: {
+          channel: 'facebook_messenger',
+          sourceType: 'ad',
+          ad: { id: 'ad_seed_black_m', title: 'Black M launch ad', campaignName: 'Seed product test' },
+          productHint: { text: 'เสื้อสีดำ', color: 'ดำ', size: 'M' },
+        },
+      },
       { id: 'msg_2', threadId: 'thread_2', direction: 'inbound', authorName: 'ลูกค้า B', text: 'ขอเลขพัสดุค่ะ', createdAt: '2026-05-22T10:05:00.000Z', providerMessageId: 'tt_mid_1' },
     ],
     customers: [
@@ -53,6 +85,7 @@ export function createOmniSeed() {
     orders: [
       { id: 'order_1', customerId: 'cust_2', platform: 'tiktok', status: 'awaiting_shipment', total: 729, tracking: null },
     ],
+    orderLinks: [],
     inventorySnapshots: [
       { id: 'stock_1', sku: 'BLACK-M', source: 'bigseller_mock', available: 4, checkedAt: '2026-05-22T10:00:00.000Z' },
     ],
@@ -67,6 +100,20 @@ export function createOmniSeed() {
     ],
     paymentEvents: [
       { id: 'pay_event_1', paymentRequestId: 'pay_1', type: 'created', source: 'mock', createdAt: '2026-05-22T10:06:00.000Z' },
+    ],
+    omniSettings: [
+      {
+        id: 'default',
+        settings: {
+          postCf: { enabled: true, autoCreateDrafts: true },
+          liveCf: { enabled: true, mode: 'fallback_post_comment_capture' },
+          report: { timezone: 'Asia/Bangkok' },
+          orderDraft: { enabled: true, approvalRequired: true, createZortOrderOnApprove: true },
+          ai: { enabled: true },
+        },
+        updatedAt: '2026-05-24T00:00:00.000Z',
+        updatedBy: 'seed',
+      },
     ],
     connectorHealth: [
       { id: 'health_meta', provider: 'meta', status: 'healthy', lastCheckedAt: '2026-05-22T10:00:00.000Z' },
@@ -99,6 +146,45 @@ export function createOmniSeed() {
         tags: ['annalynn', 'product'],
         updatedAt: '2026-05-23T01:12:00.000Z',
         createdAt: '2026-05-23T01:12:00.000Z',
+      },
+      {
+        id: 'ks_annalynn_ai_persona',
+        title: 'Anna Lynn AI persona - น้องอันนา',
+        type: 'manual',
+        scope: 'page_annalynn',
+        status: 'ready',
+        content: [
+          'AI ประจำเพจ Anna Lynn ชื่อ น้องอันนา ใช้ตอบลูกค้าเพจ Anna Lynn เท่านั้น',
+          'น้องอันนาตอบเป็นแอดมินร้านเสื้อผ้าผู้หญิง น้ำเสียงสุภาพ อบอุ่น สั้น ชัดเจน และช่วยปิดการขายอย่างไม่กดดัน',
+          'ใช้คำลงท้าย ค่ะ, นะคะ, ค่า อย่างเป็นธรรมชาติ ไม่เรียกตัวเองว่า AI เว้นแต่ลูกค้าถามตรง ๆ',
+          'ตอบเฉพาะเรื่องสินค้า ไซซ์ สี สต็อก ราคา โปร ค่าส่ง วิธีสั่งซื้อ สถานะออเดอร์ เปลี่ยนคืน และการชวนเข้า inbox จากคอมเมนต์',
+          'ถ้าไม่มีข้อมูลสต็อก ราคา พัสดุ การจ่ายเงิน หรือสถานะออเดอร์ ห้ามเดา ให้บอกว่าจะเช็กให้ก่อน หรือขอข้อมูลที่จำเป็นใน inbox',
+          'ห้ามตอบเรื่องนอกเพจ ห้ามให้คำปรึกษาที่ไม่เกี่ยวกับสินค้า ห้ามเปิดเผยข้อมูลลูกค้า และห้ามขอข้อมูลส่วนตัวในคอมเมนต์สาธารณะ',
+          'เคสคืนเงิน เคลม เปลี่ยนสินค้า สินค้าผิดสี/ผิดรุ่น การโอนเงิน หรือข้อมูลลูกค้า ต้องส่งให้แอดมิน/บอสอนุมัติก่อนตอบจริง',
+        ].join('\\n'),
+        tags: ['annalynn', 'persona', 'น้องอันนา', 'policy', 'faq', 'inbox'],
+        sourceRef: 'boss-chat:2026-05-29-annalynn-ai-name',
+        updatedAt: '2026-05-29T09:38:00.000+07:00',
+        createdAt: '2026-05-29T09:38:00.000+07:00',
+      },
+      {
+        id: 'ks_comment_to_inbox_workflow',
+        title: 'Facebook comment to inbox workflow',
+        type: 'manual',
+        scope: 'all_pages',
+        status: 'ready',
+        content: [
+          'Workflow: เมื่อมีลูกค้าคอมเมนต์ใต้โพสต์ Facebook ให้ AI จัดการเป็น comment-to-inbox funnel ไม่ใช่ปิดการขายยาวในคอมเมนต์สาธารณะ',
+          'ขั้นตอนมาตรฐาน: 1) อ่านคอมเมนต์และแยก intent เช่น ราคา ไซซ์ สี สต็อก โปร ค่าส่ง หรือคำถามเฉพาะออเดอร์ 2) draft public reply สั้น สุภาพ และชวนคุยต่อใน inbox 3) ถ้า platform รองรับและยังอยู่ในเงื่อนไข ให้ draft private reply หนึ่งครั้งเพื่อเชิญลูกค้าเข้ากล่องข้อความ 4) รอให้ลูกค้าตอบ DM ก่อนถือว่าเป็น inbox conversation เต็มรูปแบบ 5) เมื่อเข้า inbox แล้วค่อยถามข้อมูลส่วนตัว เบอร์ ที่อยู่ หลักฐานชำระเงิน หรือเลขออเดอร์',
+          'กฎ public reply: ห้ามขอข้อมูลส่วนตัว ห้ามตอบเลขพัสดุ/ยอดชำระ/สถานะออเดอร์ในคอมเมนต์ ห้ามเถียงลูกค้า ห้ามเปิดเผยข้อมูลลูกค้า ให้ตอบแบบชวน inbox เช่น "เดี๋ยวแอดมินเช็กให้ละเอียดนะคะ ทัก inbox เพจมาได้เลยค่ะ" หรือ "รุ่นนี้ขอเช็กไซซ์/สีให้ตรงก่อนนะคะ รบกวนทัก inbox มานิดนึงค่ะ"',
+          'กฎ private reply: ใช้เพื่อเปิดทางให้ลูกค้ากดตอบกลับเท่านั้น ไม่ถือว่าลูกค้าเป็น contact จนกว่าลูกค้าจะตอบ DM กลับมา ส่งได้แบบจำกัดตามกติกา Meta และต้องไม่ spam ลูกค้าซ้ำ',
+          'กฎ approval: public comment reply, private reply, hide comment, send inbox reply และ action ที่ลูกค้าเห็น ต้องรอ Boss/admin approval ก่อนเสมอ เว้นแต่มี policy เปิด auto-send เฉพาะ intent ความเสี่ยงต่ำไว้ชัดเจน',
+          'Fallback: ถ้า private reply ใช้ไม่ได้ ให้ตอบ public reply พร้อม m.me/ref link หรือชวนลูกค้าทัก inbox เอง แล้วติด tag source ว่ามาจากโพสต์/คอมเมนต์นั้น',
+        ].join('\\n'),
+        tags: ['faq', 'policy', 'comment', 'private_reply', 'inbox', 'facebook', 'messenger', 'approval'],
+        sourceRef: 'boss-chat:2026-05-29-comment-to-inbox-workflow',
+        updatedAt: '2026-05-29T09:05:00.000+07:00',
+        createdAt: '2026-05-29T09:05:00.000+07:00',
       },
       {
         id: 'ks_shipping_payment',

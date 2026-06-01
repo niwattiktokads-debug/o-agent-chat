@@ -1,5 +1,7 @@
 import { createOmniSeed } from './seed.js'
 import { DEFAULT_CHAT_RETENTION_POLICY, normalizeRetentionPolicy, planChatRetentionCleanup } from './retention.js'
+import { extractThaiOrderAddress } from './orderAddressIntake.js'
+import { normalizeStoredShippingAddress, validateThaiShippingAddress } from './thaiAddress.js'
 
 function resolveOptions(input) {
   if (input?.store || input?.seed) return { seed: input.seed || createOmniSeed(), store: input.store || null }
@@ -12,6 +14,80 @@ const PAYMENT_PROVIDERS = new Set(['meta_pay_kgp', 'promptpay'])
 const PAYMENT_STATUSES = new Set(['draft', 'pending', 'paid', 'failed', 'expired', 'manual_verify', 'cancelled'])
 const MAX_DRAFT_ATTACHMENTS = 5
 const MAX_DRAFT_ATTACHMENT_BYTES = 5 * 1024 * 1024
+const DEFAULT_OMNI_SETTINGS = {
+  postCf: { enabled: true, autoCreateDrafts: true },
+  liveCf: { enabled: true, mode: 'fallback_post_comment_capture' },
+  report: { timezone: 'Asia/Bangkok' },
+  orderDraft: { enabled: true, approvalRequired: true, createZortOrderOnApprove: true },
+  orderAddressIntake: { enabled: true, createConfirmationDraft: true },
+  ai: { enabled: true },
+}
+
+function deepMerge(base, patch) {
+  const output = structuredClone(base || {})
+  for (const [key, value] of Object.entries(patch || {})) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      output[key] = deepMerge(output[key] || {}, value)
+    } else {
+      output[key] = value
+    }
+  }
+  return output
+}
+
+function getTimeZoneParts(date, timeZone) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date)
+  return Object.fromEntries(parts.filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]))
+}
+
+function timeZoneOffsetMs(date, timeZone) {
+  try {
+    const parts = getTimeZoneParts(date, timeZone)
+    const zonedAsUtc = Date.UTC(
+      Number(parts.year),
+      Number(parts.month) - 1,
+      Number(parts.day),
+      Number(parts.hour),
+      Number(parts.minute),
+      Number(parts.second),
+      date.getUTCMilliseconds(),
+    )
+    return zonedAsUtc - date.getTime()
+  } catch {
+    return 0
+  }
+}
+
+function hourInTimeZone(date, timeZone) {
+  try {
+    return Number(getTimeZoneParts(date, timeZone).hour)
+  } catch {
+    return date.getUTCHours()
+  }
+}
+
+function normalizeDateBoundary(value, fallback, endOfDay = false, timeZone = 'UTC') {
+  if (!value) return fallback
+  const text = String(value)
+  let date
+  if (text.length <= 10) {
+    const [year, month, day] = text.split('-').map(Number)
+    const utcGuess = new Date(Date.UTC(year, month - 1, day, endOfDay ? 23 : 0, endOfDay ? 59 : 0, endOfDay ? 59 : 0, endOfDay ? 999 : 0))
+    date = new Date(utcGuess.getTime() - timeZoneOffsetMs(utcGuess, timeZone))
+  } else {
+    date = new Date(text)
+  }
+  return Number.isNaN(date.getTime()) ? fallback : date
+}
 
 function createActionAuditRow({
   id,
@@ -144,6 +220,98 @@ function normalizePaymentRequest(input = {}, snapshot = {}) {
   }
 }
 
+function normalizeOrderDraftItem(item = {}) {
+  const sku = String(item.sku || '').trim()
+  const name = String(item.name || sku || 'สินค้า').trim()
+  const quantity = Number(item.quantity || 1)
+  const unitPrice = Number(item.unitPrice ?? item.sellPrice ?? item.price ?? 0)
+  if (!sku && !item.zortProductId) return { ok: false, error: 'order_item_sku_required' }
+  if (!Number.isFinite(quantity) || quantity <= 0) return { ok: false, error: 'order_item_quantity_required' }
+  if (!Number.isFinite(unitPrice) || unitPrice < 0) return { ok: false, error: 'order_item_price_invalid' }
+  return {
+    ok: true,
+    item: {
+      sku,
+      name,
+      quantity,
+      unitPrice,
+      zortProductId: item.zortProductId || item.zortProduct?.id || null,
+      zortProduct: item.zortProduct || null,
+      sourceCommentId: item.sourceCommentId || null,
+    },
+  }
+}
+
+function createOrderDraftRow(input = {}, snapshot = {}) {
+  const items = []
+  for (const item of input.items || []) {
+    const normalized = normalizeOrderDraftItem(item)
+    if (!normalized.ok) return normalized
+    items.push(normalized.item)
+  }
+  if (!items.length) return { ok: false, error: 'order_items_required' }
+
+  const threadId = String(input.threadId || '').trim()
+  const thread = threadId ? (snapshot.threads || []).find((item) => item.id === threadId) : null
+  if (threadId && !thread) return { ok: false, error: 'thread_not_found' }
+  const customerId = input.customerId || thread?.customerId || input.customer?.id || null
+  const customer = customerId ? (snapshot.customers || []).find((item) => item.id === customerId) || input.customer || null : input.customer || null
+  const shippingAddress = normalizeStoredShippingAddress({
+    ...(input.shippingAddress || {}),
+    recipientName: input.shippingAddress?.recipientName || input.shippingName || input.customerName || customer?.displayName,
+    recipientPhone: input.shippingAddress?.recipientPhone || input.shippingPhone || input.customerPhone || customer?.phone,
+  })
+  const now = new Date().toISOString()
+  const totalAmount = items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0)
+  return {
+    ok: true,
+    row: {
+      id: input.id || `order_draft_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`,
+      customerId,
+      customerName: input.customerName || customer?.displayName || shippingAddress.recipientName || 'Omni Customer',
+      customerPhone: input.customerPhone || customer?.phone || shippingAddress.recipientPhone || '',
+      customerEmail: customer?.email || input.customerEmail || '',
+      platform: input.platform || thread?.platform || 'omni',
+      providerOrderId: null,
+      status: 'draft',
+      approvalRequired: true,
+      approvalStatus: 'pending',
+      items,
+      totalAmount,
+      currency: input.currency || 'THB',
+      shippingMethod: input.shippingMethod || 'ไปรษณีย์ไทย',
+      shippingAddress,
+      paymentMethod: input.paymentMethod || 'bank_transfer',
+      sourceRef: input.sourceRef || 'omni_order_draft',
+      sourceCommentId: input.sourceCommentId || null,
+      sourcePostId: input.sourcePostId || null,
+      createdAt: input.createdAt || now,
+      updatedAt: now,
+    },
+    threadId,
+  }
+}
+
+async function validateOrderReadyForZort(order = {}) {
+  const missingFields = []
+  if (!order.customerName) missingFields.push('customerName')
+  if (!order.customerPhone) missingFields.push('customerPhone')
+  if (!Array.isArray(order.items) || order.items.length === 0) missingFields.push('items')
+  for (const item of order.items || []) {
+    if (!item.sku) missingFields.push('items.sku')
+    if (!item.zortProductId && !item.zortProduct?.id) missingFields.push(`items.${item.sku || 'unknown'}.zortProductId`)
+  }
+  if (missingFields.length) return { ok: false, error: 'zort_order_missing_required_data', missingFields }
+
+  const address = await validateThaiShippingAddress({
+    ...(order.shippingAddress || {}),
+    recipientName: order.shippingAddress?.recipientName || order.customerName,
+    recipientPhone: order.shippingAddress?.recipientPhone || order.customerPhone,
+  })
+  if (!address.ok) return address
+  return { ok: true, shippingAddress: address.address }
+}
+
 function isFacebookSnippetPreview(message) {
   return (
     String(message.id || '').startsWith('fb_preview_') ||
@@ -180,6 +348,10 @@ function normalizeFacebookWebhookSync(snapshot, normalized) {
       unreadCount: (existing.unreadCount || 0) + inboundCount,
       messageCount: (existing.messageCount || 0) + threadMessages.length,
       updatedAt: thread.updatedAt || existing.updatedAt,
+      originContext: {
+        ...(existing.originContext || {}),
+        ...(thread.originContext || {}),
+      },
     }
   })
 
@@ -260,6 +432,31 @@ export function createOmniService(options = createOmniSeed()) {
     },
     listPages() {
       return withPageRuntimeSettings(currentData()).pages
+    },
+    getSettings() {
+      const row = (currentData().omniSettings || []).find((item) => item.id === 'default')
+      return deepMerge(DEFAULT_OMNI_SETTINGS, row?.settings || {})
+    },
+    updateSettings({ settings = {}, updatedBy = 'boss' } = {}) {
+      const before = this.getSettings()
+      const nextSettings = deepMerge(before, settings)
+      const row = {
+        id: 'default',
+        settings: nextSettings,
+        updatedAt: new Date().toISOString(),
+        updatedBy: String(updatedBy || 'boss'),
+      }
+      const result = upsert('omniSettings', [row])
+      const audit = createActionAuditRow({
+        action: 'omni_settings_updated',
+        actorType: 'human',
+        actorId: row.updatedBy,
+        before,
+        after: nextSettings,
+        sourceRef: 'omni_settings:default',
+      })
+      const auditResult = upsert('actionAudits', [audit])
+      return { ok: true, result: { omniSettings: result, actionAudits: auditResult }, settings: structuredClone(nextSettings), audit, snapshot: this.snapshot() }
     },
     getPageRuntimeSetting(pageId) {
       const page = currentData().pages.find((item) => item.id === pageId)
@@ -404,6 +601,118 @@ export function createOmniService(options = createOmniSeed()) {
         snapshot: this.snapshot(),
       }
     },
+    createOrderDraft(input = {}) {
+      const settings = this.getSettings()
+      if (settings.orderDraft?.enabled === false) return { ok: false, error: 'order_draft_disabled' }
+      const normalized = createOrderDraftRow(input, currentData())
+      if (!normalized.ok) return normalized
+      const orderResult = upsert('orders', [normalized.row])
+      const links = []
+      if (normalized.threadId) {
+        links.push({
+          id: `order_link_${normalized.row.id}_${normalized.threadId}`,
+          threadId: normalized.threadId,
+          orderId: normalized.row.id,
+          linkReason: input.linkReason || 'order_draft_created',
+          confidence: input.confidence || 0.8,
+          sourceRef: normalized.row.sourceRef,
+          createdAt: normalized.row.createdAt,
+        })
+      }
+      const linkResult = links.length ? upsert('orderLinks', links) : { inserted: 0, updated: 0 }
+      const audit = createActionAuditRow({
+        threadId: normalized.threadId || null,
+        action: 'order_draft_created',
+        actorType: 'human',
+        actorId: input.createdBy || 'boss',
+        after: { orderId: normalized.row.id, itemCount: normalized.row.items.length, totalAmount: normalized.row.totalAmount },
+        sourceRef: normalized.row.sourceRef,
+      })
+      const auditResult = upsert('actionAudits', [audit])
+      return { ok: true, result: { orders: orderResult, orderLinks: linkResult, actionAudits: auditResult }, order: structuredClone(normalized.row), audit, snapshot: this.snapshot() }
+    },
+    async approveOrderDraft({ orderId, approved = false, approvedBy = 'boss', createExternalOrder } = {}) {
+      if (approved !== true) return { ok: false, error: 'approval_required' }
+      const snapshot = currentData()
+      const order = (snapshot.orders || []).find((item) => item.id === orderId)
+      if (!order) return { ok: false, error: 'order_not_found' }
+      if (order.status !== 'draft') return { ok: false, error: 'order_not_draft' }
+      const settings = this.getSettings()
+      if (settings.orderDraft?.enabled === false) return { ok: false, error: 'order_draft_disabled' }
+      if (settings.orderDraft?.createZortOrderOnApprove === false) return { ok: false, error: 'zort_order_create_disabled' }
+      if (typeof createExternalOrder !== 'function') return { ok: false, error: 'order_runtime_missing' }
+      const ready = await validateOrderReadyForZort(order)
+      if (!ready.ok) return ready
+      const providerOrder = { ...order, shippingAddress: ready.shippingAddress }
+      let provider
+      try {
+        provider = await createExternalOrder({ order: providerOrder, uniquenumber: order.id, approved: true })
+      } catch (error) {
+        return {
+          ok: false,
+          error: 'zort_order_create_failed',
+          provider: { ok: false, error: error.message || 'zort_order_create_failed' },
+        }
+      }
+      if (!provider?.ok) return { ok: false, error: provider?.error || 'zort_order_create_failed', provider }
+      const updatedOrder = {
+        ...providerOrder,
+        status: 'zort_created',
+        approvalStatus: 'approved',
+        providerOrderId: provider.providerOrderId || order.providerOrderId || null,
+        providerResponse: provider.response || null,
+        approvedBy,
+        approvedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }
+      const orderResult = upsert('orders', [updatedOrder])
+      const audit = createActionAuditRow({
+        action: 'order_draft_approved_zort_created',
+        actorType: 'human',
+        actorId: approvedBy,
+        before: { orderId: order.id, status: order.status, providerOrderId: order.providerOrderId || null },
+        after: { orderId: updatedOrder.id, status: updatedOrder.status, providerOrderId: updatedOrder.providerOrderId },
+        sourceRef: updatedOrder.sourceRef,
+      })
+      const auditResult = upsert('actionAudits', [audit])
+      return { ok: true, result: { orders: orderResult, actionAudits: auditResult }, order: structuredClone(updatedOrder), provider, audit, snapshot: this.snapshot() }
+    },
+    messageVolumeReport({ from, to, pageId } = {}) {
+      const snapshot = currentData()
+      const timeZone = this.getSettings().report?.timezone || 'UTC'
+      const fromDate = normalizeDateBoundary(from, new Date(0), false, timeZone)
+      const toDate = normalizeDateBoundary(to, new Date('9999-12-31T23:59:59.999Z'), true, timeZone)
+      const threadsById = new Map((snapshot.threads || []).map((thread) => [thread.id, thread]))
+      const byHour = Array.from({ length: 24 }, (_, hour) => ({ hour: String(hour).padStart(2, '0'), inbound: 0, outbound: 0, total: 0 }))
+      const byPage = new Map()
+      const messages = (snapshot.messages || []).filter((message) => {
+        const createdAt = new Date(message.createdAt || 0)
+        const thread = threadsById.get(message.threadId)
+        return createdAt >= fromDate && createdAt <= toDate && (!pageId || thread?.pageId === pageId)
+      })
+      const totals = { inbound: 0, outbound: 0, system: 0, total: messages.length }
+      for (const message of messages) {
+        const direction = ['inbound', 'outbound', 'system'].includes(message.direction) ? message.direction : 'system'
+        totals[direction] += 1
+        const hour = hourInTimeZone(new Date(message.createdAt || 0), timeZone)
+        byHour[hour][direction] += 1
+        byHour[hour].total += 1
+        const thread = threadsById.get(message.threadId)
+        const pageKey = thread?.pageId || 'unknown'
+        const pageRow = byPage.get(pageKey) || { pageId: pageKey, inbound: 0, outbound: 0, system: 0, total: 0 }
+        pageRow[direction] += 1
+        pageRow.total += 1
+        byPage.set(pageKey, pageRow)
+      }
+      return {
+        from: fromDate.toISOString(),
+        to: toDate.toISOString(),
+        timezone: timeZone,
+        totals,
+        byHour,
+        byPage: Array.from(byPage.values()),
+      }
+    },
     listThreads(filters = {}) {
       return currentData().threads
         .filter((thread) => !filters.pageId || thread.pageId === filters.pageId)
@@ -512,7 +821,15 @@ export function createOmniService(options = createOmniSeed()) {
       upsert('actionAudits', [audit])
       return { ok: true, message: structuredClone(message), thread: structuredClone(updatedThread), audit: structuredClone(audit), snapshot: this.snapshot() }
     },
-    recordManualReplyDraft({ threadId, authorName = 'บอส', text = '', attachments = [] }) {
+    recordManualReplyDraft({
+      threadId,
+      authorName = 'บอส',
+      text = '',
+      attachments = [],
+      sourceRef = 'manual_draft',
+      actorType = 'human',
+      auditAction = 'manual_reply_draft_created',
+    }) {
       const snapshot = currentData()
       const thread = snapshot.threads.find((item) => item.id === threadId)
       if (!thread) return { ok: false, error: 'thread_not_found' }
@@ -531,7 +848,7 @@ export function createOmniService(options = createOmniSeed()) {
         attachments: normalizedAttachments.attachments,
         createdAt: now,
         providerMessageId: null,
-        sourceRef: 'manual_draft',
+        sourceRef,
         deliveryStatus: 'draft_only',
       }
       const updatedThread = {
@@ -544,8 +861,8 @@ export function createOmniService(options = createOmniSeed()) {
       upsert('threads', [updatedThread])
       const audit = createActionAuditRow({
         threadId,
-        action: 'manual_reply_draft_created',
-        actorType: 'human',
+        action: auditAction,
+        actorType,
         actorId: authorName,
         before: {
           threadStatus: thread.status,
@@ -562,6 +879,44 @@ export function createOmniService(options = createOmniSeed()) {
       })
       upsert('actionAudits', [audit])
       return { ok: true, message: structuredClone(message), thread: structuredClone(updatedThread), audit: structuredClone(audit), snapshot: this.snapshot() }
+    },
+    async createOrderAddressIntake({ threadId, text = '', createConfirmationDraft, authorName = 'AI' } = {}) {
+      const settings = this.getSettings()
+      if (settings.orderAddressIntake?.enabled === false) return { ok: false, error: 'order_address_intake_disabled' }
+      const snapshot = currentData()
+      const thread = snapshot.threads.find((item) => item.id === threadId)
+      if (!thread) return { ok: false, error: 'thread_not_found' }
+      const customer = snapshot.customers.find((item) => item.id === thread.customerId) || null
+      const inboundText = (snapshot.messages || [])
+        .filter((message) => message.threadId === threadId && message.direction === 'inbound')
+        .slice(-5)
+        .map((message) => message.text)
+        .join('\n')
+      const sourceText = String(text || inboundText || '').trim()
+      const extraction = await extractThaiOrderAddress(sourceText, { fallbackName: customer?.displayName || '' })
+      if (!extraction.ok) return extraction
+
+      let confirmationDraft = null
+      const shouldDraft = createConfirmationDraft ?? settings.orderAddressIntake?.createConfirmationDraft !== false
+      if (shouldDraft) {
+        const draft = this.recordManualReplyDraft({
+          threadId,
+          authorName,
+          text: extraction.confirmationText,
+          sourceRef: 'ai_address_confirmation_draft',
+          actorType: 'ai',
+          auditAction: 'address_confirmation_draft_created',
+        })
+        if (!draft.ok) return draft
+        confirmationDraft = { message: draft.message, audit: draft.audit }
+      }
+
+      return {
+        ok: true,
+        ...extraction,
+        confirmationDraft,
+        snapshot: this.snapshot(),
+      }
     },
     approveDraft({ threadId }) {
       if (store) return { ok: false, error: 'approval_not_supported_for_sqlite_store_yet' }

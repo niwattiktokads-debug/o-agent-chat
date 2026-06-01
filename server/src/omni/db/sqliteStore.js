@@ -21,6 +21,7 @@ const COLLECTIONS = [
   'inventorySnapshots',
   'paymentRequests',
   'paymentEvents',
+  'omniSettings',
   'aiDecisions',
   'actionAudits',
   'approvalTasks',
