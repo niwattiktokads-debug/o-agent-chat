@@ -15,6 +15,7 @@ const FB_PAGE_TOKEN_ENV = {
   anna_lynn: ['META_PAGE_TOKEN_ANNA_LYNN'],
   page_des: ['META_PAGE_TOKEN_PAGE_DES'],
   fb_112154661515664: ['META_PAGE_TOKEN_112154661515664'],
+  vz_viris_zamara: ['META_PAGE_TOKEN_VZ_VIRIS_ZAMARA'],
 }
 
 function fbPageAccessToken(pageProfile) {
@@ -30,6 +31,7 @@ const IG_PAGE_TOKEN_ENV = {
   ig_man_kynd: ['META_PAGE_TOKEN_IG_MAN_KYND', 'IG_MAN_KYND_PAGE_TOKEN'],
   ig_page_des: ['META_PAGE_TOKEN_IG_PAGE_DES', 'IG_PAGE_DES_PAGE_TOKEN'],
   ig_fb_112154661515664: ['META_PAGE_TOKEN_IG_112154661515664', 'IG_112154661515664_PAGE_TOKEN'],
+  ig_vz_viris_zamara: ['META_PAGE_TOKEN_VZ_VIRIS_ZAMARA'],
 }
 
 function igPageAccessToken(pageProfile) {
