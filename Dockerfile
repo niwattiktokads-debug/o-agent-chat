@@ -8,6 +8,12 @@ COPY server/package*.json ./server/
 # Install production dependencies
 RUN npm --prefix server install --omit=dev
 
+# Install client dependencies and build
+COPY client/package*.json ./client/
+RUN npm --prefix client install --legacy-peer-deps
+COPY client/ ./client/
+RUN npm --prefix client run build
+
 # Copy all source files
 COPY . .
 
