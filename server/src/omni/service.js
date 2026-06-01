@@ -330,12 +330,15 @@ function normalizeFacebookWebhookSync(snapshot, normalized) {
 
   const remappedThreadIds = new Map()
   const threads = (normalized.threads || []).map((thread) => {
+    const isFbComment = ['facebook_comment', 'facebook_video_comment'].includes(thread.platform)
     const existing = (snapshot.threads || []).find((candidate) => (
-      candidate.platform === 'facebook' &&
+      (isFbComment
+        ? ['facebook_comment', 'facebook_video_comment'].includes(candidate.platform)
+        : candidate.platform === 'facebook') &&
       candidate.pageId === thread.pageId &&
       candidate.customerId === thread.customerId &&
       candidate.id !== thread.id &&
-      !String(candidate.id || '').startsWith('fb_webhook_')
+      (isFbComment || !String(candidate.id || '').startsWith('fb_webhook_'))
     ))
     if (!existing) return thread
 
