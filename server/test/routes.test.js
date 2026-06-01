@@ -1601,6 +1601,76 @@ test('POST /webhook/meta sends comment auto reply through comment endpoint', asy
   }
 })
 
+test('POST /webhook/meta sends video comment auto reply through comment endpoint', async () => {
+  const app = express()
+  app.use(express.json())
+  const sent = []
+  const fakeAi = {
+    draft: async () => ({
+      ok: true,
+      provider: 'test',
+      model: 'video-comment-test',
+      intent: 'faq',
+      risk: 'low',
+      confidence: 0.9,
+      action: 'draft_ready',
+      sourceIds: [],
+      reason: 'video_comment_test',
+      allowed: true,
+      draftText: 'ทัก inbox ได้เลยค่ะ เดี๋ยวแอดมินเช็กให้',
+    }),
+  }
+  mountWebhook(app, { broadcast: () => {} }, createState(), {
+    omni: createOmniService(),
+    ai: fakeAi,
+    metaVerifyToken: 'verify-token-test',
+    sendReply: async () => {
+      throw new Error('dm_send_should_not_be_called')
+    },
+    sendCommentReply: async (payload) => {
+      sent.push(payload)
+      return { ok: true, response: { id: 'video_comment_reply_1' } }
+    },
+  })
+  const localServer = app.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const response = await fetch(`http://localhost:${localPort}/webhook/meta?autoReply=1&send=1`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        object: 'page',
+        entry: [{
+          id: '122106446570001676',
+          changes: [{
+            field: 'feed',
+            value: {
+              item: 'video_comment',
+              verb: 'add',
+              video_id: 'video_route_555',
+              comment_id: 'video_comment_route_888',
+              sender_id: 'customer_video_comment_send',
+              sender_name: 'Video Comment Customer',
+              message: 'สนใจรีลค่ะ',
+              created_time: 1779470401,
+            },
+          }],
+        }],
+      }),
+    })
+    const body = await response.json()
+
+    assert.equal(response.status, 200)
+    assert.equal(body.result.autoReplies[0].sent, true)
+    assert.equal(body.result.autoReplies[0].outbound.sourceRef, 'meta_comment_send:anna_lynn')
+    assert.equal(sent[0].pageProfile, 'anna_lynn')
+    assert.equal(sent[0].commentId, 'video_comment_route_888')
+    assert.match(sent[0].message, /ทัก inbox/)
+  } finally {
+    localServer.close()
+  }
+})
+
 test('POST /webhook/meta sends guarded fallback reply when AI helper fails after local draft', async () => {
   const app = express()
   app.use(express.json())

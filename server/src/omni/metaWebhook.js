@@ -16,6 +16,8 @@ function feedText(value = {}) {
   return `Facebook ${item} ${verb}`
 }
 
+const FEED_COMMENT_ITEMS = new Set(['comment', 'video_comment'])
+
 function platformForProfile(profile) {
   return profile.platform === 'instagram' ? 'instagram' : 'facebook'
 }
@@ -123,15 +125,17 @@ function originFromReferral(referral = {}, profile, text = '') {
 }
 
 function originFromFeedChange(entry, value = {}, profile, text = '') {
-  const postId = String(value.post_id || value.parent_id || value.comment_id || '')
+  const videoId = fieldFrom(value.video_id, value.videoId)
+  const postId = String(value.post_id || value.parent_id || videoId || value.comment_id || '')
   const platform = platformForProfile(profile)
   return compactObject({
     channel: `${platform}_feed`,
-    sourceType: value.item === 'comment' ? 'post_comment' : 'post',
+    sourceType: value.item === 'video_comment' ? 'video_comment' : value.item === 'comment' ? 'post_comment' : 'post',
     pageId: profile.pageId,
     pageName: profile.pageName,
     post: {
-      id: value.post_id || value.parent_id || postId,
+      id: value.post_id || value.parent_id || videoId || postId,
+      videoId,
       commentId: value.comment_id || null,
       permalinkUrl: value.permalink_url || value.permalinkUrl || null,
       title: value.post_title || value.title || null,
@@ -141,16 +145,18 @@ function originFromFeedChange(entry, value = {}, profile, text = '') {
       text: value.post_message || value.parent_message || text,
       ...productHintsFromText([value.post_message, value.parent_message, text].filter(Boolean).join(' ')),
     },
-    replyFrame: 'ลูกค้ามาจากคอมเมนต์ใต้โพสต์ ให้ตอบสั้น กระชับ อิงโพสต์นี้ และชวนเข้า inbox ถ้าต้องเช็กข้อมูลเฉพาะตัว',
+    replyFrame: value.item === 'video_comment'
+      ? 'ลูกค้ามาจากคอมเมนต์ใต้รีล/วิดีโอ ให้ตอบสั้น กระชับ อิงรีล/วิดีโอนี้ และชวนเข้า inbox ถ้าต้องเช็กข้อมูลเฉพาะตัว'
+      : 'ลูกค้ามาจากคอมเมนต์ใต้โพสต์ ให้ตอบสั้น กระชับ อิงโพสต์นี้ และชวนเข้า inbox ถ้าต้องเช็กข้อมูลเฉพาะตัว',
     eventTime: entry.time ? new Date(Number(entry.time) * 1000).toISOString() : null,
   })
 }
 
 function normalizeFeedChange(entry, change, profile) {
-  if (change?.field !== 'feed' || change.value?.item !== 'comment') return null
+  if (change?.field !== 'feed' || !FEED_COMMENT_ITEMS.has(change.value?.item)) return null
 
   const value = change.value
-  const postId = String(value.post_id || value.parent_id || value.comment_id || '')
+  const postId = String(value.post_id || value.parent_id || value.video_id || value.videoId || value.comment_id || '')
   if (!postId) return null
 
   const senderId = String(value.sender_id || '')
@@ -183,10 +189,10 @@ function normalizeFeedChange(entry, change, profile) {
       id: threadId,
       providerThreadId: postId,
       pageId: profile.omniPageId,
-      platform: 'facebook_comment',
+      platform: value.item === 'video_comment' ? 'facebook_video_comment' : 'facebook_comment',
       customerId,
       status: 'open',
-      intent: value.item === 'comment' ? 'comment' : 'post',
+      intent: 'comment',
       risk: 'medium',
       unreadCount: isOutbound ? 0 : 1,
       messageCount: 1,

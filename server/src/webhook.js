@@ -279,7 +279,7 @@ function pageProfileForThread(thread) {
 }
 
 function isCommentThread(thread) {
-  return ['facebook_comment', 'instagram_comment'].includes(thread?.platform)
+  return ['facebook_comment', 'facebook_video_comment', 'instagram_comment'].includes(thread?.platform)
 }
 
 function commentIdForThread(thread) {

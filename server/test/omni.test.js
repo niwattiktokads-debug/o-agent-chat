@@ -729,6 +729,43 @@ test('normalizes Meta page feed webhook changes into Omni post rows', () => {
   assert.equal(normalized.threads[0].originContext.productHint.size, 'M')
 })
 
+test('normalizes Meta page video comment webhook changes into Omni video comment rows', () => {
+  const normalized = normalizeMetaWebhookPayload({
+    object: 'page',
+    entry: [{
+      id: '122106446570001676',
+      time: 1779470400,
+      changes: [{
+        field: 'feed',
+        value: {
+          item: 'video_comment',
+          verb: 'add',
+          video_id: 'video_555',
+          comment_id: 'video_comment_777',
+          sender_id: 'customer_video_1',
+          sender_name: 'Video Customer',
+          message: 'สนใจรีลนี้ค่ะ',
+          created_time: 1779470401,
+        },
+      }],
+    }],
+  })
+
+  assert.equal(normalized.customers[0].displayName, 'Video Customer')
+  assert.equal(normalized.threads[0].pageId, 'page_annalynn')
+  assert.equal(normalized.threads[0].platform, 'facebook_video_comment')
+  assert.equal(normalized.threads[0].providerThreadId, 'video_555')
+  assert.equal(normalized.threads[0].intent, 'comment')
+  assert.equal(normalized.messages[0].direction, 'inbound')
+  assert.equal(normalized.messages[0].providerMessageId, 'video_comment_777')
+  assert.equal(normalized.messages[0].text, 'สนใจรีลนี้ค่ะ')
+  assert.match(normalized.messages[0].sourceRef, /^meta_feed:122106446570001676:video_comment:add$/)
+  assert.equal(normalized.threads[0].originContext.sourceType, 'video_comment')
+  assert.equal(normalized.threads[0].originContext.post.id, 'video_555')
+  assert.equal(normalized.threads[0].originContext.post.videoId, 'video_555')
+  assert.match(normalized.threads[0].originContext.replyFrame, /รีล\/วิดีโอ/)
+})
+
 test('normalizes Instagram DM webhook payload into Omni memory rows', () => {
   const normalized = normalizeMetaWebhookPayload({
     object: 'instagram',
