@@ -11,6 +11,8 @@ export const FALLBACK_PAGE_PROFILES = {
   ig_man_kynd: { profileKey: 'ig_man_kynd', pageId: '17841402222436331', pageName: 'MAN KYND IG', omniPageId: 'page_ig_mankynd', platform: 'instagram' },
   ig_page_des: { profileKey: 'ig_page_des', pageId: 'NOT_LINKED', pageName: 'Niwatha และ AI ชื่อเดส IG', omniPageId: 'page_ig_page_des', platform: 'instagram' },
   ig_fb_112154661515664: { profileKey: 'ig_fb_112154661515664', pageId: '17841462136286560', pageName: 'Viris Zamara IG', omniPageId: 'page_ig_fb_112154661515664', platform: 'instagram' },
+  vz_viris_zamara: { profileKey: 'vz_viris_zamara', pageId: '112979362131792', pageName: 'VZ by viris zamara.', omniPageId: 'page_vz_viris_zamara', platform: 'facebook' },
+  ig_vz_viris_zamara: { profileKey: 'ig_vz_viris_zamara', pageId: '17841400330305192', pageName: 'VZ by viris zamara. IG', omniPageId: 'page_ig_vz_viris_zamara', platform: 'instagram' },
 }
 
 const DEFAULT_REGISTRY_PATH = fileURLToPath(new URL('../../data/pages.json', import.meta.url))
