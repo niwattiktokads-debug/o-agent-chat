@@ -26,5 +26,12 @@
     "pageName": "Viris Zamara",
     "omniPageId": "page_fb_112154661515664",
     "platform": "facebook"
+  },
+  {
+    "profileKey": "ig_anna_lynn",
+    "pageId": "PLACEHOLDER_IG_PAGE_ID",
+    "pageName": "Anna Lynn IG",
+    "omniPageId": "page_ig_annalynn",
+    "platform": "instagram"
   }
 ]
