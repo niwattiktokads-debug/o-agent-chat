@@ -11,7 +11,7 @@
  *        (ถ้าไม่มี table ใช้ in-memory KV แทนชั่วคราว)
  */
 
-import { json, readJsonBody, supabaseRpc, recordActionAuditToSupabase } from '../_omniSupabase.js'
+import { json, readJsonBody, supabaseRpc, recordActionAuditToSupabase } from '../../_omniSupabase.js'
 
 const GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v23.0'
 const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`
