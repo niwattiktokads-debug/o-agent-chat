@@ -1253,3 +1253,64 @@ test('omni database schema includes durable memory tables and guards', () => {
   assert.match(sql, /CREATE INDEX IF NOT EXISTS idx_messages_thread_created/)
   assert.match(sql, /CREATE TABLE IF NOT EXISTS retention_policies/)
 })
+
+test('sendInstagramCommentReply calls direct Graph API when no runner and token exists', async () => {
+  const originalFetch = globalThis.fetch
+  const calls = []
+  globalThis.fetch = async (url, opts) => {
+    calls.push({ url: url.toString(), opts })
+    return {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ id: 'ig_reply_direct_1' }),
+    }
+  }
+  try {
+    process.env.META_PAGE_TOKEN_IG_ANNA_LYNN = 'test_ig_token_direct'
+    const result = await sendInstagramCommentReply({ pageProfile: 'ig_anna_lynn', commentId: 'ig_c_direct_1', message: 'ขอบคุณค่ะ' })
+    assert.equal(result.ok, true)
+    assert.equal(result.response.id, 'ig_reply_direct_1')
+    assert.equal(calls.length, 1)
+    assert.match(calls[0].url, /graph\.instagram\.com/)
+    assert.match(calls[0].url, /replies/)
+    assert.match(calls[0].url, /access_token=test_ig_token_direct/)
+    const body = JSON.parse(calls[0].opts.body)
+    assert.equal(body.message, 'ขอบคุณค่ะ')
+  } finally {
+    delete process.env.META_PAGE_TOKEN_IG_ANNA_LYNN
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('sendInstagramCommentReply returns ig_page_token_missing when no IG token set', async () => {
+  const saved = process.env.META_PAGE_TOKEN_IG_ANNA_LYNN
+  delete process.env.META_PAGE_TOKEN_IG_ANNA_LYNN
+  delete process.env.META_IG_ACCESS_TOKEN
+  try {
+    const result = await sendInstagramCommentReply({ pageProfile: 'ig_anna_lynn', commentId: 'ig_c_2', message: 'test' })
+    assert.equal(result.ok, false)
+    assert.equal(result.error, 'ig_page_token_missing')
+    assert.equal(result.pageProfile, 'ig_anna_lynn')
+    assert.ok(Array.isArray(result.expectedEnv))
+  } finally {
+    if (saved) process.env.META_PAGE_TOKEN_IG_ANNA_LYNN = saved
+  }
+})
+
+test('sendInstagramCommentReply uses runner when provided (backward compat)', async () => {
+  const calls = []
+  const mockRunner = async (args) => {
+    calls.push(args)
+    return { ok: true, response: { id: 'runner_ig_reply_1' } }
+  }
+  const result = await sendInstagramCommentReply({
+    pageProfile: 'ig_anna_lynn',
+    commentId: 'ig_c_runner_1',
+    message: 'สวัสดีค่ะ',
+    runner: mockRunner,
+  })
+  assert.equal(result.ok, true)
+  assert.equal(result.response.id, 'runner_ig_reply_1')
+  assert.equal(calls[0][0], 'reply-ig-comment')
+  assert.equal(calls[0][2], '--comment-id=ig_c_runner_1')
+})

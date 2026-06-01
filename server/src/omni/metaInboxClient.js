@@ -5,6 +5,23 @@ import { FALLBACK_PAGE_PROFILES, loadPageRegistry } from './pageRegistry.js'
 
 const execFileAsync = promisify(execFile)
 const DEFAULT_HELPER = process.env.META_INBOX_HELPER || '/Users/babycuca/.codex/bin/meta-inbox-api'
+const GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v23.0'
+const INSTAGRAM_GRAPH_BASE = `https://graph.instagram.com/${GRAPH_VERSION}`
+
+const IG_PAGE_TOKEN_ENV = {
+  ig_anna_lynn: ['META_PAGE_TOKEN_IG_ANNA_LYNN', 'IG_ANNA_LYNN_PAGE_TOKEN'],
+  ig_man_kynd: ['META_PAGE_TOKEN_IG_MAN_KYND', 'IG_MAN_KYND_PAGE_TOKEN'],
+  ig_page_des: ['META_PAGE_TOKEN_IG_PAGE_DES', 'IG_PAGE_DES_PAGE_TOKEN'],
+  ig_fb_112154661515664: ['META_PAGE_TOKEN_IG_112154661515664', 'IG_112154661515664_PAGE_TOKEN'],
+}
+
+function igPageAccessToken(pageProfile) {
+  const candidates = [...(IG_PAGE_TOKEN_ENV[pageProfile] || []), 'META_IG_ACCESS_TOKEN']
+  const envName = candidates.find((name) => process.env[name])
+  return envName
+    ? { ok: true, value: process.env[envName], source: envName }
+    : { ok: false, source: candidates }
+}
 
 export const FACEBOOK_PAGE_PROFILES = FALLBACK_PAGE_PROFILES
 
@@ -181,23 +198,59 @@ export async function sendFacebookCommentReply(input = {}, runnerArg = null) {
   return payload
 }
 
-// TODO: requires meta-inbox-api binary update to support reply-ig-comment
-export async function sendInstagramCommentReply(input = {}, runnerArg = null) {
+export async function sendInstagramCommentReply(input = {}, _runnerArg = null) {
   const { pageProfile = 'ig_anna_lynn', commentId, message } = input
   const profile = pageProfiles()[pageProfile]
   if (!profile || profile.platform !== 'instagram') throw new Error(`unknown_instagram_page:${pageProfile}`)
   if (!commentId) throw new Error('comment_id_required')
-  if (!String(message || '').trim()) throw new Error('message_required')
-  const helperPath = helperPathFrom(input)
-  if (!input.runner && !runnerArg && !helperExists(helperPath)) return helperUnavailable(helperPath)
-  const runner = input.runner || runnerArg || ((args) => defaultRunner(args, helperPath))
-  const payload = await runner([
-    'reply-ig-comment',
-    `--page=${pageProfile}`,
-    `--comment-id=${commentId}`,
-    `--message=${String(message).trim()}`,
-    '--approved',
-  ])
-  if (!payload?.ok) throw new Error(payload?.error || 'instagram_comment_reply_failed')
-  return payload
+  const text = String(message || '').trim()
+  if (!text) throw new Error('message_required')
+
+  // ถ้ามี custom runner inject มา (เช่นใน test) ให้ใช้ runner นั้นแทน
+  if (input.runner || _runnerArg) {
+    const runner = input.runner || _runnerArg
+    const payload = await runner([
+      'reply-ig-comment',
+      `--page=${pageProfile}`,
+      `--comment-id=${commentId}`,
+      `--message=${text}`,
+      '--approved',
+    ])
+    if (!payload?.ok) throw new Error(payload?.error || 'instagram_comment_reply_failed')
+    return payload
+  }
+
+  // Direct Graph API call (production path — no binary required)
+  const token = igPageAccessToken(pageProfile)
+  if (!token.ok) {
+    return { ok: false, error: 'ig_page_token_missing', pageProfile, expectedEnv: token.source }
+  }
+
+  const url = new URL(`${INSTAGRAM_GRAPH_BASE}/${encodeURIComponent(commentId)}/replies`)
+  url.searchParams.set('access_token', token.value)
+
+  let response
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ message: text }),
+    })
+  } catch (networkError) {
+    return { ok: false, error: 'ig_graph_network_error', detail: networkError.message }
+  }
+
+  const responseText = await response.text()
+  const payload = responseText ? JSON.parse(responseText) : {}
+
+  if (!response.ok) {
+    return {
+      ok: false,
+      status: response.status,
+      error: payload?.error?.message || payload?.error || 'ig_graph_error',
+      response: payload,
+    }
+  }
+
+  return { ok: true, status: response.status, response: payload }
 }
