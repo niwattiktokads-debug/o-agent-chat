@@ -2,19 +2,22 @@ FROM node:22-alpine
 
 WORKDIR /app
 
-# Copy server package files
-COPY server/package*.json ./server/
+# Install build dependencies
+RUN apk add --no-cache python3 make g++
 
-# Install production dependencies
-RUN npm --prefix server install --omit=dev
-
-# Install client dependencies and build
+# ---- Build client ----
 COPY client/package*.json ./client/
-RUN npm --prefix client install --legacy-peer-deps
-COPY client/ ./client/
-RUN npm --prefix client run build
+RUN cd client && npm install --legacy-peer-deps
 
-# Copy all source files
+COPY client/ ./client/
+RUN cd client && npm run build
+
+# ---- Install server deps ----
+COPY server/package*.json ./server/
+RUN cd server && npm install --omit=dev
+
+# ---- Copy remaining source ----
+COPY server/ ./server/
 COPY . .
 
 # Expose port
