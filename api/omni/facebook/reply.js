@@ -2,9 +2,11 @@ import { json, readJsonBody } from '../../_omniSupabase.js'
 
 const GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v23.0'
 const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`
+const INSTAGRAM_GRAPH_BASE = `https://graph.instagram.com/${GRAPH_VERSION}`
 
 const PAGE_TOKEN_ENV = {
   anna_lynn: ['META_PAGE_TOKEN_ANNA_LYNN', 'FB_ANNA_LYNN_PAGE_TOKEN', 'META_PAGE_ACCESS_TOKEN_ANNA_LYNN'],
+  ig_anna_lynn: ['META_PAGE_TOKEN_IG_ANNA_LYNN', 'IG_ANNA_LYNN_PAGE_TOKEN', 'META_IG_ACCESS_TOKEN_ANNA_LYNN'],
   man_kynd: ['META_PAGE_TOKEN_MAN_KYND', 'FB_PAGE_TOKEN_MAN_KYND', 'META_PAGE_ACCESS_TOKEN_MAN_KYND'],
   page_des: ['META_PAGE_TOKEN_PAGE_DES', 'FB_PAGE_TOKEN_PAGE_DES', 'META_PAGE_ACCESS_TOKEN_PAGE_DES'],
   fb_112154661515664: ['META_PAGE_TOKEN_112154661515664', 'FB_PAGE_TOKEN_112154661515664'],
@@ -29,8 +31,8 @@ function pageAccessToken(pageProfile) {
   return envName ? { ok: true, value: process.env[envName], source: envName } : { ok: false, source: candidates }
 }
 
-async function graphRequest(pathname, accessToken, { method = 'POST', body = {} } = {}) {
-  const url = new URL(`${GRAPH_BASE}${pathname}`)
+async function graphRequest(pathname, accessToken, { method = 'POST', body = {}, baseUrl = GRAPH_BASE } = {}) {
+  const url = new URL(`${baseUrl}${pathname}`)
   url.searchParams.set('access_token', accessToken)
   const response = await fetch(url, {
     method,
@@ -63,6 +65,14 @@ async function replyComment({ accessToken, commentId, message }) {
   })
 }
 
+async function replyInstagramComment({ accessToken, commentId, message }) {
+  if (!commentId) return { ok: false, error: 'comment_id_required' }
+  return graphRequest(`/${encodeURIComponent(commentId)}/replies`, accessToken, {
+    baseUrl: INSTAGRAM_GRAPH_BASE,
+    body: { message },
+  })
+}
+
 async function privateReplyComment({ accessToken, commentId, message }) {
   if (!commentId) return { ok: false, error: 'comment_id_required' }
   return graphRequest(`/${encodeURIComponent(commentId)}/private_replies`, accessToken, {
@@ -87,6 +97,8 @@ export default async function handler(req, res) {
     const action = String(body.action || 'send_inbox_reply').trim()
     const result = action === 'reply_comment'
       ? await replyComment({ accessToken: token.value, commentId: body.commentId, message })
+      : action === 'reply_ig_comment'
+        ? await replyInstagramComment({ accessToken: token.value, commentId: body.commentId, message })
       : action === 'private_reply_comment'
         ? await privateReplyComment({ accessToken: token.value, commentId: body.commentId, message })
         : await sendInboxReply({ accessToken: token.value, recipientId: body.recipientId, message })

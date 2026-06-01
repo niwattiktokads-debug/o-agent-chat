@@ -8,7 +8,7 @@ import { OMNI_STATUSES, validatePage } from '../src/omni/schema.js'
 import { createOmniSeed } from '../src/omni/seed.js'
 import { createAdapterRegistry } from '../src/omni/adapters.js'
 import { createOmniService } from '../src/omni/service.js'
-import { listFacebookConversations, normalizeMetaConversations, sendFacebookCommentReply } from '../src/omni/metaInboxClient.js'
+import { listFacebookConversations, normalizeMetaConversations, sendFacebookCommentReply, sendInstagramCommentReply } from '../src/omni/metaInboxClient.js'
 import { loadPageRegistry } from '../src/omni/pageRegistry.js'
 import { createMetaSocialRuntime } from '../src/omni/metaSocialRuntime.js'
 import { createAiReplyEngine } from '../src/omni/aiReplyEngine.js'
@@ -488,6 +488,22 @@ test('Facebook comment connector calls meta helper through injectable runner', a
 
   assert.deepEqual(calls[0], ['reply-comment', '--page=anna_lynn', '--comment-id=comment_123', '--message=ทัก inbox ได้เลยค่ะ', '--approved'])
   assert.equal(result.response.id, 'reply_123')
+})
+
+test('Instagram comment connector calls meta helper through injectable runner', async () => {
+  const calls = []
+  const result = await sendInstagramCommentReply({
+    pageProfile: 'ig_anna_lynn',
+    commentId: 'ig_comment_123',
+    message: 'ทัก inbox ได้เลยค่ะ',
+    runner: async (args) => {
+      calls.push(args)
+      return { ok: true, response: { id: 'ig_reply_123' } }
+    },
+  })
+
+  assert.deepEqual(calls[0], ['reply-ig-comment', '--page=ig_anna_lynn', '--comment-id=ig_comment_123', '--message=ทัก inbox ได้เลยค่ะ', '--approved'])
+  assert.equal(result.response.id, 'ig_reply_123')
 })
 
 test('Facebook connector reads thread messages beyond conversation snippets', async () => {

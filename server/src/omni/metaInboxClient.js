@@ -156,3 +156,22 @@ export async function sendFacebookCommentReply(input = {}, runnerArg = null) {
   if (!payload?.ok) throw new Error(payload?.error || 'meta_comment_reply_failed')
   return payload
 }
+
+// TODO: requires meta-inbox-api binary update to support reply-ig-comment
+export async function sendInstagramCommentReply(input = {}, runnerArg = null) {
+  const { pageProfile = 'ig_anna_lynn', commentId, message } = input
+  const runner = input.runner || runnerArg || defaultRunner
+  const profile = pageProfiles()[pageProfile]
+  if (!profile || profile.platform !== 'instagram') throw new Error(`unknown_instagram_page:${pageProfile}`)
+  if (!commentId) throw new Error('comment_id_required')
+  if (!String(message || '').trim()) throw new Error('message_required')
+  const payload = await runner([
+    'reply-ig-comment',
+    `--page=${pageProfile}`,
+    `--comment-id=${commentId}`,
+    `--message=${String(message).trim()}`,
+    '--approved',
+  ])
+  if (!payload?.ok) throw new Error(payload?.error || 'instagram_comment_reply_failed')
+  return payload
+}

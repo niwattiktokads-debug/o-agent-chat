@@ -1671,6 +1671,77 @@ test('POST /webhook/meta sends video comment auto reply through comment endpoint
   }
 })
 
+test('POST /webhook/meta sends Instagram comment auto reply through IG comment endpoint', async () => {
+  const app = express()
+  app.use(express.json())
+  const sent = []
+  const fakeAi = {
+    draft: async () => ({
+      ok: true,
+      provider: 'test',
+      model: 'ig-comment-test',
+      intent: 'faq',
+      risk: 'low',
+      confidence: 0.9,
+      action: 'draft_ready',
+      sourceIds: [],
+      reason: 'ig_comment_test',
+      allowed: true,
+      draftText: 'ทัก inbox ได้เลยค่ะ เดี๋ยวแอดมินเช็กให้',
+    }),
+  }
+  mountWebhook(app, { broadcast: () => {} }, createState(), {
+    omni: createOmniService(),
+    ai: fakeAi,
+    metaVerifyToken: 'verify-token-test',
+    sendReply: async () => {
+      throw new Error('dm_send_should_not_be_called')
+    },
+    sendCommentReply: async () => {
+      throw new Error('facebook_comment_send_should_not_be_called')
+    },
+    sendIgCommentReply: async (payload) => {
+      sent.push(payload)
+      return { ok: true, response: { id: 'ig_comment_reply_1' } }
+    },
+  })
+  const localServer = app.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const response = await fetch(`http://localhost:${localPort}/webhook/meta?autoReply=1&send=1`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        object: 'instagram',
+        entry: [{
+          id: 'PLACEHOLDER_IG_PAGE_ID',
+          time: 1779470400,
+          changes: [{
+            field: 'comments',
+            value: {
+              media_id: 'ig_media_route_555',
+              comment_id: 'ig_comment_route_888',
+              from: { id: 'ig_customer_route', username: 'buyer_ig' },
+              text: 'สนใจค่ะ',
+              created_time: 1779470401,
+            },
+          }],
+        }],
+      }),
+    })
+    const body = await response.json()
+
+    assert.equal(response.status, 200)
+    assert.equal(body.result.autoReplies[0].sent, true)
+    assert.equal(body.result.autoReplies[0].outbound.sourceRef, 'ig_comment_send:ig_anna_lynn')
+    assert.equal(sent[0].pageProfile, 'ig_anna_lynn')
+    assert.equal(sent[0].commentId, 'ig_comment_route_888')
+    assert.match(sent[0].message, /ทัก inbox/)
+  } finally {
+    localServer.close()
+  }
+})
+
 test('POST /webhook/meta sends guarded fallback reply when AI helper fails after local draft', async () => {
   const app = express()
   app.use(express.json())

@@ -1,6 +1,6 @@
 import { normalizeMetaWebhookPayload } from './omni/metaWebhook.js'
 import { createAiReplyEngine } from './omni/aiReplyEngine.js'
-import { sendFacebookCommentReply, sendFacebookReply } from './omni/metaInboxClient.js'
+import { sendFacebookCommentReply, sendFacebookReply, sendInstagramCommentReply } from './omni/metaInboxClient.js'
 import { getProfileKeyForOmniPage } from './omni/pageRegistry.js'
 import { normalizeTikTokMessagingWebhookPayload } from './omni/tiktokMessagingClient.js'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -367,7 +367,7 @@ function recoverAllowedFallbackDecision(decision) {
   }
 }
 
-async function draftThreadReply({ omni, ai, threadId, send = false, sendReply = sendFacebookReply, sendCommentReply = sendFacebookCommentReply }) {
+async function draftThreadReply({ omni, ai, threadId, send = false, sendReply = sendFacebookReply, sendCommentReply = sendFacebookCommentReply, sendIgCommentReply = sendInstagramCommentReply }) {
   const thread = omni.getThread(threadId)
   if (!thread) return { ok: false, error: 'thread_not_found', threadId }
   if (omni.isPageAutoReplyEnabled?.(thread.pageId) === false) {
@@ -398,13 +398,14 @@ async function draftThreadReply({ omni, ai, threadId, send = false, sendReply = 
   if (isCommentThread(thread)) {
     const commentId = commentIdForThread(thread)
     if (!commentId) return { ...result, sent: false, sendSkipped: 'missing_comment_id' }
-    const sendResult = await sendCommentReply({ pageProfile, commentId, message: decision.draftText })
+    const isInstagramComment = thread.platform === 'instagram_comment'
+    const sendResult = await (isInstagramComment ? sendIgCommentReply : sendCommentReply)({ pageProfile, commentId, message: decision.draftText })
     const recordedOutbound = omni.recordOutboundMessage({
       threadId: thread.id,
       authorName: 'Anna Lynn AI',
       text: decision.draftText,
       providerMessageId: sendResult.response?.id || sendResult.response?.comment_id || null,
-      sourceRef: `meta_comment_send:${pageProfile}`,
+      sourceRef: `${isInstagramComment ? 'ig' : 'meta'}_comment_send:${pageProfile}`,
       decisionId: recorded.decision.id,
       decision,
     })
@@ -431,6 +432,7 @@ export function mountWebhook(app, hub, room, options = {}) {
   const ai = options.ai || createAiReplyEngine()
   const sendReply = options.sendReply || sendFacebookReply
   const sendCommentReply = options.sendCommentReply || sendFacebookCommentReply
+  const sendIgCommentReply = options.sendIgCommentReply || sendInstagramCommentReply
   const metaVerifyToken = options.metaVerifyToken || process.env.META_VERIFY_TOKEN || ''
   const metaAutoReplyDefault = options.metaAutoReplyDefault ?? process.env.OMNI_META_WEBHOOK_AUTO_REPLY === '1'
   const metaAutoSendDefault = options.metaAutoSendDefault ?? process.env.OMNI_META_WEBHOOK_SEND === '1'
@@ -476,7 +478,7 @@ export function mountWebhook(app, hub, room, options = {}) {
       : req.query.send === '1' || req.body?.send === true || metaAutoSendDefault
     const autoReplies = shouldAutoReply
       ? await Promise.all(autoReplyThreadIds({ normalized, snapshot: result.snapshot }).map((threadId) => (
-        draftThreadReply({ omni, ai, threadId, send: shouldSend, sendReply, sendCommentReply })
+        draftThreadReply({ omni, ai, threadId, send: shouldSend, sendReply, sendCommentReply, sendIgCommentReply })
       )))
       : []
     hub.broadcast('omni', autoReplies.at(-1)?.snapshot || result.snapshot)
@@ -529,7 +531,7 @@ export function mountWebhook(app, hub, room, options = {}) {
     const snapshot = omni.snapshot()
     const threadId = req.body?.threadId || snapshot.threads.slice().sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))[0]?.id
     if (!threadId) return res.status(400).json({ ok: false, error: 'thread_id_required' })
-    const result = await draftThreadReply({ omni, ai, threadId, send: req.body?.send === true, sendReply, sendCommentReply })
+    const result = await draftThreadReply({ omni, ai, threadId, send: req.body?.send === true, sendReply, sendCommentReply, sendIgCommentReply })
     if (!result.ok) return res.status(404).json(result)
     hub.broadcast('omni', result.snapshot)
     res.json(result)
