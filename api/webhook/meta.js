@@ -1,15 +1,27 @@
 import { normalizeMetaWebhookPayload } from '../../server/src/omni/metaWebhook.js'
 import { createAiReplyEngine } from '../../server/src/omni/aiReplyEngine.js'
 import { fetchOmniSnapshotFromSupabase, getWebhookSecret, json, readJsonBody, recordActionAuditToSupabase, recordAiDecisionToSupabase, supabaseRpc } from '../_omniSupabase.js'
+import { savePending } from './line/ig-comment-approve.js'
 
 const GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v23.0'
 const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`
 const AUTO_SEND_ENABLED = process.env.OMNI_AI_AUTO_SEND_ON_WEBHOOK === '1' || process.env.OMNI_AI_AUTO_SEND_ALL === '1'
 
+// LINE push env — ใช้ token เดียวกับ line-suda-oagent/boss
+const LINE_API_BASE = 'https://api.line.me/v2/bot'
+const LINE_TOKEN = () => process.env.LINE_CHANNEL_ACCESS_TOKEN || ''
+const LINE_BOSS_USER_ID = () => process.env.LINE_BOSS_PERSONAL_USER_ID || ''
+
 const PAGE_PROFILE_BY_OMNI_PAGE = {
   page_annalynn: 'anna_lynn',
   page_mankynd: 'man_kynd',
   page_des: 'page_des',
+}
+
+// IG User ID → page profile mapping (for comment reply)
+const IG_USER_ID_BY_PROFILE = {
+  anna_lynn: process.env.IG_USER_ID_ANNA_LYNN || '17841456216401165',
+  pl_store: process.env.IG_USER_ID_PL_STORE || '17841402222436331',
 }
 
 const PAGE_TOKEN_ENV = {
@@ -50,11 +62,140 @@ export default async function handler(req, res) {
     })
     const dryRun = String(req.query?.send || '') === '0'
     const autoReply = await autoReplyToMessengerInbox({ normalized, dryRun })
-    return json(res, 200, { ok: true, result, autoReply })
+
+    // IG comment flow — draft + LINE notify บอส
+    const igCommentDraft = await draftIgCommentAndNotifyBoss({ normalized, dryRun })
+
+    return json(res, 200, { ok: true, result, autoReply, igCommentDraft })
   } catch (error) {
     return json(res, 400, { ok: false, error: error.message || 'meta_webhook_failed' })
   }
 }
+
+// ─── IG Comment Draft + LINE Notify ──────────────────────────────────────────
+
+async function draftIgCommentAndNotifyBoss({ normalized, dryRun }) {
+  // กรอง messages ที่เป็น IG comment inbound เท่านั้น
+  const igCommentMessages = (normalized.messages || []).filter(
+    (msg) => msg.direction === 'inbound' && String(msg.threadId || '').startsWith('ig_comment_')
+  )
+  if (!igCommentMessages.length) return { ok: true, skipped: 'no_ig_comment_messages' }
+
+  const snapshot = await fetchOmniSnapshotFromSupabase()
+  const engine = createAiReplyEngine({
+    provider: process.env.OMNI_AI_PROVIDER || 'local_rules',
+    model: process.env.OMNI_AI_MODEL || 'dex-local-rules-v1',
+  })
+
+  const results = []
+
+  for (const msg of igCommentMessages) {
+    const threadId = msg.threadId
+    const commentId = msg.providerMessageId || msg.id || ''
+    const commentText = msg.text || msg.content || ''
+    const senderName = msg.senderName || msg.sender || 'ลูกค้า'
+    const postPermalink = msg.postPermalink || msg.permalink || ''
+    const pageId = msg.pageId || ''
+    const pageProfile = PAGE_PROFILE_BY_OMNI_PAGE[pageId] || 'anna_lynn'
+
+    // หา thread จาก snapshot
+    const thread = (snapshot.threads || []).find((t) => t.id === threadId)
+
+    // AI draft
+    let draftText = ''
+    try {
+      const decision = thread
+        ? await engine.draft({ thread, snapshot, policy: policyForThread(snapshot, thread) })
+        : null
+      draftText = decision?.draftText || ''
+    } catch (_) {
+      draftText = ''
+    }
+
+    // บันทึก audit
+    try {
+      await recordActionAuditToSupabase({
+        threadId,
+        action: 'ig_comment_draft_created',
+        actorType: 'ai',
+        actorId: 'omni_ig_comment_draft',
+        before: { commentText, senderName },
+        after: { draftText, commentId, pageProfile, sent: false, dryRun },
+        sourceRef: 'meta_webhook_ig_comment',
+      })
+    } catch (_) { /* non-fatal */ }
+
+    // บันทึก pending state เพื่อรอ ok/reply จากบอส
+    const bossPendingUserId = LINE_BOSS_USER_ID()
+    if (bossPendingUserId && commentId) {
+      await savePending(bossPendingUserId, { commentId, draftText, pageProfile, threadId })
+    }
+
+    // LINE notify บอส
+    const notifyResult = await notifyBossIgComment({
+      commentId,
+      commentText,
+      senderName,
+      draftText,
+      postPermalink,
+      pageProfile,
+      threadId,
+      dryRun,
+    })
+
+    results.push({
+      threadId,
+      commentId,
+      draftText,
+      lineNotified: notifyResult.ok,
+      lineError: notifyResult.error || null,
+      dryRun,
+    })
+  }
+
+  return { ok: true, count: results.length, results }
+}
+
+async function notifyBossIgComment({ commentId, commentText, senderName, draftText, postPermalink, pageProfile, threadId, dryRun }) {
+  const token = LINE_TOKEN()
+  const userId = LINE_BOSS_USER_ID()
+  if (!token || !userId) return { ok: false, error: 'line_env_missing' }
+
+  const postLink = postPermalink ? `\n🔗 ${postPermalink}` : ''
+  const draftSection = draftText
+    ? `\n\n💬 AI draft:\n"${draftText}"\n\nพิมพ์ ok เพื่อส่ง หรือพิมพ์ข้อความใหม่เพื่อแก้ไข`
+    : '\n\n(AI draft ไม่พร้อม — พิมพ์ข้อความที่ต้องการตอบ)'
+
+  const text = [
+    `📸 IG Comment ใหม่ [${pageProfile}]`,
+    `👤 ${senderName}: "${commentText}"`,
+    `🆔 comment_id: ${commentId}`,
+    `🧵 thread: ${threadId}`,
+    postLink,
+    draftSection,
+    dryRun ? '\n[DRY RUN — ไม่ได้ส่งจริง]' : '',
+  ].filter(Boolean).join('')
+
+  if (dryRun) return { ok: true, dryRun: true, text }
+
+  try {
+    const res = await fetch(`${LINE_API_BASE}/message/push`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ to: userId, messages: [{ type: 'text', text }] }),
+    })
+    const body = await res.text()
+    if (!res.ok) return { ok: false, error: `LINE push failed: ${res.status} ${body}` }
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, error: err.message || 'line_push_error' }
+  }
+}
+
+// ─── Messenger Auto-Reply (unchanged) ────────────────────────────────────────
 
 async function autoReplyToMessengerInbox({ normalized, dryRun }) {
   if (!AUTO_SEND_ENABLED && !dryRun) return { ok: true, enabled: false, sent: 0, skipped: 'auto_send_disabled' }
