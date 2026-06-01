@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Boss avatar</title>
+  <desc id="desc">Warm gold profile avatar for the boss.</desc>
+  <defs>
+    <linearGradient id="bg" x1="32" y1="32" x2="224" y2="224" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fde68a"/>
+      <stop offset="0.55" stop-color="#f59e0b"/>
+      <stop offset="1" stop-color="#92400e"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="35%" r="65%">
+      <stop stop-color="#fff7ed" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#fff7ed" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="256" height="256" rx="64" fill="#111827"/>
+  <circle cx="128" cy="128" r="104" fill="url(#bg)"/>
+  <circle cx="128" cy="112" r="86" fill="url(#glow)"/>
+  <path d="M67 154c18 33 43 50 61 50s43-17 61-50c-21 12-40 18-61 18s-40-6-61-18Z" fill="#422006" opacity=".28"/>
+  <circle cx="128" cy="104" r="42" fill="#fff7ed"/>
+  <path d="M60 204c14-41 41-63 68-63s54 22 68 63c-18 19-42 30-68 30s-50-11-68-30Z" fill="#78350f"/>
+  <path d="M80 91c16-31 48-47 84-34 7 2 12 5 16 8-13 0-24 4-35 12 20-2 36 2 48 12-26 5-43 17-55 35-13-25-33-37-58-33Z" fill="#422006"/>
+  <circle cx="112" cy="111" r="5" fill="#111827"/>
+  <circle cx="144" cy="111" r="5" fill="#111827"/>
+  <path d="M111 128c11 9 23 9 34 0" fill="none" stroke="#7c2d12" stroke-width="7" stroke-linecap="round"/>
+  <path d="M128 34l10 22 24 2-18 16 6 24-22-13-22 13 6-24-18-16 24-2 10-22Z" fill="#fef3c7"/>
+</svg>

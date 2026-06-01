@@ -1,0 +1,34 @@
+{
+  "name": "O Agent Omnichannel Inbox",
+  "short_name": "O Agent Omni",
+  "description": "Local-first AI inbox hub for Facebook, TikTok, Shopee, and order operations.",
+  "start_url": "/?mode=ai-train",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f4f7f6",
+  "theme_color": "#0f8f7b",
+  "orientation": "any",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "/icons/omni-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Open Omni Inbox",
+      "short_name": "Omni",
+      "url": "/?mode=inbox",
+      "description": "Open the omnichannel inbox"
+    },
+    {
+      "name": "Train AI Knowledge",
+      "short_name": "AI Train",
+      "url": "/?mode=ai-train",
+      "description": "Open AI chatbot knowledge source training"
+    }
+  ]
+}
