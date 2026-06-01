@@ -1742,6 +1742,69 @@ test('POST /webhook/meta sends Instagram comment auto reply through IG comment e
   }
 })
 
+test('POST /webhook/meta returns sendSkipped ig_page_token_missing for instagram_comment when no IG token', async () => {
+  const envNames = ['META_PAGE_TOKEN_IG_ANNA_LYNN', 'IG_ANNA_LYNN_PAGE_TOKEN', 'META_IG_ACCESS_TOKEN']
+  const originalEnv = Object.fromEntries(envNames.map((name) => [name, process.env[name]]))
+  for (const name of envNames) delete process.env[name]
+  const app = express()
+  app.use(express.json())
+  const fakeAi = {
+    draft: async () => ({
+      ok: true,
+      provider: 'test',
+      model: 'test',
+      intent: 'faq',
+      risk: 'low',
+      confidence: 0.9,
+      action: 'draft_ready',
+      sourceIds: [],
+      reason: 'test',
+      allowed: true,
+      draftText: 'ตอบกลับ IG',
+    }),
+  }
+  mountWebhook(app, { broadcast: () => {} }, createState(), {
+    omni: createOmniService(),
+    ai: fakeAi,
+    metaVerifyToken: 'verify-token-test',
+  })
+  const localServer = app.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const response = await fetch(`http://localhost:${localPort}/webhook/meta?autoReply=1&send=1`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        object: 'instagram',
+        entry: [{
+          id: 'PLACEHOLDER_IG_PAGE_ID',
+          changes: [{
+            field: 'comments',
+            value: {
+              media_id: 'ig_media_test',
+              comment_id: 'ig_comment_test_1',
+              from: { id: 'ig_customer_test', username: 'test_buyer' },
+              text: 'มีไซซ์ M ไหมคะ',
+              created_time: 1779470001,
+            },
+          }],
+        }],
+      }),
+    })
+    const body = await response.json()
+    assert.equal(response.status, 200)
+    const reply = body.result.autoReplies[0]
+    assert.equal(reply.sent, false)
+    assert.equal(reply.sendSkipped, 'ig_page_token_missing')
+  } finally {
+    localServer.close()
+    for (const [name, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[name]
+      else process.env[name] = value
+    }
+  }
+})
+
 test('POST /webhook/meta sends guarded fallback reply when AI helper fails after local draft', async () => {
   const app = express()
   app.use(express.json())

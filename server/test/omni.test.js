@@ -537,6 +537,51 @@ test('Instagram comment connector calls meta helper through injectable runner', 
   assert.equal(result.response.id, 'ig_reply_123')
 })
 
+test('sendInstagramCommentReply calls direct Graph API when no runner provided and token exists', async () => {
+  const originalFetch = globalThis.fetch
+  const originalToken = process.env.META_PAGE_TOKEN_IG_ANNA_LYNN
+  const calls = []
+  globalThis.fetch = async (url, opts) => {
+    calls.push({ url: url.toString(), opts })
+    return {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ id: 'ig_reply_123' }),
+    }
+  }
+  try {
+    process.env.META_PAGE_TOKEN_IG_ANNA_LYNN = 'test_ig_token'
+    const result = await sendInstagramCommentReply({ pageProfile: 'ig_anna_lynn', commentId: 'ig_comment_1', message: 'ขอบคุณค่ะ' })
+    assert.equal(result.ok, true)
+    assert.equal(result.response.id, 'ig_reply_123')
+    assert.match(calls[0].url, /graph\.instagram\.com/)
+    assert.match(calls[0].url, /ig_comment_1\/replies/)
+    assert.match(calls[0].url, /access_token=test_ig_token/)
+    const body = JSON.parse(calls[0].opts.body)
+    assert.equal(body.message, 'ขอบคุณค่ะ')
+  } finally {
+    if (originalToken === undefined) delete process.env.META_PAGE_TOKEN_IG_ANNA_LYNN
+    else process.env.META_PAGE_TOKEN_IG_ANNA_LYNN = originalToken
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('sendInstagramCommentReply returns ig_page_token_missing when no token set', async () => {
+  const envNames = ['META_PAGE_TOKEN_IG_ANNA_LYNN', 'IG_ANNA_LYNN_PAGE_TOKEN', 'META_IG_ACCESS_TOKEN']
+  const originalEnv = Object.fromEntries(envNames.map((name) => [name, process.env[name]]))
+  for (const name of envNames) delete process.env[name]
+  try {
+    const result = await sendInstagramCommentReply({ pageProfile: 'ig_anna_lynn', commentId: 'ig_comment_2', message: 'test' })
+    assert.equal(result.ok, false)
+    assert.equal(result.error, 'ig_page_token_missing')
+  } finally {
+    for (const [name, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[name]
+      else process.env[name] = value
+    }
+  }
+})
+
 test('Facebook connector reads thread messages beyond conversation snippets', async () => {
   const calls = []
   const result = await listFacebookConversations({
