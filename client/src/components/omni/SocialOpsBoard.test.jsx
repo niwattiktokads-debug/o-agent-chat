@@ -117,6 +117,39 @@ describe('SocialOpsBoard workspace derivation', () => {
     expect(apiMocks.capturePostCf).not.toHaveBeenCalled()
   })
 
+  it('shows only orders linked to the selected post session', async () => {
+    const snapshot = {
+      ...makeSnapshot([
+        { id: 'page_mankynd', name: 'MAN KYND', workspaceId: 'ws_oagent' },
+      ]),
+      orders: [
+        {
+          id: 'order_from_post',
+          platform: 'facebook',
+          status: 'draft',
+          sourcePostId: 'post_1',
+          totalAmount: 590,
+          items: [{ sku: 'BLACK-M', name: 'Black Shirt M' }],
+        },
+        {
+          id: 'tt_order_1',
+          platform: 'tiktok',
+          status: 'awaiting_shipment',
+          total: 729,
+        },
+      ],
+    }
+
+    render(<SocialOpsBoard mode="post" snapshot={snapshot} onSnapshot={() => {}} onOpenChat={() => {}} />)
+
+    expect(await screen.findByRole('heading', { name: 'คำสั่งซื้อ (0)' })).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: /CF test/ }))
+
+    expect(await screen.findByRole('heading', { name: 'คำสั่งซื้อ (1)' })).toBeInTheDocument()
+    expect(await screen.findByText('order_from_post')).toBeInTheDocument()
+    expect(screen.queryByText('tt_order_1')).not.toBeInTheDocument()
+  })
+
   it('Live CF with anna_lynn sends ws_custom workspaceId', async () => {
     const snapshot = makeSnapshot([
       { id: 'page_mankynd', name: 'MAN KYND', workspaceId: 'ws_oagent' },

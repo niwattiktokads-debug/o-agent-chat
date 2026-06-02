@@ -48,6 +48,33 @@ function resolveWorkspaceFromProfile(profileKey, snapshotPages) {
   return undefined
 }
 
+function normalizePostRef(value) {
+  return String(value || '').trim()
+}
+
+function orderPostRefs(order = {}) {
+  return [
+    order.sourcePostId,
+    order.postId,
+    order.socialPostId,
+    order.originPostId,
+    order.providerPostId,
+    order.metaPostId,
+    order.origin?.postId,
+    order.origin?.sourcePostId,
+    order.source?.postId,
+    order.source?.sourcePostId,
+    order.metadata?.postId,
+    order.metadata?.sourcePostId,
+  ].map(normalizePostRef).filter(Boolean)
+}
+
+function orderBelongsToPostSession(order, selectedPost) {
+  const postId = normalizePostRef(selectedPost?.id)
+  if (!postId) return false
+  return orderPostRefs(order).some((ref) => ref === postId)
+}
+
 export default function SocialOpsBoard({ mode, snapshot, onSnapshot, onOpenChat }) {
   if (mode === 'post') {
     return (
@@ -124,17 +151,22 @@ function PostCaptureBoard({ snapshot, onSnapshot }) {
   const [orderQuery, setOrderQuery] = useState('')
 
   const selectedPost = posts.find((post) => post.id === selectedPostId) || null
-  const sessionOrders = (snapshot?.orders || []).filter((order) => {
-    const text = [
-      order.id,
-      order.status,
-      order.platform,
-      order.customerName,
-      order.customerId,
-      ...(order.items || []).map((item) => `${item.sku || ''} ${item.name || ''}`),
-    ].join(' ').toLowerCase()
-    return !orderQuery.trim() || text.includes(orderQuery.trim().toLowerCase())
-  })
+  const sessionOrders = useMemo(() => {
+    const query = orderQuery.trim().toLowerCase()
+    return (snapshot?.orders || [])
+      .filter((order) => orderBelongsToPostSession(order, selectedPost))
+      .filter((order) => {
+        const text = [
+          order.id,
+          order.status,
+          order.platform,
+          order.customerName,
+          order.customerId,
+          ...(order.items || []).map((item) => `${item.sku || ''} ${item.name || ''}`),
+        ].join(' ').toLowerCase()
+        return !query || text.includes(query)
+      })
+  }, [snapshot?.orders, selectedPost, orderQuery])
   const messageRows = useMemo(() => {
     if (!selectedPost && configuredProducts.length === 0) return []
     return [
