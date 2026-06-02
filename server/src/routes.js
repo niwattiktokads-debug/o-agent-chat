@@ -41,6 +41,14 @@ export function mountRoutes(app, hub, room, options = {}) {
   const social = options.social || createMetaSocialRuntime()
   const commerce = options.commerce || createZortCommerceRuntime()
   const sudaOagentNotifier = options.sudaOagentNotifier || createLineSudaOagentNotifier()
+  const storageStatus = options.storageStatus || {
+    driver: 'memory',
+    dbPath: null,
+    configuredByEnv: false,
+    persistent: false,
+    volumeMountPath: null,
+    note: 'No external persistent storage configured',
+  }
 
   function reportToCsv(report) {
     const rows = ['hour,inbound,outbound,total']
@@ -151,6 +159,10 @@ export function mountRoutes(app, hub, room, options = {}) {
 
   app.get('/api/omni/schema', (_req, res) => {
     res.json({ ok: true, schema: getOmniSchemaSummary() })
+  })
+
+  app.get('/api/omni/storage/status', (_req, res) => {
+    res.json({ ok: true, storage: storageStatus })
   })
 
   app.get('/api/omni/retention', (_req, res) => {

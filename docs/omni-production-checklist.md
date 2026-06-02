@@ -4,6 +4,7 @@ Status for the local MVP:
 
 - Branch: `omnichannel-foundation-mvp`
 - Local database: SQLite at `server/data/omni.sqlite`
+- Railway production database: SQLite at `/data/omni.sqlite` on Railway Volume `omni-server-data`
 - Meta profiles verified: `anna_lynn`, `man_kynd`, `page_des`, `fb_112154661515664`
 - AI mode: guarded draft only. No customer-facing send is performed by the AI endpoint.
 - Chat retention: enabled by runtime config. Default deletes message bodies older than 180 days, while preserving customer contact profile fields such as phone, address, and contact history.
@@ -30,6 +31,18 @@ OMNI_CHAT_API_BASE=http://127.0.0.1:8788 /Users/babycuca/.codex/bin/omni-chat-ru
 OMNI_CHAT_API_BASE=http://127.0.0.1:8788 /Users/babycuca/.codex/bin/omni-chat-runtime retention-dry-run --days=180
 OMNI_CHAT_API_BASE=http://127.0.0.1:8788 /Users/babycuca/.codex/bin/omni-chat-runtime retention-apply --days=180
 ```
+
+Storage verification:
+
+Railway production must keep `OMNI_DB_PATH=/data/omni.sqlite` and mount the
+`omni-server-data` volume at `/data`. Verify from Settings -> Persistent
+storage or through:
+
+```bash
+curl https://omni-server-production.up.railway.app/api/omni/storage/status
+```
+
+The response should report `persistent: true` and `volumeMountPath: "/data"`.
 
 Retention environment:
 

@@ -135,6 +135,10 @@ export async function fetchConnectorHealth() {
   return (await getJson('/api/omni/connectors/health')).health
 }
 
+export async function fetchOmniStorageStatus() {
+  return (await getJson('/api/omni/storage/status')).storage
+}
+
 export async function fetchOmniSettings(workspaceId) {
   const qs = workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : ''
   return (await getJson(`/api/omni/settings${qs}`)).settings

@@ -179,6 +179,36 @@ test('GET /api/omni/connections includes ZORT Social parity options missing from
   assert.ok(ids.has('social_message_report'))
 })
 
+test('GET /api/omni/storage/status exposes persistent storage status', async () => {
+  const localApp = express()
+  localApp.use(express.json())
+  mountRoutes(localApp, { broadcast: () => {} }, createState(), {
+    storageStatus: {
+      driver: 'sqlite',
+      dbPath: '/data/omni.sqlite',
+      configuredByEnv: true,
+      persistent: true,
+      volumeMountPath: '/data',
+      note: 'Railway volume-backed SQLite storage',
+    },
+  })
+  const localServer = localApp.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const response = await fetch(`http://localhost:${localPort}/api/omni/storage/status`)
+    const body = await response.json()
+
+    assert.equal(response.status, 200)
+    assert.equal(body.ok, true)
+    assert.equal(body.storage.driver, 'sqlite')
+    assert.equal(body.storage.dbPath, '/data/omni.sqlite')
+    assert.equal(body.storage.persistent, true)
+    assert.equal(body.storage.volumeMountPath, '/data')
+  } finally {
+    localServer.close()
+  }
+})
+
 test('Suda O-agent notification routes use injected notifier runtime', async () => {
   const localApp = express()
   localApp.use(express.json())

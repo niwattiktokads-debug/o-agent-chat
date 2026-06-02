@@ -17,6 +17,10 @@
 
 Railway dashboard -> your service -> Variables -> add values from `server/.env.cloud.example`.
 
+Production storage uses a Railway Volume named `omni-server-data` mounted at
+`/data`. Keep `OMNI_DB_PATH=/data/omni.sqlite`; using a relative path such as
+`./data/omni.sqlite` stores data inside the container and may reset on deploy.
+
 Required minimum:
 
 | Variable | Value |
@@ -26,6 +30,7 @@ Required minimum:
 | `META_VERIFY_TOKEN` | Random string, for example from `openssl rand -hex 16` |
 | `OMNI_ACCESS_PASSWORD` | Strong password for the inbox UI |
 | `OMNI_ACTION_TOKEN` | Strong random token for approved API calls |
+| `OMNI_DB_PATH` | `/data/omni.sqlite` |
 | `META_PAGE_TOKEN_ANNA_LYNN` | Facebook page access token |
 
 Keep safe defaults:
