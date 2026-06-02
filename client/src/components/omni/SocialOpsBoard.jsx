@@ -235,18 +235,21 @@ function PostCaptureBoard({ snapshot, onSnapshot }) {
   }
 
   const canOpenSale = Boolean(selectedPost && configuredProducts.length)
+  const displayStatus = selectedPost && sessionStatus === 'draft' ? 'linked' : sessionStatus
   const statusLabel = {
+    linked: 'เชื่อมโพสต์แล้ว',
     draft: 'ยังไม่เชื่อมต่อ',
     open: 'เปิดการขาย',
     paused: 'หยุดรับคำสั่งซื้อ',
     ended: 'จบโพสต์',
-  }[sessionStatus]
+  }[displayStatus]
   const statusTone = {
+    linked: 'border-[var(--color-accent)] bg-[var(--color-accent-subtle,var(--color-panel-2))] text-[var(--color-accent)]',
     draft: 'border-[var(--color-rule)] bg-[var(--color-panel-2)] text-[var(--color-muted)]',
     open: 'border-emerald-200 bg-emerald-50 text-emerald-700',
     paused: 'border-amber-200 bg-amber-50 text-amber-700',
     ended: 'border-slate-200 bg-slate-100 text-slate-700',
-  }[sessionStatus]
+  }[displayStatus]
 
   return (
     <section className="mt-4 min-h-[calc(100dvh-220px)] overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)]">
@@ -300,11 +303,12 @@ function PostCaptureBoard({ snapshot, onSnapshot }) {
                   {loading ? 'กำลังโหลด' : 'รีเฟรช'}
                 </button>
               </div>
-              <div className="mt-3 grid max-h-48 gap-2 overflow-y-auto">
+              <div className="mt-3 grid max-h-44 gap-2 overflow-y-auto">
                 {posts.length === 0 ? (
                   <div className="rounded-[var(--radius-md)] border border-dashed border-[var(--color-rule)] px-3 py-5 text-center text-xs text-[var(--color-muted)]">ยังไม่มีโพสต์จากเพจนี้</div>
                 ) : posts.map((post) => {
                   const active = post.id === selectedPostId
+                  const title = post.message || post.story || post.id
                   return (
                     <button
                       key={post.id}
@@ -312,8 +316,12 @@ function PostCaptureBoard({ snapshot, onSnapshot }) {
                       onClick={() => setSelectedPostId(post.id)}
                       className={`rounded-[var(--radius-md)] border px-3 py-2 text-left text-xs transition ${active ? 'border-[var(--color-accent)] bg-[var(--color-accent-soft)] text-[var(--color-ink)]' : 'border-[var(--color-rule)] bg-[var(--color-panel)] text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)]'}`}
                     >
-                      <span className="block truncate font-bold">{post.message || post.story || post.id}</span>
-                      <span className="mt-1 block text-[11px] text-[var(--color-muted)]">{post.id} · {(post.commentCount ?? post.comments?.summary?.total_count ?? 0).toLocaleString('th-TH')} comments · {formatDateTime(post.createdTime || post.created_time)}</span>
+                      <span className="line-clamp-2 break-words font-bold leading-5">{title}</span>
+                      <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-[var(--color-muted)]">
+                        <span className="max-w-full truncate">{post.id}</span>
+                        <span>{(post.commentCount ?? post.comments?.summary?.total_count ?? 0).toLocaleString('th-TH')} comments</span>
+                        <span>{formatDateTime(post.createdTime || post.created_time)}</span>
+                      </span>
                     </button>
                   )
                 })}
@@ -321,7 +329,7 @@ function PostCaptureBoard({ snapshot, onSnapshot }) {
             </div>
 
             <div className="grid gap-3 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-paper)] p-3">
-              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(132px,160px)]">
+              <div className="grid items-end gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(132px,160px)_120px]">
                 <label className="grid gap-1 text-xs font-semibold text-[var(--color-muted)]">
                   ค้นหาสินค้า
                   <input
@@ -348,9 +356,10 @@ function PostCaptureBoard({ snapshot, onSnapshot }) {
                 <button
                   type="button"
                   onClick={searchProducts}
-                  className="h-10 rounded-[var(--radius-md)] bg-[var(--color-accent)] px-3 text-sm font-semibold text-[var(--color-accent-ink)] sm:col-span-2"
+                  disabled={loading || !productQuery.trim()}
+                  className="h-10 rounded-[var(--radius-md)] bg-[var(--color-accent)] px-3 text-sm font-semibold text-[var(--color-accent-ink)] disabled:border disabled:border-[var(--color-rule)] disabled:bg-[var(--color-panel-2)] disabled:text-[var(--color-muted)] disabled:opacity-100"
                 >
-                  เลือกสินค้า
+                  {searchStatus === 'กำลังค้นสินค้า ZORT' ? 'กำลังค้น' : 'ค้นหา'}
                 </button>
               </div>
               <StatusLine value={searchStatus} />
