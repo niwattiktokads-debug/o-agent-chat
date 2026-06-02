@@ -1,6 +1,8 @@
 import { apiFetch, wsUrl } from './runtimeConfig.js'
 import { isSupabaseRealtimeEnabled, subscribeOmniDatabaseChanges } from './supabaseRealtime.js'
 
+const SNAPSHOT_POLL_MS = Number(import.meta.env.VITE_OMNI_SNAPSHOT_POLL_MS || 5000)
+
 async function getJson(path) {
   const response = await apiFetch(path)
   const body = await response.json()
@@ -78,9 +80,11 @@ export function subscribeOmniSnapshots(onSnapshot, { workspaceId } = {}) {
       fetchOmniSnapshot(workspaceId || undefined).then(onSnapshot).catch(() => {})
     }
     refresh()
+    const timer = SNAPSHOT_POLL_MS > 0 ? setInterval(refresh, SNAPSHOT_POLL_MS) : null
     const unsubscribe = subscribeOmniDatabaseChanges(refresh)
     return () => {
       closed = true
+      if (timer) clearInterval(timer)
       unsubscribe?.()
     }
   }
@@ -88,6 +92,11 @@ export function subscribeOmniSnapshots(onSnapshot, { workspaceId } = {}) {
   let closed = false
   let ws = null
   let retry = 1000
+  const refresh = () => {
+    if (closed) return
+    fetchOmniSnapshot(workspaceId || undefined).then(onSnapshot).catch(() => {})
+  }
+  const timer = SNAPSHOT_POLL_MS > 0 ? setInterval(refresh, SNAPSHOT_POLL_MS) : null
 
   function connect() {
     if (closed) return
@@ -112,6 +121,7 @@ export function subscribeOmniSnapshots(onSnapshot, { workspaceId } = {}) {
   connect()
   return () => {
     closed = true
+    if (timer) clearInterval(timer)
     ws?.close()
   }
 }

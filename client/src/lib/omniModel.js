@@ -33,6 +33,35 @@ export function latestMessageForThread(messages = [], threadId) {
     .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))[0] || null
 }
 
+export function autoSendStatus(snapshot = {}, thread = null) {
+  const pages = snapshot?.pages || []
+  const policySets = snapshot?.policySets || []
+  const messages = snapshot?.messages || []
+  const threadPage = thread ? pageForThread(pages, thread) : null
+  const policies = threadPage
+    ? policySets.filter((policy) => policy.id === threadPage.policySetId)
+    : policySets
+  const autoSendIntents = policies.flatMap((policy) => (
+    Object.entries(policy?.autoSend || {})
+      .filter(([, enabled]) => Boolean(enabled))
+      .map(([intent]) => intent)
+  ))
+  const sentMessageRecorded = messages.some((message) => (
+    (!thread || message.threadId === thread.id) &&
+    message.direction === 'outbound' &&
+    message.deliveryStatus !== 'draft_only' &&
+    /(^|:)(meta_send|meta_comment_send|ig_comment_send):/.test(`:${message.sourceRef || ''}`)
+  ))
+  if (sentMessageRecorded || autoSendIntents.length > 0) {
+    return {
+      active: true,
+      label: 'Auto-send active',
+      detail: sentMessageRecorded ? 'sent reply recorded' : `${new Set(autoSendIntents).size} intents enabled`,
+    }
+  }
+  return { active: false, label: 'Draft only', detail: 'approval required before customer send' }
+}
+
 export function formatShortTime(value) {
   if (!value) return ''
   const date = new Date(value)

@@ -17,7 +17,7 @@ const events = []
 const hub = { broadcast: (event, payload) => events.push({ event, payload }) }
 const room = createState()
 mountRoutes(app, hub, room)
-mountWebhook(app, hub, room, { omni: createOmniService(), metaVerifyToken: 'verify-token-test' })
+mountWebhook(app, hub, room, { omni: createOmniService(), metaVerifyToken: 'verify-token-test', awaitAutoReplies: true })
 const server = app.listen(0)
 const port = server.address().port
 after(() => server.close())
@@ -27,6 +27,25 @@ const req = (method, path, body) => fetch(`http://localhost:${port}${path}`, {
   headers: { 'Content-Type': 'application/json' },
   body: body && JSON.stringify(body),
 }).then(async (r) => ({ status: r.status, body: await r.json() }))
+
+async function waitForCondition(assertion, { timeoutMs = 1000, intervalMs = 10 } = {}) {
+  const started = Date.now()
+  let lastError
+  while (Date.now() - started < timeoutMs) {
+    try {
+      assertion()
+      return
+    } catch (error) {
+      lastError = error
+      await new Promise((resolve) => setTimeout(resolve, intervalMs))
+    }
+  }
+  throw lastError || new Error('condition_timeout')
+}
+
+function assertBroadcastedOmni(broadcasts) {
+  assert.equal(broadcasts.some((event) => event.event === 'omni'), true)
+}
 
 function zortReadyDraftPayload(overrides = {}) {
   return {
@@ -961,7 +980,7 @@ test('Order address intake extracts name phone address from chat and drafts cust
     assert.equal(body.confirmationDraft.audit.actorType, 'ai')
     assert.equal(body.confirmationDraft.audit.action, 'address_confirmation_draft_created')
     assert.equal(localOmni.getThread('thread_1').messages.some((message) => message.sourceRef === 'ai_address_confirmation_draft'), true)
-    assert.equal(localEvents.at(-1).event, 'omni')
+    assertBroadcastedOmni(localEvents)
   } finally {
     localServer.close()
   }
@@ -1060,7 +1079,7 @@ test('POST /api/omni/pages/:pageId/auto-reply toggles page auto reply', async ()
     assert.equal(body.page.autoReplyEnabled, false)
     assert.equal(body.setting.autoReplyEnabled, false)
     assert.equal(localOmni.isPageAutoReplyEnabled('page_annalynn'), false)
-    assert.equal(localEvents.at(-1).event, 'omni')
+    assertBroadcastedOmni(localEvents)
   } finally {
     localServer.close()
   }
@@ -1171,6 +1190,87 @@ test('POST /webhook/meta syncs Meta messenger event', async () => {
   assert.equal(body.result.dexSignals.length, 1)
 })
 
+test('POST /webhook/meta broadcasts inbound before background auto reply finishes', async () => {
+  const app = express()
+  app.use(express.json())
+  const sent = []
+  const localEvents = []
+  const localHub = { broadcast: (event, payload) => localEvents.push({ event, payload }) }
+  let releaseDraft
+  let draftStarted
+  const draftStartedPromise = new Promise((resolve) => { draftStarted = resolve })
+  const releaseDraftPromise = new Promise((resolve) => { releaseDraft = resolve })
+  mountWebhook(app, localHub, createState(), {
+    omni: createOmniService(),
+    metaVerifyToken: 'verify-token-test',
+    ai: {
+      async draft() {
+        draftStarted()
+        await releaseDraftPromise
+        return {
+          ok: true,
+          provider: 'test',
+          model: 'background-test',
+          intent: 'faq',
+          risk: 'low',
+          confidence: 0.9,
+          action: 'draft_ready',
+          sourceIds: [],
+          reason: 'background_latency_test',
+          allowed: true,
+          draftText: 'ขอบคุณที่สนใจค่ะ',
+        }
+      },
+    },
+    sendReply: async (payload) => {
+      sent.push(payload)
+      return { ok: true, response: { message_id: 'sent_mid_background' } }
+    },
+  })
+  const localServer = app.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const responsePromise = fetch(`http://localhost:${localPort}/webhook/meta?autoReply=1&send=1`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        object: 'page',
+        entry: [{
+          id: '122106446570001676',
+          messaging: [{
+            sender: { id: 'customer_background_latency' },
+            recipient: { id: '122106446570001676' },
+            timestamp: 1779470080000,
+            message: { mid: 'route_mid_background_latency', text: 'สนใจ' },
+          }],
+        }],
+      }),
+    })
+    await draftStartedPromise
+    const response = await responsePromise
+    const body = await response.json()
+
+    assert.equal(response.status, 200)
+    assert.equal(body.result.autoReplyMode, 'background')
+    assert.equal(body.result.autoRepliesPending, 1)
+    assert.deepEqual(body.result.autoReplies, [])
+    const firstOmni = localEvents.find((event) => event.event === 'omni')
+    assert.ok(firstOmni)
+    assert.equal(firstOmni.payload.messages.some((message) => message.direction === 'inbound' && message.text === 'สนใจ'), true)
+    assert.equal(firstOmni.payload.messages.some((message) => message.sourceRef === 'meta_send:anna_lynn'), false)
+
+    releaseDraft()
+    await waitForCondition(() => {
+      assert.equal(sent.length, 1)
+      const omniEvents = localEvents.filter((event) => event.event === 'omni')
+      assert.equal(omniEvents.length >= 2, true)
+      assert.equal(omniEvents.at(-1).payload.messages.some((message) => message.sourceRef === 'meta_send:anna_lynn'), true)
+    })
+  } finally {
+    localServer.close()
+  }
+})
+
 test('POST /webhook/meta sends event-driven Dex signal only for new inbound messages', async () => {
   events.length = 0
   const payload = {
@@ -1241,7 +1341,7 @@ test('POST /webhook/meta can auto draft a reply for synced messages', async () =
   assert.equal(body.result.autoReplies.length, 1)
   assert.equal(body.result.autoReplies[0].ok, true)
   assert.equal(body.result.autoReplies[0].decision.sourceIds.every((id) => id.startsWith('ks_')), true)
-  assert.equal(events.at(-1).event, 'omni')
+  assertBroadcastedOmni(events)
 })
 
 test('POST /webhook/meta skips auto draft when page auto reply is disabled', async () => {
@@ -1293,6 +1393,7 @@ test('POST /webhook/meta can auto draft from realtime default without query flag
     omni: createOmniService(),
     metaVerifyToken: 'verify-token-test',
     metaAutoReplyDefault: true,
+    awaitAutoReplies: true,
   })
   const localServer = app.listen(0)
   try {
@@ -1318,7 +1419,7 @@ test('POST /webhook/meta can auto draft from realtime default without query flag
     assert.equal(body.result.autoReplies.length, 1)
     assert.equal(body.result.autoReplies[0].ok, true)
     assert.equal(body.result.autoReplies[0].sent, undefined)
-    assert.equal(localEvents.at(-1).event, 'omni')
+    assertBroadcastedOmni(localEvents)
   } finally {
     localServer.close()
   }
@@ -1334,6 +1435,7 @@ test('POST /webhook/meta send=0 overrides live send default for smoke tests', as
     metaVerifyToken: 'verify-token-test',
     metaAutoReplyDefault: true,
     metaAutoSendDefault: true,
+    awaitAutoReplies: true,
     sendReply: async (payload) => {
       sent.push(payload)
       return { ok: true, response: { message_id: 'should_not_send' } }
@@ -1398,6 +1500,7 @@ test('POST /webhook/meta auto drafts after webhook thread is remapped to existin
     omni: createOmniService(seed),
     metaVerifyToken: 'verify-token-test',
     metaAutoReplyDefault: true,
+    awaitAutoReplies: true,
   })
   const localServer = app.listen(0)
   try {
@@ -1424,7 +1527,7 @@ test('POST /webhook/meta auto drafts after webhook thread is remapped to existin
     assert.equal(body.result.autoReplies[0].ok, true)
     assert.equal(body.result.autoReplies[0].decision.threadId, 'fb_t_existing_anna')
     assert.equal(body.result.autoReplies[0].sent, undefined)
-    assert.equal(localEvents.at(-1).event, 'omni')
+    assertBroadcastedOmni(localEvents)
   } finally {
     localServer.close()
   }
@@ -1464,7 +1567,7 @@ test('POST /api/omni/threads/:threadId/manual-draft stores text and image attach
   assert.equal(body.audit.actorType, 'human')
   assert.equal(body.audit.afterJson.messageId, body.message.id)
   assert.equal(body.thread.status, 'draft_ready')
-  assert.equal(events.at(-1).event, 'omni')
+  assertBroadcastedOmni(events)
 })
 
 test('GET /api/omni/payments/providers/meta_pay_kgp/health reports guarded setup status', async () => {
@@ -1521,6 +1624,7 @@ test('POST /webhook/meta can send guarded auto reply for Anna Lynn only', async 
   mountWebhook(app, localHub, createState(), {
     omni: createOmniService(),
     metaVerifyToken: 'verify-token-test',
+    awaitAutoReplies: true,
     sendReply: async (payload) => {
       sent.push(payload)
       return { ok: true, response: { message_id: 'sent_mid_anna' } }
@@ -1556,7 +1660,7 @@ test('POST /webhook/meta can send guarded auto reply for Anna Lynn only', async 
     assert.equal(sent[0].pageProfile, 'anna_lynn')
     assert.equal(sent[0].recipientId, 'customer_anna_send')
     assert.match(sent[0].message, /เช็กสต็อก/)
-    assert.equal(localEvents.at(-1).event, 'omni')
+    assertBroadcastedOmni(localEvents)
   } finally {
     localServer.close()
   }
@@ -1585,6 +1689,7 @@ test('POST /webhook/meta sends comment auto reply through comment endpoint', asy
     omni: createOmniService(),
     ai: fakeAi,
     metaVerifyToken: 'verify-token-test',
+    awaitAutoReplies: true,
     sendReply: async () => {
       throw new Error('dm_send_should_not_be_called')
     },
@@ -1655,6 +1760,7 @@ test('POST /webhook/meta sends video comment auto reply through comment endpoint
     omni: createOmniService(),
     ai: fakeAi,
     metaVerifyToken: 'verify-token-test',
+    awaitAutoReplies: true,
     sendReply: async () => {
       throw new Error('dm_send_should_not_be_called')
     },
@@ -1725,6 +1831,7 @@ test('POST /webhook/meta sends Instagram comment auto reply through IG comment e
     omni: createOmniService(),
     ai: fakeAi,
     metaVerifyToken: 'verify-token-test',
+    awaitAutoReplies: true,
     sendReply: async () => {
       throw new Error('dm_send_should_not_be_called')
     },
@@ -1782,6 +1889,7 @@ test('POST /webhook/meta sends guarded fallback reply when AI helper fails after
   mountWebhook(app, localHub, createState(), {
     omni: createOmniService(),
     metaVerifyToken: 'verify-token-test',
+    awaitAutoReplies: true,
     ai: {
       async draft() {
         return {
@@ -1834,7 +1942,7 @@ test('POST /webhook/meta sends guarded fallback reply when AI helper fails after
     assert.equal(sent[0].pageProfile, 'anna_lynn')
     assert.equal(sent[0].recipientId, 'customer_anna_fallback')
     assert.match(sent[0].message, /เช็กสต็อก/)
-    assert.equal(localEvents.at(-1).event, 'omni')
+    assertBroadcastedOmni(localEvents)
   } finally {
     localServer.close()
   }
