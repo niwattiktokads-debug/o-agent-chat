@@ -93,6 +93,7 @@ function normalizeDateBoundary(value, fallback, endOfDay = false, timeZone = 'UT
 function createActionAuditRow({
   id,
   threadId = null,
+  workspaceId = null,
   action,
   actorType,
   actorId = null,
@@ -106,6 +107,7 @@ function createActionAuditRow({
   return {
     id: id || `audit_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`,
     threadId,
+    workspaceId: workspaceId || null,
     action,
     actorType,
     actorId,
@@ -480,6 +482,7 @@ export function createOmniService(options = createOmniSeed()) {
       const result = upsert('omniSettings', [row])
       const audit = createActionAuditRow({
         action: 'omni_settings_updated',
+        workspaceId: id || null,
         actorType: 'human',
         actorId: row.updatedBy,
         before,
@@ -525,6 +528,7 @@ export function createOmniService(options = createOmniSeed()) {
       const result = upsert('pageRuntimeSettings', [row], 'pageId')
       const audit = createActionAuditRow({
         action: enabled ? 'page_auto_reply_enabled' : 'page_auto_reply_disabled',
+        workspaceId: page.workspaceId || null,
         actorType: 'human',
         actorId: row.updatedBy,
         before,
@@ -626,6 +630,7 @@ export function createOmniService(options = createOmniSeed()) {
       const eventResult = upsert('paymentEvents', [normalized.event])
       const audit = createActionAuditRow({
         threadId: normalized.row.threadId,
+        workspaceId: resolveWorkspaceId(currentData(), { threadId: normalized.row.threadId }) || null,
         action: 'payment_request_created',
         actorType: 'human',
         actorId: input.approvedBy || 'boss',
@@ -682,6 +687,7 @@ export function createOmniService(options = createOmniSeed()) {
       const linkResult = links.length ? upsert('orderLinks', links) : { inserted: 0, updated: 0 }
       const audit = createActionAuditRow({
         threadId: normalized.threadId || null,
+        workspaceId: input.workspaceId || normalized.row.workspaceId || null,
         action: 'order_draft_created',
         actorType: 'human',
         actorId: input.createdBy || 'boss',
@@ -729,6 +735,7 @@ export function createOmniService(options = createOmniSeed()) {
       const orderResult = upsert('orders', [updatedOrder])
       const audit = createActionAuditRow({
         action: 'order_draft_approved_zort_created',
+        workspaceId: order.workspaceId || null,
         actorType: 'human',
         actorId: approvedBy,
         before: { orderId: order.id, status: order.status, providerOrderId: order.providerOrderId || null },
@@ -858,6 +865,7 @@ export function createOmniService(options = createOmniSeed()) {
       upsert('threads', [updatedThread])
       const audit = createActionAuditRow({
         threadId,
+        workspaceId: resolveWorkspaceId(currentData(), { threadId }) || null,
         action: 'customer_message_sent',
         actorType: 'ai',
         actorId: authorName,
@@ -923,6 +931,7 @@ export function createOmniService(options = createOmniSeed()) {
       upsert('threads', [updatedThread])
       const audit = createActionAuditRow({
         threadId,
+        workspaceId: resolveWorkspaceId(currentData(), { threadId }) || null,
         action: auditAction,
         actorType,
         actorId: authorName,

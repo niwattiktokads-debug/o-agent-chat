@@ -10,6 +10,7 @@ import {
   subscribe, sendMessage, setLeader, setField, sendTyping, onConnectivity, setIdentity,
 } from './lib/api.js'
 import { useIsMobile } from './lib/useResponsive.js'
+import { WorkspaceProvider, WorkspaceSelector, useWorkspace } from './lib/WorkspaceContext.jsx'
 
 const EMPTY_STATE = {
   leader: '—', operator: '—', goal: '', scope: '', dod: '',
@@ -28,6 +29,14 @@ const SETTINGS_SECTIONS = new Set(['settings', 'ai-config', 'connections'])
 const OPERATION_MODE_IDS = new Set(OMNI_OPERATION_MODES.map((item) => item.id))
 
 export default function App() {
+  return (
+    <WorkspaceProvider>
+      <AppInner />
+    </WorkspaceProvider>
+  )
+}
+
+function AppInner() {
   const [state, setState] = useState(EMPTY_STATE)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [mode, setMode] = useState(() => {
@@ -93,6 +102,8 @@ export default function App() {
     <StatusPanel state={state} onSetLeader={setLeader} onSetField={setField} />
   )
 
+  const { activeWorkspaceId } = useWorkspace()
+
   if (mode === 'ai-train') {
     return (
       <ModeFrame
@@ -106,6 +117,7 @@ export default function App() {
           onOpenChat={() => setMode('chat')}
           onOpenConnections={openConnectionsSettings}
           showPageNav={false}
+          workspaceId={activeWorkspaceId}
         />
       </ModeFrame>
     )
@@ -145,6 +157,7 @@ export default function App() {
             onOpenChat={() => setMode('inbox')}
             activeSection={settingsSection}
             onSectionChange={setSettingsSection}
+            workspaceId={activeWorkspaceId}
           />
         </div>
       </div>
@@ -212,7 +225,8 @@ function TopModeNav({ activeMode, activeOperationMode, onSelect, onOperationSele
       <TopModeButton item={TOP_MODE_NAV[1]} active={activeMode === 'ai-train'} onSelect={onSelect} />
       <TopOperationNav activeMode={activeMode} activeOperationMode={activeOperationMode} onSelect={onOperationSelect} />
       <TopModeButton item={TOP_MODE_NAV[3]} active={activeMode === 'inbox'} onSelect={onSelect} />
-      <div className="ml-auto">
+      <div className="ml-auto flex items-center gap-3">
+        <WorkspaceSelector />
         <TopModeButton item={TOP_MODE_NAV[2]} active={activeMode === 'settings'} onSelect={onSelect} />
       </div>
     </nav>

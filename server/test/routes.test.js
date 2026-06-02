@@ -1917,3 +1917,51 @@ test('Live CF derives non-default workspace from profileKey mapping and respects
     localServer.close()
   }
 })
+
+test('audit rows include workspaceId after settings update', async () => {
+  const omni = createOmniService()
+  const result = omni.updateSettings({ workspaceId: 'ws_test', settings: { ai: { enabled: false } } })
+  assert.equal(result.ok, true)
+  assert.equal(result.audit.workspaceId, 'ws_test')
+})
+
+test('audit rows include workspaceId after page auto-reply toggle', async () => {
+  const omni = createOmniService()
+  const result = omni.setPageAutoReply({ pageId: 'page_annalynn', enabled: true })
+  assert.equal(result.ok, true)
+  assert.equal(result.audit.workspaceId, 'ws_oagent')
+})
+
+test('audit rows include workspaceId after order draft creation', async () => {
+  const omni = createOmniService()
+  const result = omni.createOrderDraft({
+    threadId: 'thread_1',
+    items: [{ sku: 'TEST-SKU', name: 'Test', quantity: 1, unitPrice: 100 }],
+    workspaceId: 'ws_oagent',
+  })
+  assert.equal(result.ok, true)
+  assert.equal(result.audit.workspaceId, 'ws_oagent')
+})
+
+test('audit rows include workspaceId for outbound message recording', async () => {
+  const omni = createOmniService()
+  const result = omni.recordOutboundMessage({
+    threadId: 'thread_1',
+    authorName: 'AI',
+    text: 'Hello customer',
+    sourceRef: 'test_outbound',
+  })
+  assert.equal(result.ok, true)
+  assert.ok(result.audit.workspaceId !== undefined, 'workspaceId should be present in audit')
+})
+
+test('audit rows include workspaceId for manual reply draft', async () => {
+  const omni = createOmniService()
+  const result = omni.recordManualReplyDraft({
+    threadId: 'thread_1',
+    authorName: 'บอส',
+    text: 'ตอบลูกค้า',
+  })
+  assert.equal(result.ok, true)
+  assert.ok(result.audit.workspaceId !== undefined, 'workspaceId should be present in audit')
+})
