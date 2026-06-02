@@ -59,6 +59,9 @@ export default function WorkspacePanel({ snapshot }) {
                 <MiniMetric label="Owner" value={ws.ownerRef || '-'} />
                 <MiniMetric label="Updated" value={ws.updatedAt ? new Date(ws.updatedAt).toLocaleDateString('th-TH') : '-'} />
               </div>
+              <div className="mt-2 rounded-[var(--radius-md)] border border-[var(--color-accent)] bg-[var(--color-accent-subtle,var(--color-panel-2))] px-3 py-2 text-xs text-[var(--color-ink-2)]">
+                Settings scope: <span className="font-bold">{ws.id}</span>
+              </div>
               {wsPages.length ? (
                 <div className="mt-2 flex flex-wrap gap-1">
                   {wsPages.map((page) => (

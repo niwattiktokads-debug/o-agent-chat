@@ -104,12 +104,17 @@ export async function fetchConnectorHealth() {
   return (await getJson('/api/omni/connectors/health')).health
 }
 
-export async function fetchOmniSettings() {
-  return (await getJson('/api/omni/settings')).settings
+export async function fetchOmniSettings(workspaceId) {
+  const qs = workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : ''
+  return (await getJson(`/api/omni/settings${qs}`)).settings
 }
 
-export async function saveOmniSettings(settings) {
-  return postJson('/api/omni/settings', { settings, updatedBy: 'boss' })
+export async function saveOmniSettings(settings, options = {}) {
+  return postJson('/api/omni/settings', {
+    settings,
+    updatedBy: options.updatedBy || 'boss',
+    ...(options.workspaceId ? { workspaceId: options.workspaceId } : {}),
+  })
 }
 
 export async function fetchMessageVolumeReport({ from = '', to = '', pageId = '' } = {}) {
