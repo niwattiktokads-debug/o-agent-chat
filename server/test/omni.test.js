@@ -446,6 +446,100 @@ test('Meta social live sources attempts live comments before fallback with block
   assert.deepEqual(calls.map((args) => args[0]), ['list-live-comments', 'list-posts'])
 })
 
+test('Meta social runtime uses Graph API for posts and comments when helper is not configured', async () => {
+  const originalFetch = globalThis.fetch
+  const savedHelper = process.env.META_INBOX_HELPER
+  const savedManKyndToken = process.env.META_PAGE_TOKEN_MAN_KYND
+  const calls = []
+  globalThis.fetch = async (url) => {
+    calls.push(url.toString())
+    if (url.toString().includes('/189971841184132/posts')) {
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({
+          data: [{
+            id: 'post_direct_1',
+            message: 'เปิด CF',
+            created_time: '2026-06-02T03:00:00+0000',
+            permalink_url: 'https://facebook.com/post_direct_1',
+            comments: {
+              summary: { total_count: 1 },
+              data: [{ id: 'comment_preview_1', message: 'CF BLACK-M', created_time: '2026-06-02T03:01:00+0000' }],
+            },
+          }],
+          paging: { next: 'next-page' },
+        }),
+      }
+    }
+    if (url.toString().includes('/post_direct_1/comments')) {
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({
+          data: [{ id: 'comment_direct_1', message: 'CF BLACK-M x2', comment_count: 0, like_count: 3 }],
+          summary: { total_count: 1 },
+        }),
+      }
+    }
+    throw new Error(`unexpected fetch ${url}`)
+  }
+
+  try {
+    delete process.env.META_INBOX_HELPER
+    process.env.META_PAGE_TOKEN_MAN_KYND = 'test_mankynd_page_token'
+    const social = createMetaSocialRuntime()
+
+    const posts = await social.listPagePosts({ pageProfile: 'man_kynd', limit: 2 })
+    assert.equal(posts.ok, true)
+    assert.equal(posts.pageId, '189971841184132')
+    assert.equal(posts.posts[0].id, 'post_direct_1')
+    assert.equal(posts.posts[0].commentCount, 1)
+    assert.equal(posts.posts[0].commentsPreview[0].id, 'comment_preview_1')
+
+    const comments = await social.listPostComments({ objectId: 'post_direct_1', pageProfile: 'man_kynd', limit: 5 })
+    assert.equal(comments.ok, true)
+    assert.equal(comments.comments[0].id, 'comment_direct_1')
+    assert.equal(comments.comments[0].likeCount, 3)
+    assert.equal(calls.length, 2)
+    assert.match(calls[0], /graph\.facebook\.com/)
+    assert.match(calls[0], /access_token=test_mankynd_page_token/)
+    assert.match(calls[0], /limit=2/)
+    assert.match(calls[1], /post_direct_1%2Fcomments|post_direct_1\/comments/)
+    assert.match(calls[1], /limit=5/)
+  } finally {
+    if (savedHelper === undefined) delete process.env.META_INBOX_HELPER
+    else process.env.META_INBOX_HELPER = savedHelper
+    if (savedManKyndToken === undefined) delete process.env.META_PAGE_TOKEN_MAN_KYND
+    else process.env.META_PAGE_TOKEN_MAN_KYND = savedManKyndToken
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('Meta social runtime reports token missing instead of spawning local helper in cloud mode', async () => {
+  const savedHelper = process.env.META_INBOX_HELPER
+  const savedManKyndToken = process.env.META_PAGE_TOKEN_MAN_KYND
+  const savedFallbackToken = process.env.META_PAGE_ACCESS_TOKEN
+  try {
+    delete process.env.META_INBOX_HELPER
+    delete process.env.META_PAGE_TOKEN_MAN_KYND
+    delete process.env.META_PAGE_ACCESS_TOKEN
+
+    const social = createMetaSocialRuntime()
+    await assert.rejects(
+      social.listPagePosts({ pageProfile: 'man_kynd', limit: 1 }),
+      /meta_page_token_missing/,
+    )
+  } finally {
+    if (savedHelper === undefined) delete process.env.META_INBOX_HELPER
+    else process.env.META_INBOX_HELPER = savedHelper
+    if (savedManKyndToken === undefined) delete process.env.META_PAGE_TOKEN_MAN_KYND
+    else process.env.META_PAGE_TOKEN_MAN_KYND = savedManKyndToken
+    if (savedFallbackToken === undefined) delete process.env.META_PAGE_ACCESS_TOKEN
+    else process.env.META_PAGE_ACCESS_TOKEN = savedFallbackToken
+  }
+})
+
 test('Facebook connector accepts configured extra page profile', async () => {
   const result = await listFacebookConversations({
     pageProfile: 'fb_112154661515664',

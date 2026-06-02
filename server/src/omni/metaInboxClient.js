@@ -4,7 +4,7 @@ import { promisify } from 'node:util'
 import { FALLBACK_PAGE_PROFILES, loadPageRegistry } from './pageRegistry.js'
 
 const execFileAsync = promisify(execFile)
-const DEFAULT_HELPER = process.env.META_INBOX_HELPER || '/Users/babycuca/.codex/bin/meta-inbox-api'
+const DEFAULT_HELPER = ''
 const GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v23.0'
 const FACEBOOK_GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`
 const INSTAGRAM_GRAPH_BASE = `https://graph.instagram.com/${GRAPH_VERSION}`
@@ -61,11 +61,12 @@ function helperExists(helperPath) {
 }
 
 function helperUnavailable(helperPath) {
-  console.warn(`[meta-inbox-api] binary not found at ${helperPath} — send skipped`)
+  console.warn(`[meta-inbox-api] binary not found at ${helperPath || 'META_INBOX_HELPER'} — send skipped`)
   return { ok: false, error: 'helper_not_available', helperPath }
 }
 
 async function defaultRunner(args, helperPath = helperPathFrom()) {
+  if (!helperPath || !helperExists(helperPath)) return helperUnavailable(helperPath)
   const { stdout } = await execFileAsync(helperPath, args, {
     maxBuffer: 1024 * 1024 * 8,
     env: process.env,
@@ -198,6 +199,19 @@ export async function sendFacebookReply(input = {}, runnerArg = null) {
     if (!payload?.ok) throw new Error(payload?.error || 'meta_send_reply_failed')
     return payload
   }
+  if (input.helperPath) {
+    const helperPath = helperPathFrom(input)
+    if (!helperExists(helperPath)) return helperUnavailable(helperPath)
+    const payload = await defaultRunner([
+      'send-reply',
+      `--page=${pageProfile}`,
+      `--recipient-id=${recipientId}`,
+      `--message=${text}`,
+      '--approved',
+    ], helperPath)
+    if (!payload?.ok) throw new Error(payload?.error || 'meta_send_reply_failed')
+    return payload
+  }
   // Direct Graph API call (production path — no binary required)
   const token = fbPageAccessToken(pageProfile)
   if (!token.ok) {
@@ -244,6 +258,19 @@ export async function sendFacebookCommentReply(input = {}, runnerArg = null) {
       `--message=${text}`,
       '--approved',
     ])
+    if (!payload?.ok) throw new Error(payload?.error || 'meta_comment_reply_failed')
+    return payload
+  }
+  if (input.helperPath) {
+    const helperPath = helperPathFrom(input)
+    if (!helperExists(helperPath)) return helperUnavailable(helperPath)
+    const payload = await defaultRunner([
+      'reply-comment',
+      `--page=${pageProfile}`,
+      `--comment-id=${commentId}`,
+      `--message=${text}`,
+      '--approved',
+    ], helperPath)
     if (!payload?.ok) throw new Error(payload?.error || 'meta_comment_reply_failed')
     return payload
   }
