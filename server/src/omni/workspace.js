@@ -79,7 +79,7 @@ export function buildWorkspaceSummary(workspace, snapshot = {}) {
     pages.some((page) => page.id === account.pageId),
   )
   const knowledgeCount = (snapshot.knowledgeSources || []).filter(
-    (source) => source.workspaceId === workspace.id || source.scope === 'all_pages',
+    (source) => source.workspaceId === workspace.id,
   ).length
 
   return {

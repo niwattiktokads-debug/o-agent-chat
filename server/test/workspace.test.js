@@ -188,12 +188,13 @@ describe('Workspace Foundation — Utility Functions', () => {
       knowledgeSources: [
         { id: 'k1', workspaceId: 'ws_test', scope: 'p1' },
         { id: 'k2', workspaceId: 'ws_other', scope: 'all_pages' },
+        { id: 'k3', workspaceId: 'ws_test', scope: 'all_pages' },
       ],
     }
     const summary = buildWorkspaceSummary(workspace, snapshot)
     assert.equal(summary.pageCount, 1)
     assert.equal(summary.channelCount, 1)
-    assert.equal(summary.knowledgeCount, 2) // k1 (workspace match) + k2 (all_pages scope)
+    assert.equal(summary.knowledgeCount, 2) // k1 + k3; k2 belongs to ws_other
   })
 })
 
