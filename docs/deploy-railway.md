@@ -32,6 +32,9 @@ Required minimum:
 | `OMNI_ACTION_TOKEN` | Strong random token for approved API calls |
 | `OMNI_DB_PATH` | `/data/omni.sqlite` |
 | `META_PAGE_TOKEN_ANNA_LYNN` | Facebook page access token |
+| `ZORT_STORE_NAME` | ZORT Open API store name |
+| `ZORT_API_KEY` | ZORT Open API key |
+| `ZORT_API_SECRET` | ZORT Open API secret |
 
 Keep safe defaults:
 
@@ -39,6 +42,10 @@ Keep safe defaults:
 | --- | --- |
 | `OMNI_META_WEBHOOK_SEND` | `0` |
 | `OMNI_META_WEBHOOK_AUTO_REPLY` | `1` |
+
+ZORT product lookup and approved order creation run directly against the ZORT
+Open API in Railway. Leave `ZORT_HELPER` empty on cloud; the local
+`/Users/.../.codex/bin/zort-api` helper is only a Mac/C Snap fallback.
 
 ## Step 3: Verify Server Health
 

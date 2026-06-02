@@ -10,6 +10,7 @@ import { createState } from '../src/state.js'
 import { createOmniService } from '../src/omni/service.js'
 import { createOmniSeed } from '../src/omni/seed.js'
 import { createSecurityMiddleware } from '../src/security.js'
+import { createConnectionRuntime } from '../src/omni/connections.js'
 
 const app = express()
 app.use(express.json())
@@ -490,6 +491,34 @@ test('POST /api/omni/connections verifies through injected runtime', async () =>
     assert.equal(body.ok, true)
     assert.equal(body.status, 'healthy')
     assert.equal(verifiedId, 'meta_anna_lynn')
+  } finally {
+    localServer.close()
+  }
+})
+
+test('POST /api/omni/connections verifies ZORT through commerce runtime', async () => {
+  const localApp = express()
+  localApp.use(express.json())
+  const calls = []
+  const connections = createConnectionRuntime({
+    commerce: {
+      searchProducts: async ({ limit }) => {
+        calls.push({ action: 'searchProducts', limit })
+        return { ok: true, count: 1, products: [{ sku: 'LORRA-M' }] }
+      },
+    },
+  })
+  mountRoutes(localApp, { broadcast: () => {} }, createState(), { connections })
+  const localServer = localApp.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const response = await fetch(`http://localhost:${localPort}/api/omni/connections/zort_open_api/verify`, { method: 'POST' })
+    const body = await response.json()
+    assert.equal(response.status, 200)
+    assert.equal(body.ok, true)
+    assert.equal(body.provider, 'zort')
+    assert.equal(body.model, 'open-api')
+    assert.equal(calls[0].action, 'searchProducts')
   } finally {
     localServer.close()
   }

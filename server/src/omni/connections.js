@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { createZortCommerceRuntime } from './zortCommerceRuntime.js'
 
 const execFileAsync = promisify(execFile)
 const CSNAP_BASE_URL = process.env.CSNAP_BASE_URL || 'http://127.0.0.1:9876'
@@ -732,9 +733,35 @@ function findConnection(connectionId) {
   return connection
 }
 
-async function verifyConnection(connectionId) {
+async function verifyZortConnection(connectionId, startedAt, commerce) {
+  try {
+    const result = await commerce.searchProducts({ limit: 1 })
+    return {
+      ok: true,
+      connectionId,
+      checkedAt: startedAt,
+      status: 'healthy',
+      provider: 'zort',
+      model: 'open-api',
+      summary: compact(JSON.stringify({ ok: true, mode: 'open_api_ready', productCount: result.count ?? result.products?.length ?? 0 })),
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      connectionId,
+      checkedAt: startedAt,
+      status: error.message === 'missing_zort_credentials' ? 'runtime_gap' : 'failed',
+      provider: 'zort',
+      model: 'open-api',
+      summary: compact(error.message || 'zort_verify_failed'),
+    }
+  }
+}
+
+async function verifyConnection(connectionId, { commerce = createZortCommerceRuntime() } = {}) {
   const connection = findConnection(connectionId)
   const startedAt = new Date().toISOString()
+  if (connection.id === 'zort_open_api') return verifyZortConnection(connectionId, startedAt, commerce)
   if (!connection.verify?.command) {
     return {
       ok: false,
@@ -836,7 +863,7 @@ async function removeConnection(connectionId) {
   return { ok: true, removedId: connectionId }
 }
 
-export function createConnectionRuntime() {
+export function createConnectionRuntime({ commerce = createZortCommerceRuntime() } = {}) {
   return {
     async list() {
       const cSnap = await listCredentials()
@@ -848,7 +875,7 @@ export function createConnectionRuntime() {
     },
     add: addConnection,
     remove: removeConnection,
-    verify: verifyConnection,
+    verify: (connectionId) => verifyConnection(connectionId, { commerce }),
     saveSecrets: saveConnectionSecrets,
     async listConversations(connectionId, options) {
       const connection = findConnection(connectionId)

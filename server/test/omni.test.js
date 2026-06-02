@@ -86,6 +86,62 @@ test('ZORT order body includes customer and Thai shipping address fields', async
   assert.equal(body.list[0].sku, 'BLACK-M')
 })
 
+test('ZORT runtime uses direct Open API when cloud credentials are present', async () => {
+  const calls = []
+  const runtime = createZortCommerceRuntime({
+    env: {
+      ZORT_STORE_NAME: 'store_1',
+      ZORT_API_KEY: 'api_key_1',
+      ZORT_API_SECRET: 'api_secret_1',
+    },
+    apiBaseUrl: 'https://zort.example/v4',
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options })
+      if (url.includes('/Product/GetProducts')) {
+        return new Response(JSON.stringify({ list: [{ id: '637', sku: 'LORRA-M', name: 'Lorra M', sellprice: 1290, availablestock: 7 }], count: 1 }), { status: 200 })
+      }
+      return new Response(JSON.stringify({ detail: { id: 'zort_1001' } }), { status: 200 })
+    },
+  })
+
+  const products = await runtime.searchProducts({ keyword: 'Lorra', limit: 3 })
+  assert.equal(products.ok, true)
+  assert.equal(products.products[0].sku, 'LORRA-M')
+  assert.equal(calls[0].url, 'https://zort.example/v4/Product/GetProducts?keyword=Lorra&page=1&limit=3')
+  assert.equal(calls[0].options.headers.storename, 'store_1')
+  assert.equal(calls[0].options.headers.apikey, 'api_key_1')
+  assert.equal(calls[0].options.headers.apisecret, 'api_secret_1')
+
+  const result = await runtime.createOrder({
+    approved: true,
+    uniquenumber: 'order_draft_1',
+    order: {
+      id: 'order_draft_1',
+      customerName: 'ลูกค้า A',
+      customerPhone: '0812345678',
+      totalAmount: 1290,
+      shippingAddress: { formattedAddress: '99/1 ถนนสุขุมวิท กรุงเทพมหานคร 10110' },
+      items: [{ sku: 'LORRA-M', name: 'Lorra M', quantity: 1, unitPrice: 1290 }],
+    },
+  })
+  assert.equal(result.providerOrderId, 'zort_1001')
+  assert.equal(calls[1].url, 'https://zort.example/v4/Order/AddOrder?uniquenumber=order_draft_1')
+  assert.equal(calls[1].options.method, 'POST')
+  assert.equal(JSON.parse(calls[1].options.body).list[0].sku, 'LORRA-M')
+})
+
+test('ZORT runtime reports missing cloud credentials instead of spawning a missing local helper', async () => {
+  const runtime = createZortCommerceRuntime({
+    env: {},
+    helper: '/tmp/omni-missing-zort-helper',
+  })
+
+  await assert.rejects(
+    () => runtime.searchProducts({ keyword: 'Lorra' }),
+    /missing_zort_credentials/,
+  )
+})
+
 test('normalizes TikTok Business Messaging webhook payload into Omni threads', () => {
   const normalized = normalizeTikTokMessagingWebhookPayload({
     events: [{
