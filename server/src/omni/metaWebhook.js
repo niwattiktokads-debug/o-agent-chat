@@ -293,6 +293,7 @@ export function normalizeMetaWebhookPayload(payload) {
     const sourceName = sourceNameForProfile(profile)
 
     for (const event of entry.messaging || []) {
+      if (event.message?.is_echo === true) continue
       const text = messageText(event.message)
       if (!text) continue
       const originContext = originFromReferral(event.referral || event.postback?.referral || event.message?.referral || {}, profile, text)

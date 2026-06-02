@@ -1666,6 +1666,86 @@ test('POST /webhook/meta can send guarded auto reply for Anna Lynn only', async 
   }
 })
 
+test('POST /webhook/meta does not auto reply to Meta message echoes', async () => {
+  const app = express()
+  app.use(express.json())
+  const sent = []
+  const fakeAi = {
+    draft: async ({ thread }) => ({
+      ok: true,
+      provider: 'test',
+      model: 'echo-guard-test',
+      intent: 'faq',
+      risk: 'low',
+      confidence: 0.9,
+      action: 'draft_ready',
+      sourceIds: [],
+      reason: 'echo_guard_test',
+      allowed: true,
+      draftText: `reply for ${thread.id}`,
+    }),
+  }
+  mountWebhook(app, { broadcast: () => {} }, createState(), {
+    omni: createOmniService(),
+    ai: fakeAi,
+    metaVerifyToken: 'verify-token-test',
+    awaitAutoReplies: true,
+    sendReply: async (payload) => {
+      sent.push(payload)
+      return { ok: true, response: { message_id: `sent_mid_${sent.length}` } }
+    },
+  })
+  const localServer = app.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const inbound = await fetch(`http://localhost:${localPort}/webhook/meta?autoReply=1&send=1`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        object: 'page',
+        entry: [{
+          id: '122106446570001676',
+          messaging: [{
+            sender: { id: 'customer_anna_echo_guard' },
+            recipient: { id: '122106446570001676' },
+            timestamp: 1779470300000,
+            message: { mid: 'route_mid_anna_echo_guard_in', text: 'สนใจค่ะ' },
+          }],
+        }],
+      }),
+    })
+    const inboundBody = await inbound.json()
+    assert.equal(inbound.status, 200)
+    assert.equal(inboundBody.result.autoReplies.length, 1)
+    assert.equal(inboundBody.result.autoReplies[0].sent, true)
+    assert.equal(sent.length, 1)
+
+    const echo = await fetch(`http://localhost:${localPort}/webhook/meta?autoReply=1&send=1`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        object: 'page',
+        entry: [{
+          id: '122106446570001676',
+          messaging: [{
+            sender: { id: '122106446570001676' },
+            recipient: { id: 'customer_anna_echo_guard' },
+            timestamp: 1779470300001,
+            message: { mid: 'route_mid_anna_echo_guard_echo', text: 'reply echo', is_echo: true },
+          }],
+        }],
+      }),
+    })
+    const echoBody = await echo.json()
+    assert.equal(echo.status, 200)
+    assert.equal(echoBody.result.messages.inserted, 0)
+    assert.equal(echoBody.result.autoReplies.length, 0)
+    assert.equal(sent.length, 1)
+  } finally {
+    localServer.close()
+  }
+})
+
 test('POST /webhook/meta sends comment auto reply through comment endpoint', async () => {
   const app = express()
   app.use(express.json())

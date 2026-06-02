@@ -337,11 +337,18 @@ function signalDex({ room, hub, signals }) {
   return message
 }
 
-function autoReplyThreadIds({ normalized, snapshot }) {
+function autoReplyThreadIds({ normalized, snapshot, existingMessageIds = new Set() }) {
   const threads = snapshot?.threads || []
   const pagesById = new Map((snapshot?.pages || []).map((page) => [page.id, page]))
+  const inboundThreadIds = new Set(
+    (normalized.messages || [])
+      .filter((message) => message.direction === 'inbound' && !existingMessageIds.has(message.id))
+      .map((message) => message.threadId)
+      .filter(Boolean)
+  )
   const ids = []
   for (const thread of normalized.threads || []) {
+    if (!inboundThreadIds.has(thread.id)) continue
     const isComment = ['facebook_comment', 'facebook_video_comment', 'instagram_comment'].includes(thread.platform)
     const resolved = threads.find((candidate) => (
       (isComment
@@ -505,6 +512,7 @@ export function mountWebhook(app, hub, room, options = {}) {
   app.post('/webhook/meta', async (req, res) => {
     if (!omni) return res.status(503).json({ ok: false, error: 'omni_service_unavailable' })
     const normalized = normalizeMetaWebhookPayload(req.body || {})
+    const existingMessageIds = new Set((omni.snapshot().messages || []).map((message) => message.id))
     const result = omni.syncFacebookWebhookEvents(normalized)
     const dexSignals = createDexSignals({ normalized, snapshot: result.snapshot, insertedMessages: result.messages.inserted })
     const dexSignalMessage = signalDex({ room, hub, signals: dexSignals })
@@ -515,7 +523,7 @@ export function mountWebhook(app, hub, room, options = {}) {
     const shouldSend = req.query.send === '0' || req.body?.send === false
       ? false
       : req.query.send === '1' || req.body?.send === true || metaAutoSendDefault
-    const threadIds = shouldAutoReply ? autoReplyThreadIds({ normalized, snapshot: result.snapshot }) : []
+    const threadIds = shouldAutoReply ? autoReplyThreadIds({ normalized, snapshot: result.snapshot, existingMessageIds }) : []
     const autoReplyJob = threadIds.length
       ? runMetaAutoReplies({ omni, ai, hub, threadIds, shouldSend, sendReply, sendCommentReply, sendIgCommentReply })
       : Promise.resolve([])
