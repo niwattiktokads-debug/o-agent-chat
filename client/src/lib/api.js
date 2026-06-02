@@ -4,7 +4,7 @@
 //   state: full snapshot (every event except 'typing' carries full state)
 
 import { parseTag } from './parseTag.js'
-import { apiUrl, wsUrl } from './runtimeConfig.js'
+import { apiFetch, wsUrl } from './runtimeConfig.js'
 
 const VALID_ROLES = ['Boss', 'Code', 'Codex', 'ChatGPT', 'Cowork']
 const SENDER_TO_ROLE = {
@@ -81,7 +81,7 @@ function applyServerState(snapshot) {
 
 async function fetchInitialState() {
   try {
-    const r = await fetch(apiUrl('/api/state'))
+    const r = await apiFetch('/api/state')
     const s = await r.json()
     applyServerState(s)
   } catch (e) {
@@ -167,7 +167,7 @@ export function onConnectivity(cb) {
 async function sendMessageNow(sender, rawText, localId) {
   const role = SENDER_TO_ROLE[sender] || 'Boss'
   try {
-    const r = await fetch(apiUrl('/api/message'), {
+    const r = await apiFetch('/api/message', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ role, text: rawText }),
@@ -202,7 +202,7 @@ export function sendMessage(sender, rawText) {
 }
 
 export async function setLeader(leader) {
-  const r = await fetch(apiUrl('/api/leader'), {
+  const r = await apiFetch('/api/leader', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ leader: String(leader).toLowerCase() }),
@@ -213,7 +213,7 @@ export async function setLeader(leader) {
 }
 
 export async function setField(key, value) {
-  const r = await fetch(apiUrl('/api/field'), {
+  const r = await apiFetch('/api/field', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ key, value }),

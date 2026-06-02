@@ -9,6 +9,13 @@ export function apiUrl(path) {
   return `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`
 }
 
+export function apiFetch(path, options = {}) {
+  return fetch(apiUrl(path), {
+    ...options,
+    credentials: 'include',
+  })
+}
+
 export function wsUrl(path) {
   if (WS_BASE_URL) return `${WS_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'

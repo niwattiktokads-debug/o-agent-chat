@@ -1,15 +1,15 @@
-import { apiUrl, wsUrl } from './runtimeConfig.js'
+import { apiFetch, wsUrl } from './runtimeConfig.js'
 import { isSupabaseRealtimeEnabled, subscribeOmniDatabaseChanges } from './supabaseRealtime.js'
 
 async function getJson(path) {
-  const response = await fetch(apiUrl(path))
+  const response = await apiFetch(path)
   const body = await response.json()
   if (!response.ok || !body.ok) throw new Error(body.error || `request_failed:${path}`)
   return body
 }
 
 async function postJson(path, payload = {}) {
-  const response = await fetch(apiUrl(path), {
+  const response = await apiFetch(path, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(payload),
@@ -71,7 +71,7 @@ export async function fetchThread(threadId) {
 }
 
 export async function setPageAutoReply(pageId, enabled) {
-  const response = await fetch(apiUrl(`/api/omni/pages/${encodeURIComponent(pageId)}/auto-reply`), {
+  const response = await apiFetch(`/api/omni/pages/${encodeURIComponent(pageId)}/auto-reply`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ enabled, updatedBy: 'boss' }),
@@ -146,7 +146,7 @@ export async function fetchConnections() {
 }
 
 export async function addConnectionOption(input) {
-  const response = await fetch(apiUrl('/api/omni/connections'), {
+  const response = await apiFetch('/api/omni/connections', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(input),
@@ -157,21 +157,21 @@ export async function addConnectionOption(input) {
 }
 
 export async function deleteConnectionOption(connectionId) {
-  const response = await fetch(apiUrl(`/api/omni/connections/${connectionId}`), { method: 'DELETE' })
+  const response = await apiFetch(`/api/omni/connections/${connectionId}`, { method: 'DELETE' })
   const body = await response.json()
   if (!response.ok || !body.ok) throw new Error(body.error || 'connection_delete_failed')
   return body
 }
 
 export async function verifyConnection(connectionId) {
-  const response = await fetch(apiUrl(`/api/omni/connections/${connectionId}/verify`), { method: 'POST' })
+  const response = await apiFetch(`/api/omni/connections/${connectionId}/verify`, { method: 'POST' })
   const body = await response.json()
   if (!response.ok || !body.ok) throw new Error(body.summary || body.error || 'connection_verify_failed')
   return body
 }
 
 export async function saveConnectionSecrets(connectionId, fields) {
-  const response = await fetch(apiUrl(`/api/omni/connections/${connectionId}/secrets`), {
+  const response = await apiFetch(`/api/omni/connections/${connectionId}/secrets`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ fields }),
@@ -192,7 +192,7 @@ export async function fetchConnectionThread(connectionId, conversationId, limit 
 }
 
 export async function createConnectionAiDraft(connectionId, conversationId) {
-  const response = await fetch(apiUrl(`/api/omni/connections/${connectionId}/conversations/${encodeURIComponent(conversationId)}/ai-draft`), {
+  const response = await apiFetch(`/api/omni/connections/${connectionId}/conversations/${encodeURIComponent(conversationId)}/ai-draft`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({}),
@@ -203,7 +203,7 @@ export async function createConnectionAiDraft(connectionId, conversationId) {
 }
 
 export async function sendConnectionReply(connectionId, conversationId, message) {
-  const response = await fetch(apiUrl(`/api/omni/connections/${connectionId}/conversations/${encodeURIComponent(conversationId)}/send`), {
+  const response = await apiFetch(`/api/omni/connections/${connectionId}/conversations/${encodeURIComponent(conversationId)}/send`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ message, approved: true }),
@@ -218,7 +218,7 @@ export async function fetchLineSudaGroupRules() {
 }
 
 export async function saveLineSudaGroupRules(groupId, responseRules) {
-  const response = await fetch(apiUrl(`/api/omni/notifications/suda-oagent/group-rules/${encodeURIComponent(groupId)}`), {
+  const response = await apiFetch(`/api/omni/notifications/suda-oagent/group-rules/${encodeURIComponent(groupId)}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ responseRules }),
@@ -237,7 +237,7 @@ export async function fetchKnowledgeSources({ query = '', type = '' } = {}) {
 }
 
 export async function saveKnowledgeSource(source) {
-  const response = await fetch(apiUrl('/api/omni/knowledge-sources'), {
+  const response = await apiFetch('/api/omni/knowledge-sources', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(source),
@@ -248,7 +248,7 @@ export async function saveKnowledgeSource(source) {
 }
 
 export async function deleteKnowledgeSource(sourceId) {
-  const response = await fetch(apiUrl(`/api/omni/knowledge-sources/${sourceId}`), { method: 'DELETE' })
+  const response = await apiFetch(`/api/omni/knowledge-sources/${sourceId}`, { method: 'DELETE' })
   const body = await response.json()
   if (!response.ok || !body.ok) throw new Error(body.error || 'knowledge_delete_failed')
   return body
@@ -260,7 +260,7 @@ export async function fetchFacebookConversations(pageProfile) {
 }
 
 export async function syncFacebookConversations(pageProfile) {
-  const response = await fetch(apiUrl('/api/omni/facebook/sync'), {
+  const response = await apiFetch('/api/omni/facebook/sync', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ page: pageProfile }),
@@ -276,7 +276,7 @@ export async function fetchTikTokOrders(status = 'AWAITING_COLLECTION', pageSize
 }
 
 export async function syncTikTokOrders(status = 'AWAITING_COLLECTION', pageSize = 10) {
-  const response = await fetch(apiUrl('/api/omni/tiktok/sync'), {
+  const response = await apiFetch('/api/omni/tiktok/sync', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ status, pageSize }),
@@ -287,7 +287,7 @@ export async function syncTikTokOrders(status = 'AWAITING_COLLECTION', pageSize 
 }
 
 export async function createAiDraft(threadId) {
-  const response = await fetch(apiUrl(`/api/omni/threads/${threadId}/ai-draft`), {
+  const response = await apiFetch(`/api/omni/threads/${threadId}/ai-draft`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
   })
@@ -297,7 +297,7 @@ export async function createAiDraft(threadId) {
 }
 
 export async function saveManualReplyDraft(threadId, draft) {
-  const response = await fetch(apiUrl(`/api/omni/threads/${threadId}/manual-draft`), {
+  const response = await apiFetch(`/api/omni/threads/${threadId}/manual-draft`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(draft),
