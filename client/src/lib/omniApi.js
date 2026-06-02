@@ -23,6 +23,14 @@ export async function fetchOmniSnapshot() {
   return (await getJson('/api/omni/snapshot')).snapshot
 }
 
+export async function fetchWorkspaces() {
+  return (await getJson('/api/omni/workspaces')).workspaces
+}
+
+export async function fetchWorkspace(workspaceId) {
+  return (await getJson(`/api/omni/workspaces/${encodeURIComponent(workspaceId)}`)).workspace
+}
+
 export async function loginOmniAccess(password) {
   const response = await apiFetch('/auth/login', {
     method: 'POST',
@@ -96,12 +104,17 @@ export async function fetchConnectorHealth() {
   return (await getJson('/api/omni/connectors/health')).health
 }
 
-export async function fetchOmniSettings() {
-  return (await getJson('/api/omni/settings')).settings
+export async function fetchOmniSettings(workspaceId) {
+  const qs = workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : ''
+  return (await getJson(`/api/omni/settings${qs}`)).settings
 }
 
-export async function saveOmniSettings(settings) {
-  return postJson('/api/omni/settings', { settings, updatedBy: 'boss' })
+export async function saveOmniSettings(settings, options = {}) {
+  return postJson('/api/omni/settings', {
+    settings,
+    updatedBy: options.updatedBy || 'boss',
+    ...(options.workspaceId ? { workspaceId: options.workspaceId } : {}),
+  })
 }
 
 export async function fetchMessageVolumeReport({ from = '', to = '', pageId = '' } = {}) {
@@ -118,12 +131,15 @@ export async function fetchSocialPosts(pageProfile = 'man_kynd', limit = 10) {
   return getJson(`/api/omni/social/posts?${query.toString()}`)
 }
 
-export async function capturePostCf(postId, { pageProfile = 'man_kynd', limit = 50 } = {}) {
-  return postJson(`/api/omni/social/posts/${encodeURIComponent(postId)}/capture`, { pageProfile, limit })
+export async function capturePostCf(postId, { pageProfile = 'man_kynd', limit = 50, workspaceId } = {}) {
+  const body = { pageProfile, limit }
+  if (workspaceId) body.workspaceId = workspaceId
+  return postJson(`/api/omni/social/posts/${encodeURIComponent(postId)}/capture`, body)
 }
 
-export async function fetchLiveSources(pageProfile = 'man_kynd', limit = 10) {
+export async function fetchLiveSources(pageProfile = 'man_kynd', limit = 10, workspaceId) {
   const query = new URLSearchParams({ pageProfile, limit: String(limit) })
+  if (workspaceId) query.set('workspaceId', workspaceId)
   return getJson(`/api/omni/social/live?${query.toString()}`)
 }
 
@@ -239,10 +255,11 @@ export async function saveLineSudaGroupRules(groupId, responseRules) {
   return body
 }
 
-export async function fetchKnowledgeSources({ query = '', type = '' } = {}) {
+export async function fetchKnowledgeSources({ query = '', type = '', workspaceId = '' } = {}) {
   const params = new URLSearchParams()
   if (query) params.set('q', query)
   if (type) params.set('type', type)
+  if (workspaceId) params.set('workspaceId', workspaceId)
   const suffix = params.toString() ? `?${params.toString()}` : ''
   return (await getJson(`/api/omni/knowledge-sources${suffix}`)).sources
 }

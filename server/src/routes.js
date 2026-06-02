@@ -10,7 +10,8 @@ import { createMetaSocialRuntime } from './omni/metaSocialRuntime.js'
 import { lookupThaiAddressByPostcode } from './omni/thaiAddress.js'
 import { createZortCommerceRuntime } from './omni/zortCommerceRuntime.js'
 import { createLineSudaOagentNotifier } from './omni/lineSudaOagentNotifier.js'
-import { appendPageRegistryEntry } from './omni/pageRegistry.js'
+import { appendPageRegistryEntry, FALLBACK_PAGE_PROFILES, loadPageRegistry } from './omni/pageRegistry.js'
+import { resolveWorkspaceId } from './omni/workspace.js'
 
 function normalizeLeader(input) {
   if (!input) return null
@@ -66,8 +67,20 @@ export function mountRoutes(app, hub, room, options = {}) {
 
   app.get('/api/health', (_req, res) => res.json({ ok: true }))
 
-  app.get('/api/omni/pages', (_req, res) => {
-    res.json({ ok: true, pages: omni.listPages() })
+  // --- Workspace Foundation (Private SaaS v1) ---
+  app.get('/api/omni/workspaces', (_req, res) => {
+    res.json({ ok: true, workspaces: omni.listWorkspaces() })
+  })
+
+  app.get('/api/omni/workspaces/:workspaceId', (req, res) => {
+    const workspace = omni.getWorkspace(req.params.workspaceId)
+    if (!workspace) return res.status(404).json({ ok: false, error: 'workspace_not_found' })
+    res.json({ ok: true, workspace })
+  })
+
+  app.get('/api/omni/pages', (req, res) => {
+    const workspaceId = req.query.workspaceId || undefined
+    res.json({ ok: true, pages: omni.listPages({ workspaceId }) })
   })
 
   app.post('/api/omni/pages/registry', (req, res) => {
@@ -128,6 +141,7 @@ export function mountRoutes(app, hub, room, options = {}) {
         query: req.query.q,
         status: req.query.status,
         type: req.query.type,
+        workspaceId: req.query.workspaceId,
       }),
     })
   })
@@ -177,7 +191,7 @@ export function mountRoutes(app, hub, room, options = {}) {
   app.post('/api/omni/threads/:threadId/ai-draft', async (req, res) => {
     const thread = omni.getThread(req.params.threadId)
     if (!thread) return res.status(404).json({ ok: false, error: 'thread_not_found' })
-    const settings = omni.getSettings()
+    const settings = omni.getSettingsForThread(req.params.threadId)
     if (settings.ai?.enabled === false) return res.status(409).json({ ok: false, error: 'ai_disabled' })
     const snapshot = omni.snapshot()
     const policy = omni.getPolicyForThread(thread)
@@ -267,12 +281,16 @@ export function mountRoutes(app, hub, room, options = {}) {
     res.status(sudaOagentNotifier.responseStatus(result)).json(result)
   })
 
-  app.get('/api/omni/settings', (_req, res) => {
-    res.json({ ok: true, settings: omni.getSettings() })
+  app.get('/api/omni/settings', (req, res) => {
+    res.json({ ok: true, settings: omni.getSettings({ workspaceId: req.query.workspaceId }) })
   })
 
   app.post('/api/omni/settings', (req, res) => {
-    const result = omni.updateSettings({ settings: req.body?.settings || {}, updatedBy: req.body?.updatedBy || 'boss' })
+    const result = omni.updateSettings({
+      workspaceId: req.body?.workspaceId || req.query.workspaceId,
+      settings: req.body?.settings || {},
+      updatedBy: req.body?.updatedBy || 'boss',
+    })
     hub.broadcast('omni', result.snapshot)
     res.json(result)
   })
@@ -314,9 +332,12 @@ export function mountRoutes(app, hub, room, options = {}) {
 
   app.post('/api/omni/social/posts/:postId/capture', async (req, res) => {
     try {
-      const settings = omni.getSettings()
-      if (settings.postCf?.enabled === false) return res.status(409).json({ ok: false, error: 'post_cf_disabled' })
       const pageProfile = String(req.body?.pageProfile || req.query.pageProfile || req.query.page || 'man_kynd')
+      // Derive workspaceId from pageProfile in snapshot if not explicitly provided
+      const explicitWsId = req.body?.workspaceId || req.query.workspaceId || undefined
+      const wsId = explicitWsId || resolveWorkspaceId(omni.snapshot(), { pageId: pageProfile, pageProfiles: loadPageRegistry() })
+      const settings = omni.getSettings({ workspaceId: wsId })
+      if (settings.postCf?.enabled === false) return res.status(409).json({ ok: false, error: 'post_cf_disabled' })
       const comments = await social.listPostComments({
         objectId: req.params.postId,
         pageProfile,
@@ -341,6 +362,8 @@ export function mountRoutes(app, hub, room, options = {}) {
         }
         const draft = omni.createOrderDraft({
           platform: 'facebook',
+          pageId: pageProfile,
+          workspaceId: wsId,
           customer: item.customer,
           customerId: item.customer.id,
           customerName: item.customer.displayName,
@@ -377,10 +400,14 @@ export function mountRoutes(app, hub, room, options = {}) {
 
   app.get('/api/omni/social/live', async (req, res) => {
     try {
-      const settings = omni.getSettings()
+      const pageProfile = String(req.query.pageProfile || req.query.page || 'man_kynd')
+      // Derive workspaceId from pageProfile in snapshot if not explicitly provided
+      const explicitWsId = req.query.workspaceId || undefined
+      const wsId = explicitWsId || resolveWorkspaceId(omni.snapshot(), { pageId: pageProfile, pageProfiles: loadPageRegistry() })
+      const settings = omni.getSettings({ workspaceId: wsId })
       if (settings.liveCf?.enabled === false) return res.status(409).json({ ok: false, error: 'live_cf_disabled' })
       const result = await social.listLiveCommentSources({
-        pageProfile: String(req.query.pageProfile || req.query.page || 'man_kynd'),
+        pageProfile,
         limit: normalizePageSize(req.query.limit),
       })
       res.json(result)
@@ -506,7 +533,7 @@ export function mountRoutes(app, hub, room, options = {}) {
 
   app.post('/api/omni/connections/:connectionId/conversations/:conversationId/ai-draft', async (req, res) => {
     try {
-      const settings = omni.getSettings()
+      const settings = omni.getSettings({ workspaceId: req.body?.workspaceId || req.query.workspaceId })
       if (settings.ai?.enabled === false) return res.status(409).json({ ok: false, error: 'ai_disabled' })
       const thread = await connections.readThread(req.params.connectionId, req.params.conversationId, { limit: 20 })
       const messages = thread.messages.map((message) => ({
@@ -521,9 +548,11 @@ export function mountRoutes(app, hub, room, options = {}) {
         provider: req.body?.provider || process.env.OMNI_CONNECTION_DRAFT_PROVIDER || 'gemini_cli',
         model: req.body?.model || process.env.OMNI_CONNECTION_DRAFT_MODEL || 'gemini-3-flash-preview',
       })
+      const wsId = req.body?.workspaceId || req.query.workspaceId || undefined
+      const allKnowledge = omni.listKnowledgeSources?.({ workspaceId: wsId }) || []
       const decision = await draftEngine.draft({
         thread: { id: `meta_${req.params.conversationId}`, platform: 'facebook', status: 'open' },
-        snapshot: { messages, knowledgeSources: omni.listKnowledgeSources?.() || [] },
+        snapshot: { messages, knowledgeSources: allKnowledge },
         policy: { autoSend: {} },
       })
       res.json({ ok: true, connectionId: req.params.connectionId, conversationId: req.params.conversationId, decision, sent: false })

@@ -8,6 +8,7 @@ import ConnectorHealth from './ConnectorHealth.jsx'
 import FacebookLivePreview from './FacebookLivePreview.jsx'
 import PageManagement from './PageManagement.jsx'
 import TikTokOrderSync from './TikTokOrderSync.jsx'
+import WorkspacePanel from './WorkspacePanel.jsx'
 import ConnectionsPage from '../connections/ConnectionsPage.jsx'
 
 const DEFAULT_SETTINGS = {
@@ -206,6 +207,9 @@ export default function SettingsPage({
               />
             </SettingsCard>
           </section>
+          <section className="mt-4">
+            <WorkspacePanel snapshot={localSnapshot} />
+          </section>
           <section className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             <div className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)]">
               <PageManagement pages={pages} onSnapshot={handleSnapshot} />
@@ -244,7 +248,13 @@ function AiConfigPanel({ snapshot, onOpenChat }) {
     const policy = policySets.find((item) => item.id === policySetId)
     const accounts = platformAccounts.filter((item) => item.pageId === page.id)
     const knowledge = knowledgeSources
-      .filter((item) => item.scope === page.id || item.scope === 'all_pages')
+      .filter((item) => {
+        // Workspace boundary: sources without workspaceId default to ws_oagent
+        const pageWs = page.workspaceId || 'ws_oagent'
+        const itemWs = item.workspaceId || 'ws_oagent'
+        if (pageWs !== itemWs) return false
+        return item.scope === page.id || item.scope === 'all_pages'
+      })
       .sort((a, b) => Number(b.scope === page.id) - Number(a.scope === page.id))
     const warnings = []
     if (!agent) warnings.push('ยังไม่พบ AI profile')
@@ -254,7 +264,9 @@ function AiConfigPanel({ snapshot, onOpenChat }) {
     return { page, agent, policy, accounts, knowledge, warnings }
   })
   const readyCount = rows.filter((row) => !row.warnings.length).length
-  const sourceCount = knowledgeSources.length
+  // Count only sources visible to the workspace (deduplicated)
+  const wsSourceIds = new Set(rows.flatMap((row) => row.knowledge.map((k) => k.id)))
+  const sourceCount = wsSourceIds.size
 
   return (
     <section className="mt-4 space-y-4">
@@ -307,7 +319,7 @@ function AiConfigCard({ row }) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="text-base font-bold text-[var(--color-ink)]">{page.name}</h3>
-          <p className="mt-1 text-xs font-semibold text-[var(--color-muted)]">{page.id}</p>
+          <p className="mt-1 text-xs font-semibold text-[var(--color-muted)]">{page.id}{page.workspaceId ? ` · ${page.workspaceId}` : ''}</p>
         </div>
         <StatusPill tone={warnings.length ? 'warn' : 'ready'} label={warnings.length ? 'ต้องเช็ก' : 'พร้อม'} />
       </div>

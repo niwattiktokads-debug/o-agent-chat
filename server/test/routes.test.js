@@ -8,6 +8,7 @@ import { mountRoutes } from '../src/routes.js'
 import { mountWebhook } from '../src/webhook.js'
 import { createState } from '../src/state.js'
 import { createOmniService } from '../src/omni/service.js'
+import { createOmniSeed } from '../src/omni/seed.js'
 import { createSecurityMiddleware } from '../src/security.js'
 
 const app = express()
@@ -1804,6 +1805,114 @@ test('POST /webhook/meta sends guarded fallback reply when AI helper fails after
     assert.equal(sent[0].recipientId, 'customer_anna_fallback')
     assert.match(sent[0].message, /เช็กสต็อก/)
     assert.equal(localEvents.at(-1).event, 'omni')
+  } finally {
+    localServer.close()
+  }
+})
+
+
+test('Post CF derives non-default workspace from profileKey mapping and respects workspace-specific disabled settings', async () => {
+  const localApp = express()
+  localApp.use(express.json())
+  // Create a custom seed with page_annalynn in ws_custom
+  const seed = createOmniSeed()
+  seed.workspaces.push({ id: 'ws_custom', name: 'Custom Workspace', slug: 'custom', plan: 'private_saas', status: 'active', ownerRef: 'boss', settings: {}, createdAt: '2026-06-01T00:00:00.000Z', updatedAt: '2026-06-01T00:00:00.000Z' })
+  const annaPage = seed.pages.find((p) => p.id === 'page_annalynn')
+  if (annaPage) annaPage.workspaceId = 'ws_custom'
+  const localOmni = createOmniService({ seed })
+
+  const calls = []
+  const fakeSocial = {
+    listPagePosts: async ({ pageProfile, limit }) => {
+      calls.push({ action: 'posts', pageProfile, limit })
+      return { ok: true, posts: [{ id: 'post_ws', message: 'CF test', commentCount: 1, createdTime: '2026-06-01T00:00:00.000Z' }] }
+    },
+    listPostComments: async ({ objectId, pageProfile, limit }) => {
+      calls.push({ action: 'comments', objectId, pageProfile, limit })
+      return {
+        ok: true,
+        comments: [
+          { id: 'comment_ws_1', message: 'CF BLACK-M x1', from: { id: 'fb_cust_ws', name: 'WS Customer' }, createdTime: '2026-06-01T00:01:00.000Z' },
+        ],
+      }
+    },
+  }
+  const fakeCommerce = {
+    searchProducts: async ({ keyword, sku }) => {
+      calls.push({ action: 'products', keyword, sku })
+      return { ok: true, products: [{ id: '999', sku: 'BLACK-M', name: 'Black Shirt M', sellPrice: 590, availableStock: 5 }] }
+    },
+  }
+  mountRoutes(localApp, { broadcast: () => {} }, createState(), { omni: localOmni, social: fakeSocial, commerce: fakeCommerce })
+  const localServer = localApp.listen(0)
+  try {
+    const localPort = localServer.address().port
+
+    // Post CF with anna_lynn should derive ws_custom workspace via loadPageRegistry mapping
+    const captureResponse = await fetch(`http://localhost:${localPort}/api/omni/social/posts/post_ws/capture`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ pageProfile: 'anna_lynn' }),
+    })
+    const captureBody = await captureResponse.json()
+    assert.equal(captureResponse.status, 200)
+    assert.equal(captureBody.ok, true)
+    // The route should have used ws_custom settings (not ws_oagent)
+    // Verify draft was created (settings allow it)
+    assert.equal(captureBody.summary.parsedCount, 1)
+    assert.equal(captureBody.summary.draftCount, 1)
+
+    // Now disable postCf for ws_custom workspace
+    localOmni.updateSettings({ workspaceId: 'ws_custom', settings: { postCf: { enabled: false } } })
+
+    // Post CF with anna_lynn should now be rejected because ws_custom has postCf disabled
+    const disabledResponse = await fetch(`http://localhost:${localPort}/api/omni/social/posts/post_ws/capture`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ pageProfile: 'anna_lynn' }),
+    })
+    assert.equal(disabledResponse.status, 409)
+    const disabledBody = await disabledResponse.json()
+    assert.equal(disabledBody.error, 'post_cf_disabled')
+  } finally {
+    localServer.close()
+  }
+})
+
+test('Live CF derives non-default workspace from profileKey mapping and respects workspace-specific disabled settings', async () => {
+  const localApp = express()
+  localApp.use(express.json())
+  // Create a custom seed with page_annalynn in ws_custom
+  const seed = createOmniSeed()
+  seed.workspaces.push({ id: 'ws_custom', name: 'Custom Workspace', slug: 'custom', plan: 'private_saas', status: 'active', ownerRef: 'boss', settings: {}, createdAt: '2026-06-01T00:00:00.000Z', updatedAt: '2026-06-01T00:00:00.000Z' })
+  const annaPage = seed.pages.find((p) => p.id === 'page_annalynn')
+  if (annaPage) annaPage.workspaceId = 'ws_custom'
+  const localOmni = createOmniService({ seed })
+
+  const fakeSocial = {
+    listLiveCommentSources: async ({ pageProfile, limit }) => {
+      return { ok: true, mode: 'fallback_live_post_comment_capture', posts: [] }
+    },
+  }
+  mountRoutes(localApp, { broadcast: () => {} }, createState(), { omni: localOmni, social: fakeSocial, commerce: { searchProducts: async () => ({ ok: true, products: [] }) } })
+  const localServer = localApp.listen(0)
+  try {
+    const localPort = localServer.address().port
+
+    // Live CF with anna_lynn should work (settings allow it)
+    const liveResponse = await fetch(`http://localhost:${localPort}/api/omni/social/live?pageProfile=anna_lynn`)
+    assert.equal(liveResponse.status, 200)
+    const liveBody = await liveResponse.json()
+    assert.equal(liveBody.ok, true)
+
+    // Disable liveCf for ws_custom workspace
+    localOmni.updateSettings({ workspaceId: 'ws_custom', settings: { liveCf: { enabled: false } } })
+
+    // Live CF with anna_lynn should now be rejected
+    const disabledResponse = await fetch(`http://localhost:${localPort}/api/omni/social/live?pageProfile=anna_lynn`)
+    assert.equal(disabledResponse.status, 409)
+    const disabledBody = await disabledResponse.json()
+    assert.equal(disabledBody.error, 'live_cf_disabled')
   } finally {
     localServer.close()
   }

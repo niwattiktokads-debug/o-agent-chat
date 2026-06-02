@@ -1,10 +1,23 @@
 -- O-Agent Omnichannel Inbox durable memory schema.
 -- SQLite-first DDL with table shapes kept portable for a later Postgres/Supabase migration.
 
+CREATE TABLE IF NOT EXISTS workspaces (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  slug TEXT NOT NULL,
+  plan TEXT NOT NULL DEFAULT 'private_saas',
+  status TEXT NOT NULL CHECK (status IN ('active', 'suspended', 'archived')),
+  owner_ref TEXT,
+  settings_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS pages (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   status TEXT NOT NULL CHECK (status IN ('active', 'paused', 'archived')),
+  workspace_id TEXT REFERENCES workspaces(id),
   brand_group_id TEXT,
   policy_set_id TEXT,
   agent_profile_id TEXT,
@@ -242,6 +255,7 @@ CREATE TABLE IF NOT EXISTS connector_health (
 
 CREATE TABLE IF NOT EXISTS knowledge_sources (
   id TEXT PRIMARY KEY,
+  workspace_id TEXT REFERENCES workspaces(id),
   title TEXT NOT NULL,
   type TEXT NOT NULL CHECK (type IN ('manual', 'website', 'file', 'faq', 'order_policy')),
   scope TEXT NOT NULL DEFAULT 'all_pages',

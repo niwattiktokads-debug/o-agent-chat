@@ -64,7 +64,7 @@ function draftForIntent(intent, originContext = null) {
   return 'รับทราบค่ะ เดี๋ยวช่วยดูรายละเอียดให้ครบก่อนนะคะ ถ้ามีรุ่น สี ไซซ์ หรือเลขออเดอร์ที่เกี่ยวข้อง ส่งเพิ่มมาได้เลยค่ะ'
 }
 
-function relevantKnowledge(intent, snapshot) {
+function relevantKnowledge(intent, snapshot, { workspaceId } = {}) {
   const termsByIntent = {
     stock: ['สินค้า', 'stock', 'product', 'faq'],
     price: ['ราคา', 'โปร', 'price', 'product'],
@@ -75,6 +75,13 @@ function relevantKnowledge(intent, snapshot) {
   const terms = termsByIntent[intent] || termsByIntent.faq
   return (snapshot.knowledgeSources || [])
     .filter((source) => source.status === 'ready')
+    .filter((source) => {
+      // Workspace boundary: sources without workspaceId default to ws_oagent
+      // When workspaceId is given, strict match — no cross-workspace leakage
+      if (!workspaceId) return true
+      const sourceWs = source.workspaceId || 'ws_oagent'
+      return sourceWs === workspaceId
+    })
     .filter((source) => {
       const haystack = [source.title, source.content, ...(source.tags || [])].join(' ').toLowerCase()
       return terms.some((term) => haystack.includes(term.toLowerCase()))
@@ -157,7 +164,9 @@ function originContextText(origin) {
 function buildCustomerReplyPrompt({ thread, snapshot, policy, baseDecision }) {
   const agent = agentForThread(thread, snapshot)
   const customer = customerForThread(thread, snapshot)
-  const knowledge = relevantKnowledge(baseDecision.intent, snapshot)
+  const threadPage = (snapshot.pages || []).find((p) => p.id === thread.pageId)
+  const workspaceId = threadPage?.workspaceId || undefined
+  const knowledge = relevantKnowledge(baseDecision.intent, snapshot, { workspaceId })
   const recentMessages = recentMessagesForThread(thread, snapshot)
   const origin = compactOriginContext(thread, recentMessages)
   const messages = recentMessages
@@ -317,6 +326,8 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
   async function draftWithOpenAI({ thread, snapshot, policy, baseDecision }) {
     const apiKey = process.env.OPENAI_API_KEY
     if (!apiKey) return { ...baseDecision, ok: false, error: 'openai_api_key_missing' }
+    const _oaiPage = (snapshot.pages || []).find((p) => p.id === thread.pageId)
+    const _oaiWsId = _oaiPage?.workspaceId || undefined
     const prompt = buildCustomerReplyPrompt({ thread, snapshot, policy, baseDecision })
     const url = `${OPENAI_API_BASE}/chat/completions`
     const response = await fetchImpl(url, {
@@ -360,7 +371,7 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
     const parsed = parseAiJson(text)
     const trustedContext = [
       JSON.stringify(baseDecision.originContext || {}),
-      ...relevantKnowledge(baseDecision.intent, snapshot).map((source) => source.content || ''),
+      ...relevantKnowledge(baseDecision.intent, snapshot, { workspaceId: _oaiWsId }).map((source) => source.content || ''),
     ].join('\n')
     const draftText = guardedDraftText(parsed?.draftText || text, baseDecision.draftText, { trustedContext })
     return {
@@ -376,6 +387,8 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
   async function draftWithGemini({ thread, snapshot, policy, baseDecision }) {
     const apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY
     if (!apiKey) return { ...baseDecision, ok: false, error: 'gemini_api_key_missing' }
+    const _gemPage = (snapshot.pages || []).find((p) => p.id === thread.pageId)
+    const _gemWsId = _gemPage?.workspaceId || undefined
 
     const prompt = buildCustomerReplyPrompt({ thread, snapshot, policy, baseDecision })
     const url = `${GEMINI_API_BASE}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`
@@ -428,7 +441,7 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
     const finishedCleanly = !candidate.finishReason || candidate.finishReason === 'STOP'
     const trustedContext = [
       JSON.stringify(baseDecision.originContext || {}),
-      ...relevantKnowledge(baseDecision.intent, snapshot).map((source) => source.content || ''),
+      ...relevantKnowledge(baseDecision.intent, snapshot, { workspaceId: _gemWsId }).map((source) => source.content || ''),
     ].join('\n')
     const draftText = finishedCleanly
       ? guardedDraftText(parsed?.draftText || text, baseDecision.draftText, { trustedContext })
@@ -453,7 +466,10 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
       const intent = classifyIntent(inbound?.text || '')
       const risk = riskForIntent(intent, policy)
       const allowed = AUTO_SEND_ALL || (Boolean(policy?.autoSend?.[intent]) && risk === 'low')
-      const knowledge = relevantKnowledge(intent, snapshot)
+      // Derive workspaceId from thread's page for tenant-scoped knowledge
+      const threadPage = (snapshot.pages || []).find((p) => p.id === thread.pageId)
+      const workspaceId = threadPage?.workspaceId || undefined
+      const knowledge = relevantKnowledge(intent, snapshot, { workspaceId })
       const originContext = compactOriginContext(thread, recentMessagesForThread(thread, snapshot))
 
       const baseDecision = {

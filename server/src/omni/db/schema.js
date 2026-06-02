@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 const schemaPath = fileURLToPath(new URL('./schema.sql', import.meta.url))
 
 export const REQUIRED_OMNI_TABLES = [
+  'workspaces',
   'pages',
   'platform_accounts',
   'brand_groups',
@@ -42,5 +43,7 @@ export function getOmniSchemaSummary() {
     hasSourceRefs: /source_ref/.test(sql),
     hasChatRetention: /CREATE TABLE IF NOT EXISTS retention_policies/.test(sql) && /idx_messages_created/.test(sql),
     preservesCustomerContacts: /address\s+TEXT/.test(sql) && /contact_json/.test(sql),
+    hasWorkspaces: /CREATE TABLE IF NOT EXISTS workspaces/.test(sql),
+    hasWorkspacePageMapping: /workspace_id\s+TEXT/.test(sql),
   }
 }
