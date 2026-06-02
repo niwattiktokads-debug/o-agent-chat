@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import {
-  capturePostCf,
   fetchConnections,
   fetchLiveSources,
   fetchMessageVolumeReport,
   fetchSocialPosts,
+  searchZortProducts,
 } from '../../lib/omniApi.js'
 
 const FALLBACK_PAGE_PROFILES = [
@@ -53,10 +53,10 @@ export default function SocialOpsBoard({ mode, snapshot, onSnapshot, onOpenChat 
     return (
       <OpsShell
         title="โพสต์"
-        summary="เลือกเพจ, ดึงโพสต์จริงจาก Meta, จับคอมเมนต์ CF แล้วสร้าง order draft ใน DB"
+        summary="ตั้งค่าโพสต์ขายแบบ ZORT: เลือกร้าน, เลือกโพสต์ Facebook, ผูกสินค้า, ตั้งรหัส CF, จำนวน และติดตามข้อความกับคำสั่งซื้อ"
         onOpenChat={onOpenChat}
       >
-        <PostCaptureBoard snapshot={snapshot} onSnapshot={onSnapshot} />
+        <PostCaptureBoard snapshot={snapshot} />
       </OpsShell>
     )
   }
@@ -111,17 +111,59 @@ function PostCaptureBoard({ snapshot, onSnapshot }) {
     return resolveWorkspaceFromProfile(pageProfile, snapshot?.pages)
   }, [snapshot, pageProfile])
   const [posts, setPosts] = useState([])
+  const [selectedPostId, setSelectedPostId] = useState('')
   const [status, setStatus] = useState('')
   const [loading, setLoading] = useState(false)
-  const [capturingId, setCapturingId] = useState('')
+  const [sessionStatus, setSessionStatus] = useState('draft')
+  const [sessionName, setSessionName] = useState(() => `Post ${new Date().toISOString().slice(0, 10)}-${String(new Date().getHours()).padStart(2, '0')}${String(new Date().getMinutes()).padStart(2, '0')}`)
+  const [productQuery, setProductQuery] = useState('')
+  const [productFilter, setProductFilter] = useState('all')
+  const [productResults, setProductResults] = useState([])
+  const [searchStatus, setSearchStatus] = useState('')
+  const [configuredProducts, setConfiguredProducts] = useState([])
+  const [orderQuery, setOrderQuery] = useState('')
+
+  const selectedPost = posts.find((post) => post.id === selectedPostId) || null
+  const sessionOrders = (snapshot?.orders || []).filter((order) => {
+    const text = [
+      order.id,
+      order.status,
+      order.platform,
+      order.customerName,
+      order.customerId,
+      ...(order.items || []).map((item) => `${item.sku || ''} ${item.name || ''}`),
+    ].join(' ').toLowerCase()
+    return !orderQuery.trim() || text.includes(orderQuery.trim().toLowerCase())
+  })
+  const messageRows = useMemo(() => {
+    if (!selectedPost && configuredProducts.length === 0) return []
+    return [
+      selectedPost ? {
+        id: 'selected-post',
+        type: 'system',
+        title: 'เชื่อมโพสต์แล้ว',
+        text: selectedPost.message || selectedPost.story || selectedPost.id,
+        meta: formatDateTime(selectedPost.createdTime || selectedPost.created_time),
+      } : null,
+      ...configuredProducts.slice(0, 4).map((item) => ({
+        id: item.localId,
+        type: 'rule',
+        title: `CF rule · ${item.cfCode || item.sku}`,
+        text: `${item.name} · ${formatMoney(item.salePrice)} x ${item.quantity}`,
+        meta: item.gift ? `ของแถม: ${item.gift}` : 'พร้อมรับคอมเมนต์หลังเปิดการขาย',
+      })),
+    ].filter(Boolean)
+  }, [selectedPost, configuredProducts])
 
   async function loadPosts(nextPageProfile = pageProfile) {
     setLoading(true)
     setStatus('กำลังดึงโพสต์จาก Meta')
     try {
       const result = await fetchSocialPosts(nextPageProfile, 10)
-      setPosts(result.posts || [])
-      setStatus(`ดึงโพสต์แล้ว ${(result.posts || []).length} รายการ`)
+      const nextPosts = result.posts || []
+      setPosts(nextPosts)
+      setSelectedPostId((current) => (nextPosts.some((post) => post.id === current) ? current : ''))
+      setStatus(`ดึงโพสต์แล้ว ${nextPosts.length} รายการ · เลือกโพสต์ก่อนเปิดการขาย`)
     } catch (error) {
       setStatus(error.message)
     } finally {
@@ -133,93 +175,335 @@ function PostCaptureBoard({ snapshot, onSnapshot }) {
     loadPosts(pageProfile)
   }, [pageProfile])
 
-  async function capture(postId) {
-    setCapturingId(postId)
-    setStatus('กำลังดึงคอมเมนต์และ parse CF')
+  async function searchProducts() {
+    if (!productQuery.trim()) {
+      setSearchStatus('ใส่ SKU หรือชื่อสินค้าก่อน')
+      return
+    }
+    setSearchStatus('กำลังค้นสินค้า ZORT')
     try {
-      const result = await capturePostCf(postId, { pageProfile, limit: 50, workspaceId: derivedWorkspaceId })
-      if (result.snapshot) onSnapshot?.(result.snapshot)
-      const reviewCount = result.summary?.reviewCount || 0
-      setStatus(`สร้าง draft แล้ว ${result.summary?.draftCount || 0} รายการ${reviewCount ? ` · รอ review ${reviewCount} รายการ` : ''}`)
+      const result = await searchZortProducts(productQuery.trim(), 8)
+      setProductResults(result.products || [])
+      setSearchStatus(`พบสินค้า ${(result.products || []).length} รายการ`)
     } catch (error) {
-      setStatus(error.message)
-    } finally {
-      setCapturingId('')
+      setSearchStatus(error.message)
     }
   }
 
+  function addProduct(product) {
+    const sku = product.sku || product.id
+    if (configuredProducts.some((item) => item.sku === sku)) {
+      setSearchStatus('สินค้านี้อยู่ในโพสต์แล้ว')
+      return
+    }
+    const unitPrice = Number(product.sellPrice ?? product.unitPrice ?? 0)
+    setConfiguredProducts((current) => [
+      ...current,
+      {
+        localId: `${sku}:${Date.now()}`,
+        id: product.id,
+        sku,
+        name: product.name || sku,
+        cfCode: sku,
+        salePrice: unitPrice,
+        quantity: 1,
+        remaining: Number(product.availableStock ?? product.stock ?? 0),
+        gift: '',
+        zortProduct: product,
+      },
+    ])
+    setSearchStatus(`เพิ่ม ${sku} เข้าโพสต์ขายแล้ว`)
+  }
+
+  function updateProduct(localId, patch) {
+    setConfiguredProducts((current) => current.map((item) => (item.localId === localId ? { ...item, ...patch } : item)))
+  }
+
+  function removeProduct(localId) {
+    setConfiguredProducts((current) => current.filter((item) => item.localId !== localId))
+  }
+
+  function changeSessionStatus(nextStatus) {
+    setSessionStatus(nextStatus)
+    const labels = {
+      draft: 'ยังไม่เชื่อมต่อ',
+      open: 'เปิดการขาย',
+      paused: 'หยุดรับคำสั่งซื้อ',
+      ended: 'จบโพสต์',
+    }
+    setStatus(`${labels[nextStatus]} · บันทึกเป็น session state ในหน้านี้ ยังไม่เปิด live automation`)
+  }
+
+  const canOpenSale = Boolean(selectedPost && configuredProducts.length)
+  const statusLabel = {
+    draft: 'ยังไม่เชื่อมต่อ',
+    open: 'เปิดการขาย',
+    paused: 'หยุดรับคำสั่งซื้อ',
+    ended: 'จบโพสต์',
+  }[sessionStatus]
+  const statusTone = {
+    draft: 'border-[var(--color-rule)] bg-[var(--color-panel-2)] text-[var(--color-muted)]',
+    open: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+    paused: 'border-amber-200 bg-amber-50 text-amber-700',
+    ended: 'border-slate-200 bg-slate-100 text-slate-700',
+  }[sessionStatus]
+
   return (
-    <section className="mt-4 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)]">
-      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-[var(--color-rule)] px-4 py-3">
-        <div>
-          <h2 className="text-sm font-bold text-[var(--color-ink)]">
-            Post CF capture
-            {derivedWorkspaceId ? <span className="ml-2 inline-flex items-center rounded-[var(--radius-md)] border border-[var(--color-accent)] bg-[var(--color-accent-subtle,var(--color-panel-2))] px-2 py-0.5 text-[11px] font-bold text-[var(--color-accent)]">{derivedWorkspaceId}</span> : null}
-          </h2>
-          <p className="mt-1 text-xs text-[var(--color-muted)]">Read-only ZORT lookup, draft-only order lane</p>
-        </div>
-        <div className="flex flex-wrap items-end gap-2">
-          <label className="grid gap-1 text-xs font-semibold text-[var(--color-muted)]">
-            เพจ
-            <select
-              value={pageProfile}
-              onChange={(event) => setPageProfile(event.target.value)}
-              className="min-w-44 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] px-3 py-2 text-sm text-[var(--color-ink)]"
-            >
-              {pageProfiles.map((page) => <option key={page.id} value={page.id}>{page.label}</option>)}
-            </select>
-          </label>
-          <button
-            type="button"
-            onClick={() => loadPosts()}
-            disabled={loading}
-            className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)] disabled:opacity-50"
-          >
-            ดึงโพสต์
-          </button>
-        </div>
-      </div>
-      <StatusLine value={status} />
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[760px] text-left text-sm">
-          <thead className="border-b border-[var(--color-rule)] bg-[var(--color-panel-2)] text-xs text-[var(--color-muted)]">
-            <tr>
-              <th className="px-4 py-3 font-semibold">โพสต์</th>
-              <th className="px-4 py-3 font-semibold">คอมเมนต์</th>
-              <th className="px-4 py-3 font-semibold">เวลา</th>
-              <th className="px-4 py-3 font-semibold">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {posts.length === 0 ? (
-              <tr>
-                <td colSpan={4} className="px-4 py-6 text-center text-xs text-[var(--color-muted)]">ยังไม่มีโพสต์จากเพจนี้</td>
-              </tr>
-            ) : posts.map((post) => (
-              <tr key={post.id} className="border-b border-[var(--color-rule)] last:border-b-0">
-                <td className="max-w-xl px-4 py-3">
-                  <div className="font-semibold text-[var(--color-ink)]">{post.message || post.story || post.id}</div>
-                  <div className="mt-1 text-[11px] text-[var(--color-muted)]">{post.id}</div>
-                </td>
-                <td className="px-4 py-3 tabular-nums text-[var(--color-ink-2)]">{post.commentCount ?? post.comments?.summary?.total_count ?? 0}</td>
-                <td className="px-4 py-3 text-[var(--color-ink-2)]">{formatDateTime(post.createdTime || post.created_time)}</td>
-                <td className="px-4 py-3">
-                  <button
-                    type="button"
-                    aria-label={`สร้าง draft จาก CF ${post.id}`}
-                    onClick={() => capture(post.id)}
-                    disabled={capturingId === post.id}
-                    className="rounded-[var(--radius-md)] bg-[var(--color-accent)] px-3 py-2 text-xs font-semibold text-[var(--color-accent-ink)] disabled:opacity-50"
+    <section className="mt-4 min-h-[calc(100dvh-220px)] overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)]">
+      <div className="grid min-h-[calc(100dvh-220px)] lg:grid-cols-[minmax(360px,1.15fr)_minmax(280px,0.62fr)_minmax(260px,0.52fr)]">
+        <div className="min-h-0 overflow-y-auto border-b border-[var(--color-rule)] lg:border-b-0 lg:border-r">
+          <div className="sticky top-0 z-10 border-b border-[var(--color-rule)] bg-[var(--color-panel)] px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-sm font-bold text-[var(--color-ink)]">
+                ตั้งค่าโพสต์ขาย
+                {derivedWorkspaceId ? <span className="ml-2 inline-flex items-center rounded-[var(--radius-md)] border border-[var(--color-accent)] bg-[var(--color-accent-subtle,var(--color-panel-2))] px-2 py-0.5 text-[11px] font-bold text-[var(--color-accent)]">{derivedWorkspaceId}</span> : null}
+              </h2>
+              <span className={`rounded-[var(--radius-md)] border px-2 py-1 text-xs font-bold ${statusTone}`}>{statusLabel}</span>
+            </div>
+            <StatusLine value={status} />
+          </div>
+
+          <div className="grid gap-4 p-4">
+            <div className="grid gap-3">
+              <label className="grid gap-1 text-xs font-semibold text-[var(--color-muted)]">
+                ร้าน / เพจ
+                <select
+                  value={pageProfile}
+                  onChange={(event) => {
+                    setPageProfile(event.target.value)
+                    setSessionStatus('draft')
+                  }}
+                  className="h-10 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] px-3 text-sm text-[var(--color-ink)]"
+                >
+                  {pageProfiles.map((page) => <option key={page.id} value={page.id}>{page.label}</option>)}
+                </select>
+              </label>
+              <label className="grid gap-1 text-xs font-semibold text-[var(--color-muted)]">
+                ชื่อ
+                <input
+                  value={sessionName}
+                  onChange={(event) => setSessionName(event.target.value)}
+                  className="h-10 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] px-3 text-sm text-[var(--color-ink)]"
+                />
+              </label>
+            </div>
+
+            <div className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-paper)] p-3">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-xs font-bold text-[var(--color-ink)]">เลือกโพสต์ที่ต้องการ</h3>
+                <button
+                  type="button"
+                  onClick={() => loadPosts()}
+                  disabled={loading}
+                  className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-2.5 py-1.5 text-xs font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)] disabled:opacity-50"
+                >
+                  {loading ? 'กำลังโหลด' : 'รีเฟรช'}
+                </button>
+              </div>
+              <div className="mt-3 grid max-h-48 gap-2 overflow-y-auto">
+                {posts.length === 0 ? (
+                  <div className="rounded-[var(--radius-md)] border border-dashed border-[var(--color-rule)] px-3 py-5 text-center text-xs text-[var(--color-muted)]">ยังไม่มีโพสต์จากเพจนี้</div>
+                ) : posts.map((post) => {
+                  const active = post.id === selectedPostId
+                  return (
+                    <button
+                      key={post.id}
+                      type="button"
+                      onClick={() => setSelectedPostId(post.id)}
+                      className={`rounded-[var(--radius-md)] border px-3 py-2 text-left text-xs transition ${active ? 'border-[var(--color-accent)] bg-[var(--color-accent-soft)] text-[var(--color-ink)]' : 'border-[var(--color-rule)] bg-[var(--color-panel)] text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)]'}`}
+                    >
+                      <span className="block truncate font-bold">{post.message || post.story || post.id}</span>
+                      <span className="mt-1 block text-[11px] text-[var(--color-muted)]">{post.id} · {(post.commentCount ?? post.comments?.summary?.total_count ?? 0).toLocaleString('th-TH')} comments · {formatDateTime(post.createdTime || post.created_time)}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div className="grid gap-3 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-paper)] p-3">
+              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(132px,160px)]">
+                <label className="grid gap-1 text-xs font-semibold text-[var(--color-muted)]">
+                  ค้นหาสินค้า
+                  <input
+                    value={productQuery}
+                    onChange={(event) => setProductQuery(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') searchProducts()
+                    }}
+                    className="h-10 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] px-3 text-sm text-[var(--color-ink)]"
+                    placeholder="SKU หรือชื่อสินค้า"
+                  />
+                </label>
+                <label className="grid gap-1 text-xs font-semibold text-[var(--color-muted)]">
+                  ตัวกรอง
+                  <select
+                    value={productFilter}
+                    onChange={(event) => setProductFilter(event.target.value)}
+                    className="h-10 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] px-3 text-sm text-[var(--color-ink)]"
                   >
-                    จับ CF
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                    <option value="all">สินค้าทั้งหมด</option>
+                    <option value="in_stock">มีสต็อก</option>
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  onClick={searchProducts}
+                  className="h-10 rounded-[var(--radius-md)] bg-[var(--color-accent)] px-3 text-sm font-semibold text-[var(--color-accent-ink)] sm:col-span-2"
+                >
+                  เลือกสินค้า
+                </button>
+              </div>
+              <StatusLine value={searchStatus} />
+              {productResults.length ? (
+                <div className="grid max-h-40 gap-2 overflow-y-auto">
+                  {productResults
+                    .filter((product) => productFilter !== 'in_stock' || Number(product.availableStock ?? product.stock ?? 0) > 0)
+                    .map((product) => (
+                      <button
+                        key={product.id || product.sku}
+                        type="button"
+                        onClick={() => addProduct(product)}
+                        className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-left text-xs text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)]"
+                      >
+                        <span className="block font-bold text-[var(--color-ink)]">{product.sku || product.id} · {product.name}</span>
+                        <span className="mt-1 block text-[11px] text-[var(--color-muted)]">ราคา {formatMoney(product.sellPrice ?? product.unitPrice)} · คงเหลือ {Number(product.availableStock ?? product.stock ?? 0).toLocaleString('th-TH')}</span>
+                      </button>
+                    ))}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-paper)] p-3">
+              <h3 className="text-xs font-bold text-[var(--color-ink)]">สินค้าที่ต้องการขาย</h3>
+              {configuredProducts.length === 0 ? (
+                <div className="mt-3 rounded-[var(--radius-md)] border border-dashed border-[var(--color-rule)] px-3 py-8 text-center text-xs text-[var(--color-muted)]">เลือกสินค้าเพื่อกำหนดรหัส CF ราคา จำนวน และของแถม</div>
+              ) : (
+                <div className="mt-3 grid gap-3">
+                  {configuredProducts.map((item) => (
+                    <div key={item.localId} className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-bold text-[var(--color-ink)]">{item.sku} · {item.name}</div>
+                          <div className="mt-1 text-[11px] text-[var(--color-muted)]">ZORT product {item.id || '-'}</div>
+                        </div>
+                        <button type="button" onClick={() => removeProduct(item.localId)} className="rounded-[var(--radius-md)] border border-[var(--color-rule)] px-2 py-1 text-xs font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)]">ลบ</button>
+                      </div>
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                        <PostProductInput label="รหัส CF" value={item.cfCode} onChange={(value) => updateProduct(item.localId, { cfCode: value })} />
+                        <PostProductInput label="ราคา" type="number" value={item.salePrice} onChange={(value) => updateProduct(item.localId, { salePrice: Number(value || 0) })} />
+                        <PostProductInput label="จำนวนขาย" type="number" value={item.quantity} onChange={(value) => updateProduct(item.localId, { quantity: Math.max(1, Number(value || 1)) })} />
+                        <PostProductInput label="คงเหลือ" type="number" value={item.remaining} onChange={(value) => updateProduct(item.localId, { remaining: Math.max(0, Number(value || 0)) })} />
+                        <label className="grid gap-1 text-[11px] font-semibold text-[var(--color-muted)] sm:col-span-2">
+                          ของแถม
+                          <input
+                            value={item.gift}
+                            onChange={(event) => updateProduct(item.localId, { gift: event.target.value })}
+                            className="h-9 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] px-2 text-xs text-[var(--color-ink)]"
+                            placeholder="ไม่มี"
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => changeSessionStatus('open')}
+                disabled={!canOpenSale}
+                className="rounded-[var(--radius-md)] bg-[var(--color-accent)] px-3 py-2 text-sm font-semibold text-[var(--color-accent-ink)] disabled:opacity-45"
+              >
+                เปิดการขาย
+              </button>
+              <button type="button" onClick={() => changeSessionStatus('paused')} className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)]">หยุดรับคำสั่งซื้อ</button>
+              <button type="button" onClick={() => changeSessionStatus('ended')} className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)]">จบโพสต์</button>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex min-h-[420px] flex-col border-b border-[var(--color-rule)] bg-[var(--color-paper)] lg:border-b-0 lg:border-r">
+          <div className="border-b border-[var(--color-rule)] bg-[var(--color-panel)] px-4 py-3">
+            <h3 className="text-sm font-bold text-[var(--color-ink)]">ข้อความ</h3>
+            <div className="mt-1 text-xs text-[var(--color-muted)]">{selectedPost ? 'รอดึงคอมเมนต์/ข้อความจากโพสต์ที่เชื่อมต่อ' : 'เลือกโพสต์ก่อนเริ่ม session'}</div>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-4">
+            {messageRows.length === 0 ? (
+              <div className="grid h-full min-h-[260px] place-items-center text-center">
+                <div>
+                  <div className="text-sm font-bold text-[var(--color-ink)]">ยังไม่มีข้อความใน session</div>
+                  <div className="mt-2 max-w-xs text-xs leading-5 text-[var(--color-muted)]">หลังเลือกโพสต์และตั้งสินค้า ข้อความ/คอมเมนต์ที่เข้ากับรหัส CF จะมาอยู่ฝั่งนี้</div>
+                </div>
+              </div>
+            ) : (
+              <div className="grid gap-3">
+                {messageRows.map((row) => (
+                  <div key={row.id} className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm">
+                    <div className="font-bold text-[var(--color-ink)]">{row.title}</div>
+                    <div className="mt-1 text-xs leading-5 text-[var(--color-ink-2)]">{row.text}</div>
+                    <div className="mt-2 text-[11px] text-[var(--color-muted)]">{row.meta}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="border-t border-[var(--color-rule)] bg-[var(--color-panel)] p-3">
+            <input
+              disabled
+              className="h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] px-3 text-sm text-[var(--color-muted)]"
+              placeholder="พิมพ์ข้อความ..."
+            />
+          </div>
+        </div>
+
+        <div className="flex min-h-[420px] flex-col bg-[var(--color-panel)]">
+          <div className="border-b border-[var(--color-rule)] px-4 py-3">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-sm font-bold text-[var(--color-ink)]">คำสั่งซื้อ ({sessionOrders.length})</h3>
+              <input
+                value={orderQuery}
+                onChange={(event) => setOrderQuery(event.target.value)}
+                className="h-9 w-28 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] px-2 text-xs text-[var(--color-ink)]"
+                placeholder="ค้นหา"
+              />
+            </div>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-4">
+            {sessionOrders.length === 0 ? (
+              <div className="grid h-full min-h-[260px] place-items-center text-center text-xs text-[var(--color-muted)]">ยังไม่มีคำสั่งซื้อจากโพสต์นี้</div>
+            ) : (
+              <div className="grid gap-3">
+                {sessionOrders.map((order) => (
+                  <div key={order.id} className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-paper)] p-3 text-xs text-[var(--color-ink-2)]">
+                    <div className="font-bold text-[var(--color-ink)]">{order.id}</div>
+                    <div className="mt-1">{order.platform || 'omni'} · {order.status}</div>
+                    <div className="mt-1">Total: {formatMoney(order.total ?? order.totalAmount)}</div>
+                    {(order.items || []).length ? <div className="mt-2 text-[11px] text-[var(--color-muted)]">{order.items.map((item) => item.sku || item.name).join(', ')}</div> : null}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="border-t border-[var(--color-rule)] px-4 py-3 text-[11px] font-semibold text-[var(--color-muted)]">Order creation stays draft/approval gated</div>
+        </div>
       </div>
     </section>
+  )
+}
+
+function PostProductInput({ label, value, onChange, type = 'text' }) {
+  return (
+    <label className="grid gap-1 text-[11px] font-semibold text-[var(--color-muted)]">
+      {label}
+      <input
+        type={type}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-9 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] px-2 text-xs text-[var(--color-ink)]"
+      />
+    </label>
   )
 }
 
@@ -434,6 +718,10 @@ function formatDateTime(value) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return String(value)
   return date.toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })
+}
+
+function formatMoney(value) {
+  return Number(value || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 function useMetaPageProfiles() {

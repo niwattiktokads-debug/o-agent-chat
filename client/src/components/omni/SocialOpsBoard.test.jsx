@@ -9,6 +9,7 @@ const apiMocks = {
   fetchLiveSources: vi.fn(),
   fetchMessageVolumeReport: vi.fn(),
   fetchSocialPosts: vi.fn(),
+  searchZortProducts: vi.fn(),
 }
 
 vi.mock('../../lib/omniApi.js', () => ({
@@ -17,6 +18,7 @@ vi.mock('../../lib/omniApi.js', () => ({
   fetchLiveSources: (...args) => apiMocks.fetchLiveSources(...args),
   fetchMessageVolumeReport: (...args) => apiMocks.fetchMessageVolumeReport(...args),
   fetchSocialPosts: (...args) => apiMocks.fetchSocialPosts(...args),
+  searchZortProducts: (...args) => apiMocks.searchZortProducts(...args),
 }))
 
 function makeSnapshot(pages = []) {
@@ -39,6 +41,7 @@ describe('SocialOpsBoard workspace derivation', () => {
     apiMocks.fetchLiveSources.mockReset()
     apiMocks.fetchSocialPosts.mockReset()
     apiMocks.fetchMessageVolumeReport.mockReset()
+    apiMocks.searchZortProducts.mockReset()
 
     apiMocks.fetchConnections.mockResolvedValue({
       ok: true,
@@ -65,7 +68,7 @@ describe('SocialOpsBoard workspace derivation', () => {
     })
   })
 
-  it('anna_lynn profile maps to page_annalynn and sends ws_custom workspaceId', async () => {
+  it('anna_lynn profile maps to page_annalynn and shows ws_custom workspaceId without capture', async () => {
     const snapshot = makeSnapshot([
       { id: 'page_mankynd', name: 'MAN KYND', workspaceId: 'ws_oagent' },
       { id: 'page_annalynn', name: 'Anna Lynn', workspaceId: 'ws_custom' },
@@ -77,25 +80,16 @@ describe('SocialOpsBoard workspace derivation', () => {
     await waitFor(() => expect(apiMocks.fetchSocialPosts).toHaveBeenCalled())
 
     // Change to anna_lynn profile
-    const select = screen.getByRole('combobox')
+    const select = screen.getByLabelText('ร้าน / เพจ')
     fireEvent.change(select, { target: { value: 'anna_lynn' } })
 
     // Wait for posts to reload with new profile
     await waitFor(() => expect(apiMocks.fetchSocialPosts).toHaveBeenCalledWith('anna_lynn', 10))
-
-    // Click capture button (aria-label includes post.id)
-    const captureButton = await screen.findByRole('button', { name: /สร้าง draft จาก CF/i })
-    fireEvent.click(captureButton)
-
-    await waitFor(() => {
-      expect(apiMocks.capturePostCf).toHaveBeenCalledWith(
-        'post_1',
-        expect.objectContaining({ pageProfile: 'anna_lynn', workspaceId: 'ws_custom' }),
-      )
-    })
+    expect(await screen.findByText('ws_custom')).toBeInTheDocument()
+    expect(apiMocks.capturePostCf).not.toHaveBeenCalled()
   })
 
-  it('unresolved custom profile does not send guessed ws_oagent', async () => {
+  it('unresolved custom profile does not show guessed ws_oagent or capture', async () => {
     // Snapshot has no page matching 'custom_new_page' profileKey
     const snapshot = makeSnapshot([
       { id: 'page_mankynd', name: 'MAN KYND', workspaceId: 'ws_oagent' },
@@ -115,21 +109,12 @@ describe('SocialOpsBoard workspace derivation', () => {
     await waitFor(() => expect(apiMocks.fetchSocialPosts).toHaveBeenCalled())
 
     // Change to custom_new_page profile (unresolved)
-    const select = screen.getByRole('combobox')
+    const select = screen.getByLabelText('ร้าน / เพจ')
     fireEvent.change(select, { target: { value: 'custom_new_page' } })
 
     await waitFor(() => expect(apiMocks.fetchSocialPosts).toHaveBeenCalledWith('custom_new_page', 10))
-
-    // Click capture button (aria-label includes post.id)
-    const captureButton = await screen.findByRole('button', { name: /สร้าง draft จาก CF/i })
-    fireEvent.click(captureButton)
-
-    await waitFor(() => {
-      expect(apiMocks.capturePostCf).toHaveBeenCalled()
-      const callArgs = apiMocks.capturePostCf.mock.calls[0]
-      // workspaceId should be undefined (not sent) — not guessed as ws_oagent
-      expect(callArgs[1].workspaceId).toBeUndefined()
-    })
+    await waitFor(() => expect(screen.queryByText('ws_oagent')).not.toBeInTheDocument())
+    expect(apiMocks.capturePostCf).not.toHaveBeenCalled()
   })
 
   it('Live CF with anna_lynn sends ws_custom workspaceId', async () => {

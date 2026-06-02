@@ -288,9 +288,20 @@ describe('OmniWorkbench', () => {
     fireEvent.click(screen.getByRole('button', { name: 'โพสต์' }))
 
     expect(await screen.findByRole('heading', { name: 'โพสต์' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'ตั้งค่าโพสต์ขาย' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'ข้อความ' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'คำสั่งซื้อ (1)' })).toBeInTheDocument()
     expect(await screen.findByText('เปิด CF BLACK-M')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'สร้าง draft จาก CF post_1' }))
-    expect(await screen.findByText('สร้าง draft แล้ว 1 รายการ')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /จับ CF/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /สร้าง draft จาก CF/ })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /เปิด CF BLACK-M/ }))
+    fireEvent.change(screen.getByLabelText('ค้นหาสินค้า'), { target: { value: 'BLACK-M' } })
+    fireEvent.click(screen.getByRole('button', { name: 'เลือกสินค้า' }))
+    fireEvent.click(await screen.findByRole('button', { name: /BLACK-M · Black Shirt M/ }))
+    expect(await screen.findByText('CF rule · BLACK-M')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'เปิดการขาย' }))
+    expect(await screen.findByText(/บันทึกเป็น session state/)).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'ไลฟ์' }))
     expect(await screen.findByRole('heading', { name: 'ไลฟ์สตรีม' })).toBeInTheDocument()
