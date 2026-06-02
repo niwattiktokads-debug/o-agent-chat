@@ -72,11 +72,21 @@ export function filterByWorkspace(items = [], workspaceId) {
 
 /**
  * Resolve workspaceId from a thread or page context.
+ * Supports both omniPageId (e.g. 'page_mankynd') and profileKey (e.g. 'man_kynd')
+ * by checking the page registry mapping.
  * Falls back to DEFAULT_WORKSPACE_ID for legacy calls without workspace data.
  */
-export function resolveWorkspaceId(snapshot, { threadId, pageId } = {}) {
+export function resolveWorkspaceId(snapshot, { threadId, pageId, pageProfiles } = {}) {
   if (pageId) {
-    const page = (snapshot.pages || []).find((p) => p.id === pageId)
+    // Try direct match on omniPageId
+    let page = (snapshot.pages || []).find((p) => p.id === pageId)
+    if (!page && pageProfiles) {
+      // Try treating pageId as a profileKey and mapping to omniPageId
+      const profile = pageProfiles[pageId]
+      if (profile?.omniPageId) {
+        page = (snapshot.pages || []).find((p) => p.id === profile.omniPageId)
+      }
+    }
     return page?.workspaceId || DEFAULT_WORKSPACE_ID
   }
   if (threadId) {

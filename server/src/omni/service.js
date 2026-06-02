@@ -653,7 +653,16 @@ export function createOmniService(options = createOmniSeed()) {
     },
     createOrderDraft(input = {}) {
       const threadId = String(input.threadId || '').trim()
-      const settings = threadId ? this.getSettingsForThread(threadId) : this.getSettings()
+      let settings
+      if (threadId) {
+        settings = this.getSettingsForThread(threadId)
+      } else if (input.workspaceId || input.pageId) {
+        // Derive workspace from pageId or use explicit workspaceId
+        const wsId = input.workspaceId || resolveWorkspaceId(currentData(), { pageId: input.pageId })
+        settings = this.getSettings({ workspaceId: wsId })
+      } else {
+        settings = this.getSettings()
+      }
       if (settings.orderDraft?.enabled === false) return { ok: false, error: 'order_draft_disabled' }
       const normalized = createOrderDraftRow(input, currentData())
       if (!normalized.ok) return normalized

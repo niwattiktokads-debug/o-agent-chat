@@ -13,6 +13,7 @@ import {
   backfillWorkspaceId,
   filterByWorkspace,
   buildWorkspaceSummary,
+  resolveWorkspaceId,
 } from '../src/omni/workspace.js'
 
 describe('Workspace Foundation — Backward Compatibility', () => {
@@ -252,5 +253,49 @@ describe('Workspace Foundation — SQLite Store Persistence', () => {
     assert.equal(workspace.plan, 'enterprise')
     assert.deepEqual(workspace.settings, { aiProvider: 'gemini' })
     reopened.close()
+  })
+})
+
+describe('Workspace Foundation — resolveWorkspaceId with pageProfiles', () => {
+  test('resolves workspace from omniPageId directly', () => {
+    const snapshot = {
+      pages: [
+        { id: 'page_mankynd', workspaceId: 'ws_oagent' },
+        { id: 'page_custom', workspaceId: 'ws_custom' },
+      ],
+      threads: [],
+    }
+    assert.equal(resolveWorkspaceId(snapshot, { pageId: 'page_mankynd' }), 'ws_oagent')
+    assert.equal(resolveWorkspaceId(snapshot, { pageId: 'page_custom' }), 'ws_custom')
+  })
+
+  test('resolves workspace from profileKey via pageProfiles mapping', () => {
+    const snapshot = {
+      pages: [
+        { id: 'page_mankynd', workspaceId: 'ws_oagent' },
+        { id: 'page_annalynn', workspaceId: 'ws_custom' },
+      ],
+      threads: [],
+    }
+    const pageProfiles = {
+      man_kynd: { profileKey: 'man_kynd', omniPageId: 'page_mankynd' },
+      anna_lynn: { profileKey: 'anna_lynn', omniPageId: 'page_annalynn' },
+    }
+    assert.equal(resolveWorkspaceId(snapshot, { pageId: 'man_kynd', pageProfiles }), 'ws_oagent')
+    assert.equal(resolveWorkspaceId(snapshot, { pageId: 'anna_lynn', pageProfiles }), 'ws_custom')
+  })
+
+  test('falls back to DEFAULT_WORKSPACE_ID when profileKey not in mapping', () => {
+    const snapshot = { pages: [], threads: [] }
+    const pageProfiles = { man_kynd: { profileKey: 'man_kynd', omniPageId: 'page_mankynd' } }
+    assert.equal(resolveWorkspaceId(snapshot, { pageId: 'unknown_profile', pageProfiles }), DEFAULT_WORKSPACE_ID)
+  })
+
+  test('resolves workspace from threadId', () => {
+    const snapshot = {
+      pages: [{ id: 'page_mankynd', workspaceId: 'ws_oagent' }],
+      threads: [{ id: 'thread_1', pageId: 'page_mankynd' }],
+    }
+    assert.equal(resolveWorkspaceId(snapshot, { threadId: 'thread_1' }), 'ws_oagent')
   })
 })

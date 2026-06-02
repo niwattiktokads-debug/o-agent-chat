@@ -179,7 +179,18 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat, onOpenC
     setError('')
     setNotice('')
     try {
-      const payload = { ...form, workspaceId: form.workspaceId || propWorkspaceId }
+      // Derive workspaceId from selected page scope if form.scope is a page id
+      let derivedWsId = form.workspaceId || propWorkspaceId
+      if (form.scope && form.scope !== 'all_pages' && !derivedWsId) {
+        const scopePage = pages.find((p) => p.id === form.scope)
+        if (scopePage?.workspaceId) derivedWsId = scopePage.workspaceId
+      }
+      // Even for all_pages scope, derive from propWorkspaceId or page context
+      if (!derivedWsId && form.scope && form.scope !== 'all_pages') {
+        const scopePage = pages.find((p) => p.id === form.scope)
+        derivedWsId = scopePage?.workspaceId || ''
+      }
+      const payload = { ...form, workspaceId: derivedWsId || 'ws_oagent' }
       const saved = await saveKnowledgeSource(payload)
       await loadSources(query, typeFilter)
       setForm(EMPTY_FORM)

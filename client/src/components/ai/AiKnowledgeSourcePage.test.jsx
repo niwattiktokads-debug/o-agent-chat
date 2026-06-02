@@ -80,6 +80,41 @@ describe('AiKnowledgeSourcePage', () => {
     })
   })
 
+  it('saves a page-scoped source with workspaceId derived from selected page', async () => {
+    apiMocks.fetchKnowledgeSources.mockResolvedValue(sources)
+    apiMocks.fetchOmniSnapshot.mockResolvedValue({
+      pages: [
+        { id: 'page_annalynn', name: 'Anna Lynn', workspaceId: 'ws_oagent' },
+        { id: 'page_custom', name: 'Custom Page', workspaceId: 'ws_custom' },
+      ],
+    })
+    apiMocks.saveKnowledgeSource.mockResolvedValue({
+      ok: true,
+      source: { id: 'ks_scoped', title: 'Scoped FAQ', workspaceId: 'ws_custom' },
+    })
+
+    render(<AiKnowledgeSourcePage />)
+
+    await screen.findByText('Return and exchange policy')
+    fireEvent.click(screen.getByRole('button', { name: 'Add source' }))
+    fireEvent.change(screen.getByPlaceholderText('Knowledge title'), { target: { value: 'Scoped FAQ' } })
+    fireEvent.change(screen.getByPlaceholderText(/Paste trusted answer/), { target: { value: 'Page-scoped content' } })
+
+    // Select page_custom scope from the scope dropdown (find by option text)
+    const scopeSelects = screen.getAllByRole('combobox')
+    const scopeSelect = scopeSelects.find((el) => el.querySelector('option[value="all_pages"]'))
+    fireEvent.change(scopeSelect, { target: { value: 'page_custom' } })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save source' }))
+
+    await waitFor(() => {
+      expect(saveKnowledgeSource).toHaveBeenCalledWith(expect.objectContaining({
+        title: 'Scoped FAQ',
+        workspaceId: 'ws_custom',
+      }))
+    })
+  })
+
   it('deletes a knowledge source from the list', async () => {
     apiMocks.fetchKnowledgeSources
       .mockResolvedValueOnce(sources)

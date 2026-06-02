@@ -22,7 +22,7 @@ export default function SocialOpsBoard({ mode, snapshot, onSnapshot, onOpenChat 
         summary="เลือกเพจ, ดึงโพสต์จริงจาก Meta, จับคอมเมนต์ CF แล้วสร้าง order draft ใน DB"
         onOpenChat={onOpenChat}
       >
-        <PostCaptureBoard onSnapshot={onSnapshot} />
+        <PostCaptureBoard snapshot={snapshot} onSnapshot={onSnapshot} />
       </OpsShell>
     )
   }
@@ -34,7 +34,7 @@ export default function SocialOpsBoard({ mode, snapshot, onSnapshot, onOpenChat 
         summary="ตรวจ live/comment stream ก่อน ถ้า Meta scope ยังไม่พร้อมจะใช้ live-post comment capture เป็น fallback"
         onOpenChat={onOpenChat}
       >
-        <LiveCaptureBoard />
+        <LiveCaptureBoard snapshot={snapshot} />
       </OpsShell>
     )
   }
@@ -67,9 +67,15 @@ function OpsShell({ title, summary, onOpenChat, children }) {
   )
 }
 
-function PostCaptureBoard({ onSnapshot }) {
+function PostCaptureBoard({ snapshot, onSnapshot }) {
   const [pageProfile, setPageProfile] = useState('man_kynd')
   const pageProfiles = useMetaPageProfiles()
+
+  // Derive workspaceId from snapshot pages matching selected pageProfile
+  const derivedWorkspaceId = useMemo(() => {
+    const page = (snapshot?.pages || []).find((p) => p.id === pageProfile || p.name === pageProfile)
+    return page?.workspaceId || 'ws_oagent'
+  }, [snapshot, pageProfile])
   const [posts, setPosts] = useState([])
   const [status, setStatus] = useState('')
   const [loading, setLoading] = useState(false)
@@ -97,7 +103,7 @@ function PostCaptureBoard({ onSnapshot }) {
     setCapturingId(postId)
     setStatus('กำลังดึงคอมเมนต์และ parse CF')
     try {
-      const result = await capturePostCf(postId, { pageProfile, limit: 50 })
+      const result = await capturePostCf(postId, { pageProfile, limit: 50, workspaceId: derivedWorkspaceId })
       if (result.snapshot) onSnapshot?.(result.snapshot)
       const reviewCount = result.summary?.reviewCount || 0
       setStatus(`สร้าง draft แล้ว ${result.summary?.draftCount || 0} รายการ${reviewCount ? ` · รอ review ${reviewCount} รายการ` : ''}`)
@@ -180,16 +186,22 @@ function PostCaptureBoard({ onSnapshot }) {
   )
 }
 
-function LiveCaptureBoard() {
+function LiveCaptureBoard({ snapshot }) {
   const [pageProfile, setPageProfile] = useState('man_kynd')
   const pageProfiles = useMetaPageProfiles()
+
+  // Derive workspaceId from snapshot pages matching selected pageProfile
+  const derivedWorkspaceId = useMemo(() => {
+    const page = (snapshot?.pages || []).find((p) => p.id === pageProfile || p.name === pageProfile)
+    return page?.workspaceId || 'ws_oagent'
+  }, [snapshot, pageProfile])
   const [source, setSource] = useState(null)
   const [status, setStatus] = useState('')
 
   async function loadLiveSources(nextPageProfile = pageProfile) {
     setStatus('กำลังตรวจ live stream จาก Meta')
     try {
-      const result = await fetchLiveSources(nextPageProfile, 10)
+      const result = await fetchLiveSources(nextPageProfile, 10, derivedWorkspaceId)
       setSource(result)
       setStatus(result.mode ? 'ตรวจ source live แล้ว' : 'live_source_checked')
     } catch (error) {

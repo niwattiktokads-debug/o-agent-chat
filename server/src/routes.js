@@ -10,7 +10,8 @@ import { createMetaSocialRuntime } from './omni/metaSocialRuntime.js'
 import { lookupThaiAddressByPostcode } from './omni/thaiAddress.js'
 import { createZortCommerceRuntime } from './omni/zortCommerceRuntime.js'
 import { createLineSudaOagentNotifier } from './omni/lineSudaOagentNotifier.js'
-import { appendPageRegistryEntry } from './omni/pageRegistry.js'
+import { appendPageRegistryEntry, FALLBACK_PAGE_PROFILES } from './omni/pageRegistry.js'
+import { resolveWorkspaceId } from './omni/workspace.js'
 
 function normalizeLeader(input) {
   if (!input) return null
@@ -332,7 +333,9 @@ export function mountRoutes(app, hub, room, options = {}) {
   app.post('/api/omni/social/posts/:postId/capture', async (req, res) => {
     try {
       const pageProfile = String(req.body?.pageProfile || req.query.pageProfile || req.query.page || 'man_kynd')
-      const wsId = req.body?.workspaceId || req.query.workspaceId || undefined
+      // Derive workspaceId from pageProfile in snapshot if not explicitly provided
+      const explicitWsId = req.body?.workspaceId || req.query.workspaceId || undefined
+      const wsId = explicitWsId || resolveWorkspaceId(omni.snapshot(), { pageId: pageProfile, pageProfiles: FALLBACK_PAGE_PROFILES })
       const settings = omni.getSettings({ workspaceId: wsId })
       if (settings.postCf?.enabled === false) return res.status(409).json({ ok: false, error: 'post_cf_disabled' })
       const comments = await social.listPostComments({
@@ -359,6 +362,8 @@ export function mountRoutes(app, hub, room, options = {}) {
         }
         const draft = omni.createOrderDraft({
           platform: 'facebook',
+          pageId: pageProfile,
+          workspaceId: wsId,
           customer: item.customer,
           customerId: item.customer.id,
           customerName: item.customer.displayName,
@@ -395,10 +400,14 @@ export function mountRoutes(app, hub, room, options = {}) {
 
   app.get('/api/omni/social/live', async (req, res) => {
     try {
-      const settings = omni.getSettings({ workspaceId: req.query.workspaceId || undefined })
+      const pageProfile = String(req.query.pageProfile || req.query.page || 'man_kynd')
+      // Derive workspaceId from pageProfile in snapshot if not explicitly provided
+      const explicitWsId = req.query.workspaceId || undefined
+      const wsId = explicitWsId || resolveWorkspaceId(omni.snapshot(), { pageId: pageProfile, pageProfiles: FALLBACK_PAGE_PROFILES })
+      const settings = omni.getSettings({ workspaceId: wsId })
       if (settings.liveCf?.enabled === false) return res.status(409).json({ ok: false, error: 'live_cf_disabled' })
       const result = await social.listLiveCommentSources({
-        pageProfile: String(req.query.pageProfile || req.query.page || 'man_kynd'),
+        pageProfile,
         limit: normalizePageSize(req.query.limit),
       })
       res.json(result)
