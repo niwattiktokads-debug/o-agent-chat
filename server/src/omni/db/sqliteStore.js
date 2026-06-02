@@ -108,7 +108,11 @@ export function createSqliteOmniStore({ dbPath, seed = createOmniSeed() } = {}) 
     for (const row of seedRows || []) {
       const existingIndex = collection.findIndex((item) => item.id === row.id)
       if (existingIndex >= 0) {
-        const next = { ...collection[existingIndex], ...clone(row) }
+        // For workspaces: runtime fields win over seed (seed fills missing fields only)
+        // For other collections: seed wins over runtime (backward-compatible behavior)
+        const next = name === 'workspaces'
+          ? { ...clone(row), ...collection[existingIndex] }
+          : { ...collection[existingIndex], ...clone(row) }
         if (JSON.stringify(next) !== JSON.stringify(collection[existingIndex])) {
           collection[existingIndex] = next
           changed = true

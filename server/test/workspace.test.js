@@ -228,4 +228,29 @@ describe('Workspace Foundation — SQLite Store Persistence', () => {
     }
     store.close()
   })
+
+  test('workspace seed does not overwrite existing workspace runtime fields', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omni-ws-seed-test-'))
+    const dbPath = join(dir, 'test.sqlite')
+    const store = createSqliteOmniStore({ dbPath })
+    store.upsert('workspaces', [{
+      id: DEFAULT_WORKSPACE_ID,
+      name: 'O-Agent Runtime Name',
+      slug: 'o-agent',
+      plan: 'enterprise',
+      status: 'active',
+      ownerRef: 'runtime-owner',
+      settings: { aiProvider: 'gemini' },
+      createdAt: '2026-06-02T00:00:00.000Z',
+      updatedAt: '2026-06-02T10:00:00.000Z',
+    }])
+    store.close()
+
+    const reopened = createSqliteOmniStore({ dbPath })
+    const workspace = reopened.snapshot().workspaces.find((item) => item.id === DEFAULT_WORKSPACE_ID)
+    assert.equal(workspace.name, 'O-Agent Runtime Name')
+    assert.equal(workspace.plan, 'enterprise')
+    assert.deepEqual(workspace.settings, { aiProvider: 'gemini' })
+    reopened.close()
+  })
 })
