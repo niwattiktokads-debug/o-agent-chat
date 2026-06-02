@@ -121,6 +121,12 @@ export function mountRoutes(app, hub, room, options = {}) {
     const actionAudits = (full.actionAudits || []).filter((a) => a.workspaceId === workspaceId || threadIds.has(a.threadId))
     const aiDecisions = (full.aiDecisions || []).filter((d) => threadIds.has(d.threadId))
     const knowledgeSources = (full.knowledgeSources || []).filter((k) => (k.workspaceId || 'ws_oagent') === workspaceId)
+    const orderIds = new Set(orders.map((o) => o.id))
+    const orderLinks = (full.orderLinks || []).filter((l) => threadIds.has(l.threadId) || orderIds.has(l.orderId))
+    const paymentRequests = (full.paymentRequests || []).filter((p) => threadIds.has(p.threadId))
+    const paymentRequestIds = new Set(paymentRequests.map((p) => p.id))
+    const paymentEvents = (full.paymentEvents || []).filter((e) => paymentRequestIds.has(e.paymentRequestId))
+    const approvalTasks = (full.approvalTasks || []).filter((t) => threadIds.has(t.threadId) || orderIds.has(t.orderId))
     res.json({
       ok: true,
       snapshot: {
@@ -135,6 +141,10 @@ export function mountRoutes(app, hub, room, options = {}) {
         actionAudits,
         aiDecisions,
         knowledgeSources,
+        orderLinks,
+        paymentRequests,
+        paymentEvents,
+        approvalTasks,
       },
     })
   })

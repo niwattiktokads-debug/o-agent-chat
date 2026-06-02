@@ -1993,3 +1993,31 @@ test('GET /api/omni/snapshot without workspaceId returns full unfiltered snapsho
   assert.equal(body.ok, true)
   assert.ok(body.snapshot.pages.length > 0)
 })
+
+test('GET /api/omni/snapshot?workspaceId scopes paymentRequests/paymentEvents/orderLinks by workspace threads', async () => {
+  // The default seed has all pages in ws_oagent, so all payments should be present
+  const { body, status } = await req('GET', '/api/omni/snapshot?workspaceId=ws_oagent')
+  assert.equal(status, 200)
+  assert.equal(body.ok, true)
+  // All seed threads belong to ws_oagent pages, so all payments should be scoped correctly
+  const threadIds = new Set(body.snapshot.threads.map((t) => t.id))
+  // Every paymentRequest must belong to a thread in this workspace
+  for (const pay of body.snapshot.paymentRequests || []) {
+    assert.ok(threadIds.has(pay.threadId), `paymentRequest ${pay.id} threadId ${pay.threadId} should be in workspace threads`)
+  }
+  // Every paymentEvent must reference a paymentRequest that is in scope
+  const payIds = new Set((body.snapshot.paymentRequests || []).map((p) => p.id))
+  for (const evt of body.snapshot.paymentEvents || []) {
+    assert.ok(payIds.has(evt.paymentRequestId), `paymentEvent ${evt.id} references out-of-scope paymentRequest ${evt.paymentRequestId}`)
+  }
+})
+
+test('GET /api/omni/snapshot?workspaceId=ws_nonexistent returns empty payment/orderLinks/approvalTasks', async () => {
+  const { body, status } = await req('GET', '/api/omni/snapshot?workspaceId=ws_nonexistent')
+  assert.equal(status, 200)
+  assert.equal(body.ok, true)
+  assert.equal((body.snapshot.paymentRequests || []).length, 0)
+  assert.equal((body.snapshot.paymentEvents || []).length, 0)
+  assert.equal((body.snapshot.orderLinks || []).length, 0)
+  assert.equal((body.snapshot.approvalTasks || []).length, 0)
+})

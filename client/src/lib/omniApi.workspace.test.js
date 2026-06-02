@@ -31,6 +31,22 @@ const fullSnapshot = {
     { id: 'order_1', customerId: 'cust_1' },
     { id: 'order_2', customerId: 'cust_2' },
   ],
+  orderLinks: [
+    { id: 'link_1', threadId: 'thread_1', orderId: 'order_1' },
+    { id: 'link_2', threadId: 'thread_2', orderId: 'order_2' },
+  ],
+  paymentRequests: [
+    { id: 'pay_1', threadId: 'thread_1', orderId: 'order_1', provider: 'promptpay', amount: 729 },
+    { id: 'pay_2', threadId: 'thread_2', orderId: 'order_2', provider: 'meta_pay', amount: 500 },
+  ],
+  paymentEvents: [
+    { id: 'pay_event_1', paymentRequestId: 'pay_1', type: 'created' },
+    { id: 'pay_event_2', paymentRequestId: 'pay_2', type: 'created' },
+  ],
+  approvalTasks: [
+    { id: 'approval_1', threadId: 'thread_1', orderId: 'order_1', status: 'pending' },
+    { id: 'approval_2', threadId: 'thread_2', orderId: 'order_2', status: 'pending' },
+  ],
   pageRuntimeSettings: [
     { pageId: 'page_mankynd', autoReplyEnabled: true },
     { pageId: 'page_custom', autoReplyEnabled: false },
@@ -70,6 +86,11 @@ describe('filterSnapshotByWorkspace', () => {
     expect(scoped.aiDecisions.map((d) => d.id)).toEqual(['dec_1'])
     // ks_1 + ks_3 (no workspaceId defaults to ws_oagent)
     expect(scoped.knowledgeSources.map((k) => k.id)).toEqual(['ks_1', 'ks_3'])
+    // Payment/order scoping
+    expect(scoped.orderLinks.map((l) => l.id)).toEqual(['link_1'])
+    expect(scoped.paymentRequests.map((p) => p.id)).toEqual(['pay_1'])
+    expect(scoped.paymentEvents.map((e) => e.id)).toEqual(['pay_event_1'])
+    expect(scoped.approvalTasks.map((t) => t.id)).toEqual(['approval_1'])
   })
 
   it('filters to ws_custom pages/threads/messages only', () => {
@@ -84,6 +105,11 @@ describe('filterSnapshotByWorkspace', () => {
     expect(scoped.actionAudits.map((a) => a.id)).toEqual(['audit_2'])
     expect(scoped.aiDecisions.map((d) => d.id)).toEqual(['dec_2'])
     expect(scoped.knowledgeSources.map((k) => k.id)).toEqual(['ks_2'])
+    // Payment/order scoping — must NOT see ws_oagent payments
+    expect(scoped.orderLinks.map((l) => l.id)).toEqual(['link_2'])
+    expect(scoped.paymentRequests.map((p) => p.id)).toEqual(['pay_2'])
+    expect(scoped.paymentEvents.map((e) => e.id)).toEqual(['pay_event_2'])
+    expect(scoped.approvalTasks.map((t) => t.id)).toEqual(['approval_2'])
   })
 
   it('returns empty collections for nonexistent workspace', () => {
@@ -95,6 +121,10 @@ describe('filterSnapshotByWorkspace', () => {
     expect(scoped.orders).toEqual([])
     expect(scoped.platformAccounts).toEqual([])
     expect(scoped.knowledgeSources).toEqual([])
+    expect(scoped.orderLinks).toEqual([])
+    expect(scoped.paymentRequests).toEqual([])
+    expect(scoped.paymentEvents).toEqual([])
+    expect(scoped.approvalTasks).toEqual([])
   })
 
   it('simulates realtime: full snapshot filtered before reaching UI preserves scope', () => {
@@ -103,6 +133,8 @@ describe('filterSnapshotByWorkspace', () => {
     const scopedBefore = filterSnapshotByWorkspace(fullSnapshot, 'ws_custom')
     expect(scopedBefore.pages).toHaveLength(1)
     expect(scopedBefore.pages[0].id).toBe('page_custom')
+    expect(scopedBefore.paymentRequests).toHaveLength(1)
+    expect(scopedBefore.paymentRequests[0].id).toBe('pay_2')
 
     // Simulate a new full snapshot arriving via WebSocket (e.g., after settings update)
     const updatedFull = {
@@ -117,5 +149,24 @@ describe('filterSnapshotByWorkspace', () => {
     expect(scopedAfter.pages).toHaveLength(1)
     expect(scopedAfter.pages[0].id).toBe('page_custom')
     expect(scopedAfter.pages.find((p) => p.id === 'page_new_oagent')).toBeUndefined()
+    // Payment data still scoped correctly
+    expect(scopedAfter.paymentRequests).toHaveLength(1)
+    expect(scopedAfter.paymentRequests[0].id).toBe('pay_2')
+    expect(scopedAfter.paymentEvents).toHaveLength(1)
+    expect(scopedAfter.paymentEvents[0].id).toBe('pay_event_2')
+  })
+
+  it('does not leak payment/orderLinks from other workspace in realtime full snapshot', () => {
+    // Specifically test the tenant leak scenario described in review round 3
+    const scopedCustom = filterSnapshotByWorkspace(fullSnapshot, 'ws_custom')
+    // ws_custom should only see pay_2 (threadId: thread_2), not pay_1 (threadId: thread_1)
+    expect(scopedCustom.paymentRequests.map((p) => p.id)).toEqual(['pay_2'])
+    expect(scopedCustom.paymentRequests.find((p) => p.id === 'pay_1')).toBeUndefined()
+    // paymentEvents should only include events for scoped paymentRequests
+    expect(scopedCustom.paymentEvents.map((e) => e.id)).toEqual(['pay_event_2'])
+    expect(scopedCustom.paymentEvents.find((e) => e.paymentRequestId === 'pay_1')).toBeUndefined()
+    // orderLinks should only include links for scoped threads/orders
+    expect(scopedCustom.orderLinks.map((l) => l.id)).toEqual(['link_2'])
+    expect(scopedCustom.orderLinks.find((l) => l.threadId === 'thread_1')).toBeUndefined()
   })
 })
