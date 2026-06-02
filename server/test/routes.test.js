@@ -2138,3 +2138,50 @@ test('createOrderDraft persists workspaceId on order row', async () => {
     localServer.close()
   }
 })
+
+test('createPaymentRequest audit derives workspaceId from order when threadId is null', async () => {
+  const localApp = express()
+  localApp.use(express.json())
+  const seed = createOmniSeed()
+  seed.workspaces.push({ id: 'ws_custom', name: 'Custom', slug: 'custom', plan: 'private_saas', status: 'active', ownerRef: 'boss', settings: {}, createdAt: '2026-06-01T00:00:00.000Z', updatedAt: '2026-06-01T00:00:00.000Z' })
+  // Add a workspace-only order
+  seed.orders.push({ id: 'order_custom_pay', customerId: null, workspaceId: 'ws_custom', platform: 'manual', status: 'draft', totalAmount: 100 })
+  const localOmni = createOmniService({ seed })
+  const localHub = { broadcast: () => {} }
+  const localRoom = createState()
+  mountRoutes(localApp, localHub, localRoom, { omni: localOmni })
+  const localServer = localApp.listen(0)
+  const localPort = localServer.address().port
+  try {
+    // Create payment request with orderId but no threadId
+    const payRes = await fetch(`http://localhost:${localPort}/api/omni/payment-requests`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        approved: true,
+        approvedBy: 'boss',
+        orderId: 'order_custom_pay',
+        provider: 'promptpay',
+        amount: 100,
+        currency: 'THB',
+      }),
+    })
+    const payBody = await payRes.json()
+    assert.equal(payBody.ok, true, 'createPaymentRequest should succeed')
+    // Check audit workspaceId is ws_custom (derived from order)
+    assert.equal(payBody.audit.workspaceId, 'ws_custom', 'audit workspaceId should be derived from order.workspaceId')
+    // Verify scoped snapshot: ws_custom sees the audit, ws_oagent does not
+    const snapCustom = await fetch(`http://localhost:${localPort}/api/omni/snapshot?workspaceId=ws_custom`).then((r) => r.json())
+    assert.ok(
+      snapCustom.snapshot.actionAudits.some((a) => a.action === 'payment_request_created' && a.workspaceId === 'ws_custom'),
+      'ws_custom should see payment_request_created audit'
+    )
+    const snapOagent = await fetch(`http://localhost:${localPort}/api/omni/snapshot?workspaceId=ws_oagent`).then((r) => r.json())
+    assert.ok(
+      !snapOagent.snapshot.actionAudits.some((a) => a.action === 'payment_request_created' && a.after?.orderId === 'order_custom_pay'),
+      'ws_oagent should NOT see payment_request_created audit for ws_custom order'
+    )
+  } finally {
+    localServer.close()
+  }
+})

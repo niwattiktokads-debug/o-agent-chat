@@ -634,9 +634,17 @@ export function createOmniService(options = createOmniSeed()) {
       if (!normalized.ok) return normalized
       const paymentResult = upsert('paymentRequests', [normalized.row])
       const eventResult = upsert('paymentEvents', [normalized.event])
+      // Derive workspaceId: from threadId first, then from order.workspaceId if threadId is empty
+      let auditWorkspaceId = null
+      if (normalized.row.threadId) {
+        auditWorkspaceId = resolveWorkspaceId(currentData(), { threadId: normalized.row.threadId }) || null
+      } else if (normalized.row.orderId) {
+        const order = (currentData().orders || []).find((o) => o.id === normalized.row.orderId)
+        auditWorkspaceId = order?.workspaceId || null
+      }
       const audit = createActionAuditRow({
         threadId: normalized.row.threadId,
-        workspaceId: resolveWorkspaceId(currentData(), { threadId: normalized.row.threadId }) || null,
+        workspaceId: auditWorkspaceId,
         action: 'payment_request_created',
         actorType: 'human',
         actorId: input.approvedBy || 'boss',
