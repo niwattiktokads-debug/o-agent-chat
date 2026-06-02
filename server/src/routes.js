@@ -10,7 +10,7 @@ import { createMetaSocialRuntime } from './omni/metaSocialRuntime.js'
 import { lookupThaiAddressByPostcode } from './omni/thaiAddress.js'
 import { createZortCommerceRuntime } from './omni/zortCommerceRuntime.js'
 import { createLineSudaOagentNotifier } from './omni/lineSudaOagentNotifier.js'
-import { appendPageRegistryEntry, FALLBACK_PAGE_PROFILES } from './omni/pageRegistry.js'
+import { appendPageRegistryEntry, FALLBACK_PAGE_PROFILES, loadPageRegistry } from './omni/pageRegistry.js'
 import { resolveWorkspaceId } from './omni/workspace.js'
 
 function normalizeLeader(input) {
@@ -335,7 +335,7 @@ export function mountRoutes(app, hub, room, options = {}) {
       const pageProfile = String(req.body?.pageProfile || req.query.pageProfile || req.query.page || 'man_kynd')
       // Derive workspaceId from pageProfile in snapshot if not explicitly provided
       const explicitWsId = req.body?.workspaceId || req.query.workspaceId || undefined
-      const wsId = explicitWsId || resolveWorkspaceId(omni.snapshot(), { pageId: pageProfile, pageProfiles: FALLBACK_PAGE_PROFILES })
+      const wsId = explicitWsId || resolveWorkspaceId(omni.snapshot(), { pageId: pageProfile, pageProfiles: loadPageRegistry() })
       const settings = omni.getSettings({ workspaceId: wsId })
       if (settings.postCf?.enabled === false) return res.status(409).json({ ok: false, error: 'post_cf_disabled' })
       const comments = await social.listPostComments({
@@ -403,7 +403,7 @@ export function mountRoutes(app, hub, room, options = {}) {
       const pageProfile = String(req.query.pageProfile || req.query.page || 'man_kynd')
       // Derive workspaceId from pageProfile in snapshot if not explicitly provided
       const explicitWsId = req.query.workspaceId || undefined
-      const wsId = explicitWsId || resolveWorkspaceId(omni.snapshot(), { pageId: pageProfile, pageProfiles: FALLBACK_PAGE_PROFILES })
+      const wsId = explicitWsId || resolveWorkspaceId(omni.snapshot(), { pageId: pageProfile, pageProfiles: loadPageRegistry() })
       const settings = omni.getSettings({ workspaceId: wsId })
       if (settings.liveCf?.enabled === false) return res.status(409).json({ ok: false, error: 'live_cf_disabled' })
       const result = await social.listLiveCommentSources({

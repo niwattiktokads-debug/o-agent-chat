@@ -14,6 +14,40 @@ const FALLBACK_PAGE_PROFILES = [
   { id: 'fb_112154661515664', label: 'Facebook 112154661515664' },
 ]
 
+// profileKey → omniPageId mapping for workspace resolution
+const PROFILE_TO_OMNI_PAGE = {
+  man_kynd: 'page_mankynd',
+  anna_lynn: 'page_annalynn',
+  page_des: 'page_des',
+  fb_112154661515664: 'page_fb_112154661515664',
+  ig_anna_lynn: 'page_ig_annalynn',
+  ig_man_kynd: 'page_ig_mankynd',
+  ig_page_des: 'page_ig_page_des',
+  ig_fb_112154661515664: 'page_ig_fb_112154661515664',
+  vz_viris_zamara: 'page_vz_viris_zamara',
+  ig_vz_viris_zamara: 'page_ig_vz_viris_zamara',
+}
+
+/**
+ * Resolve workspaceId from a profileKey using snapshot pages.
+ * Returns undefined (not 'ws_oagent') when mapping is not confident,
+ * so the backend can derive correctly from its live page registry.
+ */
+function resolveWorkspaceFromProfile(profileKey, snapshotPages) {
+  const pages = snapshotPages || []
+  // Try direct match on omniPageId via mapping
+  const omniPageId = PROFILE_TO_OMNI_PAGE[profileKey]
+  if (omniPageId) {
+    const page = pages.find((p) => p.id === omniPageId)
+    if (page?.workspaceId) return page.workspaceId
+  }
+  // Try direct match on page id (for custom profiles that use omniPageId as profileKey)
+  const directPage = pages.find((p) => p.id === profileKey)
+  if (directPage?.workspaceId) return directPage.workspaceId
+  // Cannot confidently resolve — return undefined so backend derives
+  return undefined
+}
+
 export default function SocialOpsBoard({ mode, snapshot, onSnapshot, onOpenChat }) {
   if (mode === 'post') {
     return (
@@ -71,10 +105,10 @@ function PostCaptureBoard({ snapshot, onSnapshot }) {
   const [pageProfile, setPageProfile] = useState('man_kynd')
   const pageProfiles = useMetaPageProfiles()
 
-  // Derive workspaceId from snapshot pages matching selected pageProfile
+  // Derive workspaceId from snapshot pages using profileKey → omniPageId mapping
+  // Returns undefined when mapping is not confident, letting backend derive correctly
   const derivedWorkspaceId = useMemo(() => {
-    const page = (snapshot?.pages || []).find((p) => p.id === pageProfile || p.name === pageProfile)
-    return page?.workspaceId || 'ws_oagent'
+    return resolveWorkspaceFromProfile(pageProfile, snapshot?.pages)
   }, [snapshot, pageProfile])
   const [posts, setPosts] = useState([])
   const [status, setStatus] = useState('')
@@ -190,10 +224,10 @@ function LiveCaptureBoard({ snapshot }) {
   const [pageProfile, setPageProfile] = useState('man_kynd')
   const pageProfiles = useMetaPageProfiles()
 
-  // Derive workspaceId from snapshot pages matching selected pageProfile
+  // Derive workspaceId from snapshot pages using profileKey → omniPageId mapping
+  // Returns undefined when mapping is not confident, letting backend derive correctly
   const derivedWorkspaceId = useMemo(() => {
-    const page = (snapshot?.pages || []).find((p) => p.id === pageProfile || p.name === pageProfile)
-    return page?.workspaceId || 'ws_oagent'
+    return resolveWorkspaceFromProfile(pageProfile, snapshot?.pages)
   }, [snapshot, pageProfile])
   const [source, setSource] = useState(null)
   const [status, setStatus] = useState('')
