@@ -193,25 +193,25 @@ const CONNECTIONS = [
   },
   {
     id: 'facebook_post_cf',
-    title: 'Facebook Post CF · Auto Order',
+    title: 'Facebook Post Selling Session · Auto Order Draft',
     provider: 'facebook_post_cf',
     group: 'social_automation',
-    description: 'Facebook post CF automation lane: watch connected posts, map CF keywords to products, create guarded orders, and send summary links back through chat.',
-    helper: 'runtime gap: extend meta-inbox-api with post comment CF parser',
+    description: 'Facebook post selling session lane: watch connected posts, map configured product codes to products, create guarded order drafts, and keep customer summaries approval-gated.',
+    helper: 'runtime gap: extend meta-inbox-api with post selling session comment parser',
     verify: null,
     fields: [
       { id: 'page_token', label: 'Facebook page token', credentialName: 'FB Anna Lynn Page Token -OA', secret: true, required: true },
-      { id: 'cf_keyword_rule', label: 'Default CF keyword rule', credentialName: 'FB Post CF Rule -OA', secret: false, required: false },
+      { id: 'post_session_rule', label: 'Default post session rule', credentialName: 'FB Post Selling Session Rule -OA', secret: false, required: false },
     ],
     docs: 'https://zortout.com/docs/how-to-create-postsocialchat',
     endpoints: [
       {
         method: 'WEBHOOK',
         path: '/webhook/meta/comments',
-        purpose: 'ดึงคอมเมนต์ CF ใต้โพสต์มาเข้าคิวสร้าง order แบบมี approval guard',
+        purpose: 'ดึงคอมเมนต์ใต้โพสต์มาเทียบรหัสสินค้าใน session แล้วเข้าคิวสร้าง order draft แบบมี approval guard',
       },
     ],
-    productionNotes: ['Do not connect a live post until products, CF codes, quantity, gifts, and stop/end states are configured.', 'Customer summary/payment links remain approval-gated.'],
+    productionNotes: ['Do not open a post session until products, product codes, quantity, gifts, and stop/end states are configured.', 'Customer summary/payment links remain approval-gated.'],
   },
   {
     id: 'facebook_live_cf',

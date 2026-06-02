@@ -5,7 +5,7 @@ import { listFacebookConversations } from './omni/metaInboxClient.js'
 import { createOmniService } from './omni/service.js'
 import { listTikTokOrders } from './omni/tiktokOrderClient.js'
 import { createConnectionRuntime } from './omni/connections.js'
-import { parseCfComment } from './omni/cfParser.js'
+import { parsePostSessionComment } from './omni/postSessionParser.js'
 import { createMetaSocialRuntime } from './omni/metaSocialRuntime.js'
 import { lookupThaiAddressByPostcode } from './omni/thaiAddress.js'
 import { createZortCommerceRuntime } from './omni/zortCommerceRuntime.js'
@@ -56,7 +56,7 @@ export function mountRoutes(app, hub, room, options = {}) {
     return `${rows.join('\n')}\n`
   }
 
-  function cfReviewItem(reason, item, extra = {}) {
+  function postSessionReviewItem(reason, item, extra = {}) {
     return {
       reason,
       commentId: item.commentId || null,
@@ -390,27 +390,28 @@ export function mountRoutes(app, hub, room, options = {}) {
       const explicitWsId = req.body?.workspaceId || req.query.workspaceId || undefined
       const wsId = explicitWsId || resolveWorkspaceId(omni.snapshot(), { pageId: pageProfile, pageProfiles: loadPageRegistry() })
       const settings = omni.getSettings({ workspaceId: wsId })
-      if (settings.postCf?.enabled === false) return res.status(409).json({ ok: false, error: 'post_cf_disabled' })
+      const postSessionSettings = settings.postSession || settings.postCf || {}
+      if (postSessionSettings.enabled === false) return res.status(409).json({ ok: false, error: 'post_session_disabled' })
       const comments = await social.listPostComments({
         objectId: req.params.postId,
         pageProfile,
         limit: normalizePageSize(req.body?.limit || req.query.limit || 50),
       })
-      const parseResults = (comments.comments || []).map((comment) => parseCfComment(comment, { keywords: settings.postCf?.keywords }))
+      const parseResults = (comments.comments || []).map((comment) => parsePostSessionComment(comment, { keywords: postSessionSettings.keywords }))
       const parsed = parseResults.filter((result) => result.ok)
       const reviewItems = parseResults
-        .filter((result) => !result.ok && !['empty_comment', 'not_cf_comment'].includes(result.reason))
-        .map((result) => cfReviewItem(result.reason, result))
+        .filter((result) => !result.ok && !['empty_comment', 'not_post_session_comment', 'not_cf_comment'].includes(result.reason))
+        .map((result) => postSessionReviewItem(result.reason, result))
       const drafts = []
       for (const item of parsed) {
         const products = await commerce.searchProducts({ keyword: item.keyword, sku: item.sku, limit: 5 })
         const product = products.products?.[0] || null
         if (!canDraftFromZortProduct(product)) {
-          reviewItems.push(cfReviewItem(product ? 'zort_product_price_missing' : 'zort_product_not_found', item, { products: products.products || [] }))
+          reviewItems.push(postSessionReviewItem(product ? 'zort_product_price_missing' : 'zort_product_not_found', item, { products: products.products || [] }))
           continue
         }
-        if (settings.postCf?.autoCreateDrafts === false) {
-          reviewItems.push(cfReviewItem('auto_create_disabled', item, { zortProduct: product }))
+        if (postSessionSettings.autoCreateDrafts === false) {
+          reviewItems.push(postSessionReviewItem('auto_create_disabled', item, { zortProduct: product }))
           continue
         }
         const draft = omni.createOrderDraft({
@@ -420,7 +421,7 @@ export function mountRoutes(app, hub, room, options = {}) {
           customer: item.customer,
           customerId: item.customer.id,
           customerName: item.customer.displayName,
-          sourceRef: `meta_post_cf:${req.params.postId}:${item.commentId}`,
+          sourceRef: `meta_post_session:${req.params.postId}:${item.commentId}`,
           sourcePostId: req.params.postId,
           sourceCommentId: item.commentId,
           items: [{

@@ -13,6 +13,7 @@ import WorkspacePanel from './WorkspacePanel.jsx'
 import ConnectionsPage from '../connections/ConnectionsPage.jsx'
 
 const DEFAULT_SETTINGS = {
+  postSession: { enabled: true, autoCreateDrafts: true },
   postCf: { enabled: true, autoCreateDrafts: true },
   liveCf: { enabled: true, mode: 'fallback_post_comment_capture' },
   report: { timezone: 'Asia/Bangkok' },
@@ -192,10 +193,10 @@ export default function SettingsPage({
         <>
           <section className="mt-4 grid gap-4 lg:grid-cols-2">
             <SettingsCard
-              title="Post / Live CF"
+              title="Post Selling / Live CF"
               rows={[
-                { label: 'Post CF enabled', checked: settings.postCf.enabled, onChange: () => updateSetting(['postCf', 'enabled'], (value) => !value) },
-                { label: 'Post auto-create draft', checked: settings.postCf.autoCreateDrafts, onChange: () => updateSetting(['postCf', 'autoCreateDrafts'], (value) => !value) },
+                { label: 'Post Selling Session enabled', checked: settings.postSession.enabled, onChange: () => updateSetting(['postSession', 'enabled'], (value) => !value) },
+                { label: 'Post session auto-create draft', checked: settings.postSession.autoCreateDrafts, onChange: () => updateSetting(['postSession', 'autoCreateDrafts'], (value) => !value) },
                 { label: 'Live CF enabled', checked: settings.liveCf.enabled, onChange: () => updateSetting(['liveCf', 'enabled'], (value) => !value) },
               ]}
             >
@@ -489,10 +490,17 @@ function StatusLine({ value }) {
 }
 
 function mergeSettings(base, input) {
+  const postSession = {
+    ...base.postSession,
+    ...base.postCf,
+    ...(input.postCf || {}),
+    ...(input.postSession || {}),
+  }
   return {
     ...base,
     ...input,
-    postCf: { ...base.postCf, ...(input.postCf || {}) },
+    postSession,
+    postCf: postSession,
     liveCf: { ...base.liveCf, ...(input.liveCf || {}) },
     report: { ...base.report, ...(input.report || {}) },
     orderDraft: { ...base.orderDraft, ...(input.orderDraft || {}) },

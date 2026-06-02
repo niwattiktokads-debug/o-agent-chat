@@ -16,6 +16,7 @@ const PAYMENT_STATUSES = new Set(['draft', 'pending', 'paid', 'failed', 'expired
 const MAX_DRAFT_ATTACHMENTS = 5
 const MAX_DRAFT_ATTACHMENT_BYTES = 5 * 1024 * 1024
 const DEFAULT_OMNI_SETTINGS = {
+  postSession: { enabled: true, autoCreateDrafts: true },
   postCf: { enabled: true, autoCreateDrafts: true },
   liveCf: { enabled: true, mode: 'fallback_post_comment_capture' },
   report: { timezone: 'Asia/Bangkok' },
@@ -32,6 +33,16 @@ function deepMerge(base, patch) {
     } else {
       output[key] = value
     }
+  }
+  return output
+}
+
+function normalizeSettingsAliases(settings = {}) {
+  const output = structuredClone(settings || {})
+  if (output.postSession || output.postCf) {
+    const postSession = deepMerge(output.postCf || {}, output.postSession || {})
+    output.postSession = postSession
+    output.postCf = postSession
   }
   return output
 }
@@ -472,12 +483,12 @@ export function createOmniService(options = createOmniSeed()) {
       const row = workspaceId
         ? rows.find((item) => item.workspaceId === workspaceId || item.id === `workspace:${workspaceId}`)
         : rows.find((item) => item.id === 'default')
-      return deepMerge(DEFAULT_OMNI_SETTINGS, row?.settings || {})
+      return normalizeSettingsAliases(deepMerge(DEFAULT_OMNI_SETTINGS, normalizeSettingsAliases(row?.settings || {})))
     },
     updateSettings({ workspaceId, settings = {}, updatedBy = 'boss' } = {}) {
       const id = String(workspaceId || '').trim()
       const before = this.getSettings(id ? { workspaceId: id } : {})
-      const nextSettings = deepMerge(before, settings)
+      const nextSettings = normalizeSettingsAliases(deepMerge(before, normalizeSettingsAliases(settings)))
       const row = {
         id: id ? `workspace:${id}` : 'default',
         ...(id ? { workspaceId: id } : {}),

@@ -118,9 +118,9 @@ vi.mock('../../lib/omniApi.js', () => ({
   }),
   fetchSocialPosts: async () => ({
     ok: true,
-    posts: [{ id: 'post_1', message: 'เปิด CF BLACK-M', commentCount: 1, createdTime: '2026-05-26T00:00:00.000Z' }],
+    posts: [{ id: 'post_1', message: 'เปิดขาย BLACK-M', commentCount: 1, createdTime: '2026-05-26T00:00:00.000Z' }],
   }),
-  capturePostCf: async () => ({
+  capturePostSession: async () => ({
     ok: true,
     summary: { parsedCount: 1, draftCount: 1 },
     drafts: [{ id: 'order_draft_1', status: 'draft', items: [{ sku: 'BLACK-M', quantity: 2 }] }],
@@ -148,6 +148,7 @@ vi.mock('../../lib/omniApi.js', () => ({
     byPage: [{ pageId: 'page_mankynd', inbound: 2, outbound: 1, total: 3 }],
   }),
   fetchOmniSettings: async () => ({
+    postSession: { enabled: true, autoCreateDrafts: true },
     postCf: { enabled: true, autoCreateDrafts: true },
     liveCf: { enabled: true, mode: 'fallback_post_comment_capture' },
     report: { timezone: 'Asia/Bangkok' },
@@ -288,21 +289,21 @@ describe('OmniWorkbench', () => {
     fireEvent.click(screen.getByRole('button', { name: 'โพสต์' }))
 
     expect(await screen.findByRole('heading', { name: 'โพสต์' })).toBeInTheDocument()
-    expect(await screen.findByRole('heading', { name: 'ตั้งค่าโพสต์ขาย' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'ตั้งค่า Post Selling Session' })).toBeInTheDocument()
     expect(await screen.findByRole('heading', { name: 'ข้อความ' })).toBeInTheDocument()
     expect(await screen.findByRole('heading', { name: 'คำสั่งซื้อ (0)' })).toBeInTheDocument()
     expect(await screen.findByText('ยังไม่มีคำสั่งซื้อจากโพสต์นี้')).toBeInTheDocument()
     expect(screen.queryByText('tt_order_1')).not.toBeInTheDocument()
-    expect(await screen.findByText('เปิด CF BLACK-M')).toBeInTheDocument()
+    expect(await screen.findByText('เปิดขาย BLACK-M')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /จับ CF/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /สร้าง draft จาก CF/ })).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: /เปิด CF BLACK-M/ }))
+    fireEvent.click(screen.getByRole('button', { name: /เปิดขาย BLACK-M/ }))
     expect((await screen.findAllByText('เชื่อมโพสต์แล้ว')).length).toBeGreaterThan(0)
     fireEvent.change(screen.getByLabelText('ค้นหาสินค้า'), { target: { value: 'BLACK-M' } })
     fireEvent.click(screen.getByRole('button', { name: 'ค้นหา' }))
     fireEvent.click(await screen.findByRole('button', { name: /BLACK-M · Black Shirt M/ }))
-    expect(await screen.findByText('CF rule · BLACK-M')).toBeInTheDocument()
+    expect(await screen.findByText('Session rule · BLACK-M')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'เปิดการขาย' }))
     expect(await screen.findByText(/บันทึกเป็น session state/)).toBeInTheDocument()
 

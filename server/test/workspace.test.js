@@ -114,6 +114,7 @@ describe('Workspace Foundation — Backward Compatibility', () => {
     const omni = createOmniService()
     // getSettings should still work
     const settings = omni.getSettings()
+    assert.ok(settings.postSession)
     assert.ok(settings.postCf)
     assert.ok(settings.ai)
     // updateSettings should still work

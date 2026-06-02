@@ -4,7 +4,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import SocialOpsBoard from './SocialOpsBoard.jsx'
 
 const apiMocks = {
-  capturePostCf: vi.fn(),
+  capturePostSession: vi.fn(),
   fetchConnections: vi.fn(),
   fetchLiveSources: vi.fn(),
   fetchMessageVolumeReport: vi.fn(),
@@ -13,7 +13,7 @@ const apiMocks = {
 }
 
 vi.mock('../../lib/omniApi.js', () => ({
-  capturePostCf: (...args) => apiMocks.capturePostCf(...args),
+  capturePostSession: (...args) => apiMocks.capturePostSession(...args),
   fetchConnections: (...args) => apiMocks.fetchConnections(...args),
   fetchLiveSources: (...args) => apiMocks.fetchLiveSources(...args),
   fetchMessageVolumeReport: (...args) => apiMocks.fetchMessageVolumeReport(...args),
@@ -36,7 +36,7 @@ function makeSnapshot(pages = []) {
 
 describe('SocialOpsBoard workspace derivation', () => {
   beforeEach(() => {
-    apiMocks.capturePostCf.mockReset()
+    apiMocks.capturePostSession.mockReset()
     apiMocks.fetchConnections.mockReset()
     apiMocks.fetchLiveSources.mockReset()
     apiMocks.fetchSocialPosts.mockReset()
@@ -52,9 +52,9 @@ describe('SocialOpsBoard workspace derivation', () => {
     })
     apiMocks.fetchSocialPosts.mockResolvedValue({
       ok: true,
-      posts: [{ id: 'post_1', message: 'CF test', commentCount: 1, createdTime: '2026-06-01T00:00:00.000Z' }],
+      posts: [{ id: 'post_1', message: 'เปิดขาย BLACK-M', commentCount: 1, createdTime: '2026-06-01T00:00:00.000Z' }],
     })
-    apiMocks.capturePostCf.mockResolvedValue({
+    apiMocks.capturePostSession.mockResolvedValue({
       ok: true,
       summary: { parsedCount: 1, draftCount: 1, reviewCount: 0 },
       drafts: [{ id: 'order_1', status: 'draft' }],
@@ -86,7 +86,7 @@ describe('SocialOpsBoard workspace derivation', () => {
     // Wait for posts to reload with new profile
     await waitFor(() => expect(apiMocks.fetchSocialPosts).toHaveBeenCalledWith('anna_lynn', 10))
     expect(await screen.findByText('ws_custom')).toBeInTheDocument()
-    expect(apiMocks.capturePostCf).not.toHaveBeenCalled()
+    expect(apiMocks.capturePostSession).not.toHaveBeenCalled()
   })
 
   it('unresolved custom profile does not show guessed ws_oagent or capture', async () => {
@@ -114,7 +114,7 @@ describe('SocialOpsBoard workspace derivation', () => {
 
     await waitFor(() => expect(apiMocks.fetchSocialPosts).toHaveBeenCalledWith('custom_new_page', 10))
     await waitFor(() => expect(screen.queryByText('ws_oagent')).not.toBeInTheDocument())
-    expect(apiMocks.capturePostCf).not.toHaveBeenCalled()
+    expect(apiMocks.capturePostSession).not.toHaveBeenCalled()
   })
 
   it('shows only orders linked to the selected post session', async () => {
@@ -143,7 +143,7 @@ describe('SocialOpsBoard workspace derivation', () => {
     render(<SocialOpsBoard mode="post" snapshot={snapshot} onSnapshot={() => {}} onOpenChat={() => {}} />)
 
     expect(await screen.findByRole('heading', { name: 'คำสั่งซื้อ (0)' })).toBeInTheDocument()
-    fireEvent.click(await screen.findByRole('button', { name: /CF test/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /เปิดขาย BLACK-M/ }))
 
     expect(await screen.findByRole('heading', { name: 'คำสั่งซื้อ (1)' })).toBeInTheDocument()
     expect(await screen.findByText('order_from_post')).toBeInTheDocument()
@@ -204,7 +204,7 @@ describe('SocialOpsBoard workspace derivation', () => {
 
 describe('SocialOpsBoard workspace badge visibility', () => {
   beforeEach(() => {
-    apiMocks.capturePostCf.mockReset()
+    apiMocks.capturePostSession.mockReset()
     apiMocks.fetchConnections.mockReset()
     apiMocks.fetchLiveSources.mockReset()
     apiMocks.fetchSocialPosts.mockReset()
@@ -220,7 +220,7 @@ describe('SocialOpsBoard workspace badge visibility', () => {
     apiMocks.fetchLiveSources.mockResolvedValue({ ok: true, mode: null, blocker: 'none', posts: [] })
   })
 
-  it('shows workspace badge in Post CF when workspace is resolved', async () => {
+  it('shows workspace badge in Post Selling Session when workspace is resolved', async () => {
     const snapshot = makeSnapshot([
       { id: 'page_mankynd', name: 'MAN KYND', workspaceId: 'ws_oagent' },
     ])

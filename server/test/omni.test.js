@@ -516,12 +516,12 @@ test('Meta social runtime uses Graph API for posts and comments when helper is n
         text: async () => JSON.stringify({
           data: [{
             id: 'post_direct_1',
-            message: 'เปิด CF',
+            message: 'เปิดขาย BLACK-M',
             created_time: '2026-06-02T03:00:00+0000',
             permalink_url: 'https://facebook.com/post_direct_1',
             comments: {
               summary: { total_count: 1 },
-              data: [{ id: 'comment_preview_1', message: 'CF BLACK-M', created_time: '2026-06-02T03:01:00+0000' }],
+              data: [{ id: 'comment_preview_1', message: 'รับ BLACK-M', created_time: '2026-06-02T03:01:00+0000' }],
             },
           }],
           paging: { next: 'next-page' },

@@ -80,10 +80,10 @@ export default function SocialOpsBoard({ mode, snapshot, onSnapshot, onOpenChat 
     return (
       <OpsShell
         title="โพสต์"
-        summary="ตั้งค่าโพสต์ขายแบบ ZORT: เลือกร้าน, เลือกโพสต์ Facebook, ผูกสินค้า, ตั้งรหัส CF, จำนวน และติดตามข้อความกับคำสั่งซื้อ"
+        summary="ตั้งค่า Post Selling Session แบบ ZORT: เลือกร้าน, เลือกโพสต์ Facebook, ผูกสินค้า, ตั้งรหัสสินค้า จำนวน และติดตามข้อความกับคำสั่งซื้อ"
         onOpenChat={onOpenChat}
       >
-        <PostCaptureBoard snapshot={snapshot} />
+        <PostSellingSessionBoard snapshot={snapshot} />
       </OpsShell>
     )
   }
@@ -128,7 +128,7 @@ function OpsShell({ title, summary, onOpenChat, children }) {
   )
 }
 
-function PostCaptureBoard({ snapshot, onSnapshot }) {
+function PostSellingSessionBoard({ snapshot, onSnapshot }) {
   const [pageProfile, setPageProfile] = useState('man_kynd')
   const pageProfiles = useMetaPageProfiles()
 
@@ -180,9 +180,9 @@ function PostCaptureBoard({ snapshot, onSnapshot }) {
       ...configuredProducts.slice(0, 4).map((item) => ({
         id: item.localId,
         type: 'rule',
-        title: `CF rule · ${item.cfCode || item.sku}`,
+        title: `Session rule · ${item.sellingCode || item.sku}`,
         text: `${item.name} · ${formatMoney(item.salePrice)} x ${item.quantity}`,
-        meta: item.gift ? `ของแถม: ${item.gift}` : 'พร้อมรับคอมเมนต์หลังเปิดการขาย',
+        meta: item.gift ? `ของแถม: ${item.gift}` : 'พร้อมติดตามข้อความหลังเปิดการขาย',
       })),
     ].filter(Boolean)
   }, [selectedPost, configuredProducts])
@@ -236,7 +236,7 @@ function PostCaptureBoard({ snapshot, onSnapshot }) {
         id: product.id,
         sku,
         name: product.name || sku,
-        cfCode: sku,
+        sellingCode: sku,
         salePrice: unitPrice,
         quantity: 1,
         remaining: Number(product.availableStock ?? product.stock ?? 0),
@@ -258,7 +258,7 @@ function PostCaptureBoard({ snapshot, onSnapshot }) {
   function changeSessionStatus(nextStatus) {
     setSessionStatus(nextStatus)
     const labels = {
-      draft: 'ยังไม่เชื่อมต่อ',
+      draft: 'ยังไม่เปิด session',
       open: 'เปิดการขาย',
       paused: 'หยุดรับคำสั่งซื้อ',
       ended: 'จบโพสต์',
@@ -270,7 +270,7 @@ function PostCaptureBoard({ snapshot, onSnapshot }) {
   const displayStatus = selectedPost && sessionStatus === 'draft' ? 'linked' : sessionStatus
   const statusLabel = {
     linked: 'เชื่อมโพสต์แล้ว',
-    draft: 'ยังไม่เชื่อมต่อ',
+    draft: 'ยังไม่เปิด session',
     open: 'เปิดการขาย',
     paused: 'หยุดรับคำสั่งซื้อ',
     ended: 'จบโพสต์',
@@ -290,7 +290,7 @@ function PostCaptureBoard({ snapshot, onSnapshot }) {
           <div className="sticky top-0 z-10 border-b border-[var(--color-rule)] bg-[var(--color-panel)] px-4 py-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-sm font-bold text-[var(--color-ink)]">
-                ตั้งค่าโพสต์ขาย
+                ตั้งค่า Post Selling Session
                 {derivedWorkspaceId ? <span className="ml-2 inline-flex items-center rounded-[var(--radius-md)] border border-[var(--color-accent)] bg-[var(--color-accent-subtle,var(--color-panel-2))] px-2 py-0.5 text-[11px] font-bold text-[var(--color-accent)]">{derivedWorkspaceId}</span> : null}
               </h2>
               <span className={`rounded-[var(--radius-md)] border px-2 py-1 text-xs font-bold ${statusTone}`}>{statusLabel}</span>
@@ -417,7 +417,7 @@ function PostCaptureBoard({ snapshot, onSnapshot }) {
             <div className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-paper)] p-3">
               <h3 className="text-xs font-bold text-[var(--color-ink)]">สินค้าที่ต้องการขาย</h3>
               {configuredProducts.length === 0 ? (
-                <div className="mt-3 rounded-[var(--radius-md)] border border-dashed border-[var(--color-rule)] px-3 py-8 text-center text-xs text-[var(--color-muted)]">เลือกสินค้าเพื่อกำหนดรหัส CF ราคา จำนวน และของแถม</div>
+                <div className="mt-3 rounded-[var(--radius-md)] border border-dashed border-[var(--color-rule)] px-3 py-8 text-center text-xs text-[var(--color-muted)]">เลือกสินค้าเพื่อกำหนดรหัสสินค้า ราคา จำนวน และของแถม</div>
               ) : (
                 <div className="mt-3 grid gap-3">
                   {configuredProducts.map((item) => (
@@ -430,7 +430,7 @@ function PostCaptureBoard({ snapshot, onSnapshot }) {
                         <button type="button" onClick={() => removeProduct(item.localId)} className="rounded-[var(--radius-md)] border border-[var(--color-rule)] px-2 py-1 text-xs font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)]">ลบ</button>
                       </div>
                       <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                        <PostProductInput label="รหัส CF" value={item.cfCode} onChange={(value) => updateProduct(item.localId, { cfCode: value })} />
+                        <PostProductInput label="รหัสสินค้าใน session" value={item.sellingCode} onChange={(value) => updateProduct(item.localId, { sellingCode: value })} />
                         <PostProductInput label="ราคา" type="number" value={item.salePrice} onChange={(value) => updateProduct(item.localId, { salePrice: Number(value || 0) })} />
                         <PostProductInput label="จำนวนขาย" type="number" value={item.quantity} onChange={(value) => updateProduct(item.localId, { quantity: Math.max(1, Number(value || 1)) })} />
                         <PostProductInput label="คงเหลือ" type="number" value={item.remaining} onChange={(value) => updateProduct(item.localId, { remaining: Math.max(0, Number(value || 0)) })} />
@@ -475,7 +475,7 @@ function PostCaptureBoard({ snapshot, onSnapshot }) {
               <div className="grid h-full min-h-[260px] place-items-center text-center">
                 <div>
                   <div className="text-sm font-bold text-[var(--color-ink)]">ยังไม่มีข้อความใน session</div>
-                  <div className="mt-2 max-w-xs text-xs leading-5 text-[var(--color-muted)]">หลังเลือกโพสต์และตั้งสินค้า ข้อความ/คอมเมนต์ที่เข้ากับรหัส CF จะมาอยู่ฝั่งนี้</div>
+                  <div className="mt-2 max-w-xs text-xs leading-5 text-[var(--color-muted)]">หลังเลือกโพสต์และตั้งสินค้า ข้อความ/คอมเมนต์ที่เข้ากับรหัสสินค้าใน session จะมาอยู่ฝั่งนี้</div>
                 </div>
               </div>
             ) : (

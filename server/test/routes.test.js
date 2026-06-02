@@ -635,14 +635,14 @@ test('GET /api/omni/reports/message-volume filters by date and exports CSV', asy
   }
 })
 
-test('POST /api/omni/settings persists settings and gates Post CF capture', async () => {
+test('POST /api/omni/settings persists settings and gates Post Selling Session capture', async () => {
   const localApp = express()
   localApp.use(express.json())
   const localOmni = createOmniService()
   const fakeSocial = {
     listPostComments: async () => ({
       ok: true,
-      comments: [{ id: 'c1', message: 'CF BLACK-M x2', from: { id: 'fb_cust_1', name: 'ลูกค้า CF' }, createdTime: '2026-05-26T00:00:00.000Z' }],
+      comments: [{ id: 'c1', message: 'รับ BLACK-M x2', from: { id: 'fb_cust_1', name: 'ลูกค้าโพสต์' }, createdTime: '2026-05-26T00:00:00.000Z' }],
     }),
   }
   const fakeCommerce = {
@@ -655,10 +655,11 @@ test('POST /api/omni/settings persists settings and gates Post CF capture', asyn
     const saveResponse = await fetch(`http://localhost:${localPort}/api/omni/settings`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ settings: { postCf: { enabled: false } }, updatedBy: 'boss' }),
+      body: JSON.stringify({ settings: { postSession: { enabled: false } }, updatedBy: 'boss' }),
     })
     const saved = await saveResponse.json()
     assert.equal(saveResponse.status, 200)
+    assert.equal(saved.settings.postSession.enabled, false)
     assert.equal(saved.settings.postCf.enabled, false)
 
     const captureResponse = await fetch(`http://localhost:${localPort}/api/omni/social/posts/post_1/capture`, {
@@ -668,7 +669,7 @@ test('POST /api/omni/settings persists settings and gates Post CF capture', asyn
     })
     const captureBody = await captureResponse.json()
     assert.equal(captureResponse.status, 409)
-    assert.equal(captureBody.error, 'post_cf_disabled')
+    assert.equal(captureBody.error, 'post_session_disabled')
   } finally {
     localServer.close()
   }
@@ -727,7 +728,7 @@ test('POST /api/omni/settings gates AI draft routes when disabled', async () => 
   }
 })
 
-test('Post CF capture reads comments, parses CF, links ZORT product read-only, and creates order draft', async () => {
+test('Post Selling Session capture reads comments, maps product code, links ZORT product read-only, and creates order draft', async () => {
   const localApp = express()
   localApp.use(express.json())
   const localOmni = createOmniService()
@@ -735,14 +736,14 @@ test('Post CF capture reads comments, parses CF, links ZORT product read-only, a
   const fakeSocial = {
     listPagePosts: async ({ pageProfile, limit }) => {
       calls.push({ action: 'posts', pageProfile, limit })
-      return { ok: true, posts: [{ id: 'post_1', message: 'เปิด CF BLACK-M', commentCount: 1, createdTime: '2026-05-26T00:00:00.000Z' }] }
+      return { ok: true, posts: [{ id: 'post_1', message: 'เปิดขาย BLACK-M', commentCount: 1, createdTime: '2026-05-26T00:00:00.000Z' }] }
     },
     listPostComments: async ({ objectId, pageProfile, limit }) => {
       calls.push({ action: 'comments', objectId, pageProfile, limit })
       return {
         ok: true,
         comments: [
-          { id: 'comment_1', message: 'CF BLACK-M x2', from: { id: 'fb_cust_1', name: 'ลูกค้า CF' }, createdTime: '2026-05-26T00:01:00.000Z' },
+          { id: 'comment_1', message: 'รับ BLACK-M x2', from: { id: 'fb_cust_1', name: 'ลูกค้าโพสต์' }, createdTime: '2026-05-26T00:01:00.000Z' },
           { id: 'comment_2', message: 'สวยมาก', from: { id: 'fb_cust_2', name: 'ลูกค้าคุย' }, createdTime: '2026-05-26T00:02:00.000Z' },
         ],
       }
@@ -783,7 +784,7 @@ test('Post CF capture reads comments, parses CF, links ZORT product read-only, a
   }
 })
 
-test('Post CF capture queues review instead of draft when CF has no mapped ZORT product', async () => {
+test('Post Selling Session capture queues review instead of draft when comment has no mapped ZORT product', async () => {
   const localApp = express()
   localApp.use(express.json())
   const localOmni = createOmniService()
@@ -791,7 +792,7 @@ test('Post CF capture queues review instead of draft when CF has no mapped ZORT 
     listPostComments: async () => ({
       ok: true,
       comments: [
-        { id: 'comment_1', message: 'CF UNKNOWN-SKU x1', from: { id: 'fb_cust_1', name: 'ลูกค้า CF' }, createdTime: '2026-05-26T00:01:00.000Z' },
+        { id: 'comment_1', message: 'รับ UNKNOWN-SKU x1', from: { id: 'fb_cust_1', name: 'ลูกค้าโพสต์' }, createdTime: '2026-05-26T00:01:00.000Z' },
         { id: 'comment_2', message: 'เอาค่ะ', from: { id: 'fb_cust_2', name: 'ลูกค้าคุย' }, createdTime: '2026-05-26T00:02:00.000Z' },
       ],
     }),
@@ -815,21 +816,21 @@ test('Post CF capture queues review instead of draft when CF has no mapped ZORT 
     assert.equal(captureBody.summary.reviewCount, 2)
     assert.equal(captureBody.reviewItems.some((item) => item.reason === 'zort_product_not_found'), true)
     assert.equal(captureBody.reviewItems.some((item) => item.reason === 'missing_sku'), true)
-    assert.equal(localOmni.snapshot().orders.some((order) => String(order.sourceRef || '').startsWith('meta_post_cf:post_1')), false)
+    assert.equal(localOmni.snapshot().orders.some((order) => String(order.sourceRef || '').startsWith('meta_post_session:post_1')), false)
   } finally {
     localServer.close()
   }
 })
 
-test('Post CF capture respects autoCreateDrafts setting', async () => {
+test('Post Selling Session capture respects autoCreateDrafts setting', async () => {
   const localApp = express()
   localApp.use(express.json())
   const localOmni = createOmniService()
-  localOmni.updateSettings({ settings: { postCf: { autoCreateDrafts: false } }, updatedBy: 'boss' })
+  localOmni.updateSettings({ settings: { postSession: { autoCreateDrafts: false } }, updatedBy: 'boss' })
   const fakeSocial = {
     listPostComments: async () => ({
       ok: true,
-      comments: [{ id: 'comment_1', message: 'CF BLACK-M x1', from: { id: 'fb_cust_1', name: 'ลูกค้า CF' }, createdTime: '2026-05-26T00:01:00.000Z' }],
+      comments: [{ id: 'comment_1', message: 'รับ BLACK-M x1', from: { id: 'fb_cust_1', name: 'ลูกค้าโพสต์' }, createdTime: '2026-05-26T00:01:00.000Z' }],
     }),
   }
   const fakeCommerce = {
@@ -849,7 +850,7 @@ test('Post CF capture respects autoCreateDrafts setting', async () => {
     assert.equal(captureBody.summary.parsedCount, 1)
     assert.equal(captureBody.summary.draftCount, 0)
     assert.equal(captureBody.reviewItems[0].reason, 'auto_create_disabled')
-    assert.equal(localOmni.snapshot().orders.some((order) => String(order.sourceRef || '').startsWith('meta_post_cf:post_1')), false)
+    assert.equal(localOmni.snapshot().orders.some((order) => String(order.sourceRef || '').startsWith('meta_post_session:post_1')), false)
   } finally {
     localServer.close()
   }
@@ -2058,7 +2059,7 @@ test('POST /webhook/meta sends guarded fallback reply when AI helper fails after
 })
 
 
-test('Post CF derives non-default workspace from profileKey mapping and respects workspace-specific disabled settings', async () => {
+test('Post Selling Session derives non-default workspace from profileKey mapping and respects workspace-specific disabled settings', async () => {
   const localApp = express()
   localApp.use(express.json())
   // Create a custom seed with page_annalynn in ws_custom
@@ -2072,14 +2073,14 @@ test('Post CF derives non-default workspace from profileKey mapping and respects
   const fakeSocial = {
     listPagePosts: async ({ pageProfile, limit }) => {
       calls.push({ action: 'posts', pageProfile, limit })
-      return { ok: true, posts: [{ id: 'post_ws', message: 'CF test', commentCount: 1, createdTime: '2026-06-01T00:00:00.000Z' }] }
+      return { ok: true, posts: [{ id: 'post_ws', message: 'เปิดขาย BLACK-M', commentCount: 1, createdTime: '2026-06-01T00:00:00.000Z' }] }
     },
     listPostComments: async ({ objectId, pageProfile, limit }) => {
       calls.push({ action: 'comments', objectId, pageProfile, limit })
       return {
         ok: true,
         comments: [
-          { id: 'comment_ws_1', message: 'CF BLACK-M x1', from: { id: 'fb_cust_ws', name: 'WS Customer' }, createdTime: '2026-06-01T00:01:00.000Z' },
+          { id: 'comment_ws_1', message: 'รับ BLACK-M x1', from: { id: 'fb_cust_ws', name: 'WS Customer' }, createdTime: '2026-06-01T00:01:00.000Z' },
         ],
       }
     },
@@ -2095,7 +2096,7 @@ test('Post CF derives non-default workspace from profileKey mapping and respects
   try {
     const localPort = localServer.address().port
 
-    // Post CF with anna_lynn should derive ws_custom workspace via loadPageRegistry mapping
+    // Post Selling Session with anna_lynn should derive ws_custom workspace via loadPageRegistry mapping
     const captureResponse = await fetch(`http://localhost:${localPort}/api/omni/social/posts/post_ws/capture`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -2109,10 +2110,10 @@ test('Post CF derives non-default workspace from profileKey mapping and respects
     assert.equal(captureBody.summary.parsedCount, 1)
     assert.equal(captureBody.summary.draftCount, 1)
 
-    // Now disable postCf for ws_custom workspace
-    localOmni.updateSettings({ workspaceId: 'ws_custom', settings: { postCf: { enabled: false } } })
+    // Now disable Post Selling Session for ws_custom workspace
+    localOmni.updateSettings({ workspaceId: 'ws_custom', settings: { postSession: { enabled: false } } })
 
-    // Post CF with anna_lynn should now be rejected because ws_custom has postCf disabled
+    // Post Selling Session with anna_lynn should now be rejected because ws_custom has postSession disabled
     const disabledResponse = await fetch(`http://localhost:${localPort}/api/omni/social/posts/post_ws/capture`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -2120,7 +2121,7 @@ test('Post CF derives non-default workspace from profileKey mapping and respects
     })
     assert.equal(disabledResponse.status, 409)
     const disabledBody = await disabledResponse.json()
-    assert.equal(disabledBody.error, 'post_cf_disabled')
+    assert.equal(disabledBody.error, 'post_session_disabled')
   } finally {
     localServer.close()
   }

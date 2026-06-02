@@ -176,11 +176,13 @@ export async function fetchSocialPosts(pageProfile = 'man_kynd', limit = 10) {
   return getJson(`/api/omni/social/posts?${query.toString()}`)
 }
 
-export async function capturePostCf(postId, { pageProfile = 'man_kynd', limit = 50, workspaceId } = {}) {
+export async function capturePostSession(postId, { pageProfile = 'man_kynd', limit = 50, workspaceId } = {}) {
   const body = { pageProfile, limit }
   if (workspaceId) body.workspaceId = workspaceId
   return postJson(`/api/omni/social/posts/${encodeURIComponent(postId)}/capture`, body)
 }
+
+export const capturePostCf = capturePostSession
 
 export async function fetchLiveSources(pageProfile = 'man_kynd', limit = 10, workspaceId) {
   const query = new URLSearchParams({ pageProfile, limit: String(limit) })

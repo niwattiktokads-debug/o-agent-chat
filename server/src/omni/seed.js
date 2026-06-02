@@ -110,6 +110,7 @@ export function createOmniSeed() {
         id: 'default',
         workspaceId: DEFAULT_WORKSPACE_ID,
         settings: {
+          postSession: { enabled: true, autoCreateDrafts: true },
           postCf: { enabled: true, autoCreateDrafts: true },
           liveCf: { enabled: true, mode: 'fallback_post_comment_capture' },
           report: { timezone: 'Asia/Bangkok' },
