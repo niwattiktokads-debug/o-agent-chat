@@ -1,12 +1,12 @@
 {
   "name": "O Agent Omnichannel Inbox",
   "short_name": "O Agent Omni",
-  "description": "Local-first AI inbox hub for Facebook, TikTok, Shopee, and order operations.",
+  "description": "Private SaaS v2 omnichannel AI inbox for Facebook, TikTok, live order, and customer operations.",
   "start_url": "/?mode=ai-train",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#f4f7f6",
-  "theme_color": "#0f8f7b",
+  "background_color": "#f7faf8",
+  "theme_color": "#101820",
   "orientation": "any",
   "categories": ["business", "productivity"],
   "icons": [

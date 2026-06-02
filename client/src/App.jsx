@@ -222,6 +222,7 @@ function AppInner() {
 function TopModeNav({ activeMode, activeOperationMode, onSelect, onOperationSelect, inline = false }) {
   const nav = (
     <nav className="flex min-w-max w-full items-center gap-3" aria-label="Omni pages">
+      <OmniBrandMark />
       <TopModeButton item={TOP_MODE_NAV[0]} active={activeMode === 'chat'} onSelect={onSelect} />
       <TopModeButton item={TOP_MODE_NAV[1]} active={activeMode === 'ai-train'} onSelect={onSelect} />
       <TopOperationNav activeMode={activeMode} activeOperationMode={activeOperationMode} onSelect={onOperationSelect} />
@@ -238,6 +239,26 @@ function TopModeNav({ activeMode, activeOperationMode, onSelect, onOperationSele
     <header className="overflow-x-auto border-b border-[var(--color-rule)] bg-[var(--color-panel)] px-4 py-2">
       {nav}
     </header>
+  )
+}
+
+function OmniBrandMark() {
+  return (
+    <div className="flex h-14 shrink-0 items-center gap-3 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 shadow-[0_10px_22px_rgba(15,35,31,0.07)]" aria-label="Omni Chat v2">
+      <div className="relative h-9 w-9 overflow-hidden rounded-[10px] bg-[#101820] shadow-inner">
+        <span className="absolute left-[5px] top-[5px] h-[8px] w-[18px] rounded-full bg-[#F24E1E]" />
+        <span className="absolute right-[5px] top-[5px] h-[8px] w-[8px] rounded-full bg-[#FF7262]" />
+        <span className="absolute left-[6px] top-[15px] h-[8px] w-[27px] rounded-full bg-[#A259FF]" />
+        <span className="absolute bottom-[5px] left-[5px] h-[8px] w-[8px] rounded-full bg-[#0ACF83]" />
+        <span className="absolute bottom-[5px] right-[5px] h-[8px] w-[18px] rounded-full bg-[#1ABCFE]" />
+        <span className="absolute left-1/2 top-1/2 h-[12px] w-[12px] -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-[#101820] bg-[var(--color-panel)]" />
+      </div>
+      <div className="hidden leading-tight sm:block">
+        <div className="text-sm font-black text-[var(--color-ink)]">Omni</div>
+        <div className="text-[11px] font-semibold uppercase tracking-normal text-[var(--color-muted)]">new runtime</div>
+      </div>
+      <span className="rounded-[var(--radius-pill)] bg-[#A259FF] px-2 py-1 text-[11px] font-black uppercase tracking-normal text-white">v2</span>
+    </div>
   )
 }
 
