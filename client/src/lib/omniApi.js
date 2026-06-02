@@ -55,7 +55,7 @@ export function filterSnapshotByWorkspace(full, workspaceId) {
   const threadIds = new Set(threads.map((t) => t.id))
   const messages = (full.messages || []).filter((m) => threadIds.has(m.threadId))
   const customers = (full.customers || []).filter((c) => threads.some((t) => t.customerId === c.id))
-  const orders = (full.orders || []).filter((o) => customers.some((c) => c.id === o.customerId))
+  const orders = (full.orders || []).filter((o) => customers.some((c) => c.id === o.customerId) || o.workspaceId === workspaceId)
   const platformAccounts = (full.platformAccounts || []).filter((a) => pageIds.has(a.pageId))
   const pageRuntimeSettings = (full.pageRuntimeSettings || []).filter((s) => pageIds.has(s.pageId))
   const actionAudits = (full.actionAudits || []).filter((a) => a.workspaceId === workspaceId || threadIds.has(a.threadId))

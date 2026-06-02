@@ -192,4 +192,34 @@ describe('filterSnapshotByWorkspace', () => {
     expect(scopedOagent.paymentRequests.find((p) => p.id === 'pay_order_only')).toBeUndefined()
     expect(scopedOagent.paymentEvents.find((e) => e.id === 'pay_event_order_only')).toBeUndefined()
   })
+
+  it('includes workspace-only order drafts (no thread, direct workspaceId on order) and dependent payments', () => {
+    // Scenario: order draft created with workspaceId but no threadId/customerId match
+    const snapshotWithWsOrder = {
+      ...fullSnapshot,
+      orders: [
+        ...fullSnapshot.orders,
+        { id: 'order_ws_only', customerId: null, workspaceId: 'ws_custom' },
+      ],
+      paymentRequests: [
+        ...fullSnapshot.paymentRequests,
+        { id: 'pay_ws_order', threadId: null, orderId: 'order_ws_only', provider: 'bank', amount: 200 },
+      ],
+      paymentEvents: [
+        ...fullSnapshot.paymentEvents,
+        { id: 'pay_event_ws_order', paymentRequestId: 'pay_ws_order', type: 'created' },
+      ],
+    }
+    const scoped = filterSnapshotByWorkspace(snapshotWithWsOrder, 'ws_custom')
+    // order with workspaceId: ws_custom should appear
+    expect(scoped.orders.map((o) => o.id)).toContain('order_ws_only')
+    // payment referencing that order should appear
+    expect(scoped.paymentRequests.map((p) => p.id)).toContain('pay_ws_order')
+    expect(scoped.paymentEvents.map((e) => e.id)).toContain('pay_event_ws_order')
+    // ws_oagent should NOT see workspace-only order from ws_custom
+    const scopedOagent = filterSnapshotByWorkspace(snapshotWithWsOrder, 'ws_oagent')
+    expect(scopedOagent.orders.find((o) => o.id === 'order_ws_only')).toBeUndefined()
+    expect(scopedOagent.paymentRequests.find((p) => p.id === 'pay_ws_order')).toBeUndefined()
+    expect(scopedOagent.paymentEvents.find((e) => e.id === 'pay_event_ws_order')).toBeUndefined()
+  })
 })

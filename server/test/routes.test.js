@@ -2063,3 +2063,78 @@ test('GET /api/omni/snapshot?workspaceId includes order-only payments (threadId 
     localServer.close()
   }
 })
+
+test('GET /api/omni/snapshot?workspaceId includes workspace-only order drafts (workspaceId on order, no thread/customer match)', async () => {
+  const localApp = express()
+  localApp.use(express.json())
+  const seed = createOmniSeed()
+  seed.workspaces.push({ id: 'ws_custom', name: 'Custom', slug: 'custom', plan: 'private_saas', status: 'active', ownerRef: 'boss', settings: {}, createdAt: '2026-06-01T00:00:00.000Z', updatedAt: '2026-06-01T00:00:00.000Z' })
+  // Add a workspace-only order (no customerId, no thread, but has workspaceId)
+  seed.orders.push({ id: 'order_ws_only', customerId: null, workspaceId: 'ws_custom', platform: 'manual', status: 'draft', totalAmount: 300 })
+  // Add payment referencing that order
+  seed.paymentRequests.push({ id: 'pay_ws_only', threadId: null, orderId: 'order_ws_only', provider: 'bank', status: 'draft', amount: 300, currency: 'THB', approvalRequired: false })
+  seed.paymentEvents.push({ id: 'pay_event_ws_only', paymentRequestId: 'pay_ws_only', type: 'created', source: 'test', createdAt: '2026-06-02T00:00:00.000Z' })
+  const localOmni = createOmniService({ seed })
+  const localHub = { broadcast: () => {} }
+  const localRoom = createState()
+  mountRoutes(localApp, localHub, localRoom, { omni: localOmni })
+  const localServer = localApp.listen(0)
+  const localPort = localServer.address().port
+  try {
+    const res = await fetch(`http://localhost:${localPort}/api/omni/snapshot?workspaceId=ws_custom`)
+    const body = await res.json()
+    assert.equal(res.status, 200)
+    assert.equal(body.ok, true)
+    // workspace-only order should be in scope via workspaceId match
+    assert.ok(body.snapshot.orders.some((o) => o.id === 'order_ws_only'), 'workspace-only order should be in ws_custom scope')
+    // payment referencing that order should also be in scope
+    assert.ok(body.snapshot.paymentRequests.some((p) => p.id === 'pay_ws_only'), 'payment for workspace-only order should be in ws_custom scope')
+    assert.ok(body.snapshot.paymentEvents.some((e) => e.id === 'pay_event_ws_only'), 'payment event for workspace-only order should be in ws_custom scope')
+    // ws_oagent should NOT see this workspace-only order
+    const res2 = await fetch(`http://localhost:${localPort}/api/omni/snapshot?workspaceId=ws_oagent`)
+    const body2 = await res2.json()
+    assert.ok(!body2.snapshot.orders.some((o) => o.id === 'order_ws_only'), 'workspace-only order should NOT be in ws_oagent scope')
+    assert.ok(!body2.snapshot.paymentRequests.some((p) => p.id === 'pay_ws_only'), 'payment for workspace-only order should NOT be in ws_oagent scope')
+  } finally {
+    localServer.close()
+  }
+})
+
+test('createOrderDraft persists workspaceId on order row', async () => {
+  const localApp = express()
+  localApp.use(express.json())
+  const seed = createOmniSeed()
+  seed.workspaces.push({ id: 'ws_custom', name: 'Custom', slug: 'custom', plan: 'private_saas', status: 'active', ownerRef: 'boss', settings: {}, createdAt: '2026-06-01T00:00:00.000Z', updatedAt: '2026-06-01T00:00:00.000Z' })
+  const localOmni = createOmniService({ seed })
+  const localHub = { broadcast: () => {} }
+  const localRoom = createState()
+  mountRoutes(localApp, localHub, localRoom, { omni: localOmni })
+  const localServer = localApp.listen(0)
+  const localPort = localServer.address().port
+  try {
+    // Create order draft with workspaceId but no threadId
+    const createRes = await fetch(`http://localhost:${localPort}/api/omni/order-drafts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workspaceId: 'ws_custom',
+        customerName: 'Test Customer',
+        customerPhone: '0812345678',
+        items: [{ name: 'Test Item', quantity: 1, unitPrice: 100, sku: 'SKU001' }],
+      }),
+    })
+    const createBody = await createRes.json()
+    assert.equal(createBody.ok, true, 'createOrderDraft should succeed')
+    assert.equal(createBody.order.workspaceId, 'ws_custom', 'order row should have workspaceId persisted')
+    // Verify it appears in scoped snapshot
+    const snapRes = await fetch(`http://localhost:${localPort}/api/omni/snapshot?workspaceId=ws_custom`)
+    const snapBody = await snapRes.json()
+    assert.ok(snapBody.snapshot.orders.some((o) => o.id === createBody.order.id), 'created order should appear in ws_custom scoped snapshot')
+    // Verify it does NOT appear in ws_oagent
+    const snapRes2 = await fetch(`http://localhost:${localPort}/api/omni/snapshot?workspaceId=ws_oagent`)
+    const snapBody2 = await snapRes2.json()
+    assert.ok(!snapBody2.snapshot.orders.some((o) => o.id === createBody.order.id), 'created order should NOT appear in ws_oagent scoped snapshot')
+  } finally {
+    localServer.close()
+  }
+})

@@ -269,6 +269,11 @@ function createOrderDraftRow(input = {}, snapshot = {}) {
   })
   const now = new Date().toISOString()
   const totalAmount = items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0)
+  // Derive workspaceId: explicit input > thread's page workspace > pageId lookup > null
+  const derivedWorkspaceId = input.workspaceId
+    || (thread ? ((snapshot.pages || []).find((p) => p.id === thread.pageId)?.workspaceId || null) : null)
+    || (input.pageId ? ((snapshot.pages || []).find((p) => p.id === input.pageId)?.workspaceId || null) : null)
+    || null
   return {
     ok: true,
     row: {
@@ -288,6 +293,7 @@ function createOrderDraftRow(input = {}, snapshot = {}) {
       shippingMethod: input.shippingMethod || 'ไปรษณีย์ไทย',
       shippingAddress,
       paymentMethod: input.paymentMethod || 'bank_transfer',
+      workspaceId: derivedWorkspaceId,
       sourceRef: input.sourceRef || 'omni_order_draft',
       sourceCommentId: input.sourceCommentId || null,
       sourcePostId: input.sourcePostId || null,
