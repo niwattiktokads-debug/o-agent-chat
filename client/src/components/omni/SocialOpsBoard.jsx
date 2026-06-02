@@ -152,7 +152,10 @@ function PostCaptureBoard({ snapshot, onSnapshot }) {
     <section className="mt-4 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)]">
       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-[var(--color-rule)] px-4 py-3">
         <div>
-          <h2 className="text-sm font-bold text-[var(--color-ink)]">Post CF capture</h2>
+          <h2 className="text-sm font-bold text-[var(--color-ink)]">
+            Post CF capture
+            {derivedWorkspaceId ? <span className="ml-2 inline-flex items-center rounded-[var(--radius-md)] border border-[var(--color-accent)] bg-[var(--color-accent-subtle,var(--color-panel-2))] px-2 py-0.5 text-[11px] font-bold text-[var(--color-accent)]">{derivedWorkspaceId}</span> : null}
+          </h2>
           <p className="mt-1 text-xs text-[var(--color-muted)]">Read-only ZORT lookup, draft-only order lane</p>
         </div>
         <div className="flex flex-wrap items-end gap-2">
@@ -251,7 +254,10 @@ function LiveCaptureBoard({ snapshot }) {
     <section className="mt-4 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] p-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-sm font-bold text-[var(--color-ink)]">Live CF source</h2>
+          <h2 className="text-sm font-bold text-[var(--color-ink)]">
+            Live CF source
+            {derivedWorkspaceId ? <span className="ml-2 inline-flex items-center rounded-[var(--radius-md)] border border-[var(--color-accent)] bg-[var(--color-accent-subtle,var(--color-panel-2))] px-2 py-0.5 text-[11px] font-bold text-[var(--color-accent)]">{derivedWorkspaceId}</span> : null}
+          </h2>
           <p className="mt-1 text-xs text-[var(--color-muted)]">ถ้า Meta API ยังไม่ให้ realtime stream จะใช้โพสต์ของไลฟ์เป็น capture source</p>
         </div>
         <div className="flex flex-wrap items-end gap-2">

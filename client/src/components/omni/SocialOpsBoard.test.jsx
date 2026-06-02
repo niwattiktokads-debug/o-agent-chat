@@ -183,3 +183,46 @@ describe('SocialOpsBoard workspace derivation', () => {
     })
   })
 })
+
+describe('SocialOpsBoard workspace badge visibility', () => {
+  beforeEach(() => {
+    apiMocks.capturePostCf.mockReset()
+    apiMocks.fetchConnections.mockReset()
+    apiMocks.fetchLiveSources.mockReset()
+    apiMocks.fetchSocialPosts.mockReset()
+    apiMocks.fetchMessageVolumeReport.mockReset()
+
+    apiMocks.fetchConnections.mockResolvedValue({
+      ok: true,
+      connections: [
+        { id: 'meta_man_kynd', title: 'Meta · MAN KYND', provider: 'meta', pageProfile: 'man_kynd' },
+      ],
+    })
+    apiMocks.fetchSocialPosts.mockResolvedValue({ ok: true, posts: [] })
+    apiMocks.fetchLiveSources.mockResolvedValue({ ok: true, mode: null, blocker: 'none', posts: [] })
+  })
+
+  it('shows workspace badge in Post CF when workspace is resolved', async () => {
+    const snapshot = makeSnapshot([
+      { id: 'page_mankynd', name: 'MAN KYND', workspaceId: 'ws_oagent' },
+    ])
+
+    render(<SocialOpsBoard mode="post" snapshot={snapshot} onSnapshot={() => {}} onOpenChat={() => {}} />)
+
+    await waitFor(() => {
+      expect(screen.getByText('ws_oagent')).toBeTruthy()
+    })
+  })
+
+  it('shows workspace badge in Live CF when workspace is resolved', async () => {
+    const snapshot = makeSnapshot([
+      { id: 'page_mankynd', name: 'MAN KYND', workspaceId: 'ws_oagent' },
+    ])
+
+    render(<SocialOpsBoard mode="live" snapshot={snapshot} onSnapshot={() => {}} onOpenChat={() => {}} />)
+
+    await waitFor(() => {
+      expect(screen.getByText('ws_oagent')).toBeTruthy()
+    })
+  })
+})

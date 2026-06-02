@@ -107,9 +107,12 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat, onOpenC
     let ignore = false
     setBusy(true)
     setError('')
+    setNotice('')
+    setTestResult(null)
+    setForm(EMPTY_FORM)
     Promise.all([
       fetchKnowledgeSources({ workspaceId: propWorkspaceId }),
-      fetchOmniSnapshot().catch(() => ({ pages: [] })),
+      fetchOmniSnapshot(propWorkspaceId || undefined).catch(() => ({ pages: [] })),
     ])
       .then(([nextSources, snapshot]) => {
         if (!ignore) {
@@ -126,7 +129,7 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat, onOpenC
     return () => {
       ignore = true
     }
-  }, [])
+  }, [propWorkspaceId])
 
   async function loadSources(search = query, type = typeFilter) {
     setBusy(true)
@@ -252,7 +255,10 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat, onOpenC
         <header className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--color-rule)] pb-4">
           <div>
             <h1 className="text-xl font-bold text-[var(--color-ink)]">สอน AI</h1>
-            <p className="mt-1 text-sm text-[var(--color-ink-2)]">จัดการ Knowledge Source, instruction, testing และ deploy readiness ในดีไซน์เดียวกับ Settings</p>
+            <p className="mt-1 text-sm text-[var(--color-ink-2)]">
+              จัดการ Knowledge Source, instruction, testing และ deploy readiness ในดีไซน์เดียวกับ Settings
+              {propWorkspaceId ? <span className="ml-2 inline-flex items-center rounded-[var(--radius-md)] border border-[var(--color-accent)] bg-[var(--color-accent-subtle,var(--color-panel-2))] px-2 py-0.5 text-[11px] font-bold text-[var(--color-accent)]">{propWorkspaceId}</span> : null}
+            </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {showPageNav ? (

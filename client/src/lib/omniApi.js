@@ -19,8 +19,9 @@ async function postJson(path, payload = {}) {
   return body
 }
 
-export async function fetchOmniSnapshot() {
-  return (await getJson('/api/omni/snapshot')).snapshot
+export async function fetchOmniSnapshot(workspaceId) {
+  const qs = workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : ''
+  return (await getJson(`/api/omni/snapshot${qs}`)).snapshot
 }
 
 export async function fetchWorkspaces() {
@@ -42,12 +43,39 @@ export async function loginOmniAccess(password) {
   return body
 }
 
-export function subscribeOmniSnapshots(onSnapshot) {
+/**
+ * Filter a full snapshot to only include data belonging to the given workspace.
+ * Reusable by both subscription paths.
+ */
+export function filterSnapshotByWorkspace(full, workspaceId) {
+  if (!workspaceId) return full
+  const pages = (full.pages || []).filter((p) => p.workspaceId === workspaceId)
+  const pageIds = new Set(pages.map((p) => p.id))
+  const threads = (full.threads || []).filter((t) => pageIds.has(t.pageId))
+  const threadIds = new Set(threads.map((t) => t.id))
+  const messages = (full.messages || []).filter((m) => threadIds.has(m.threadId))
+  const customers = (full.customers || []).filter((c) => threads.some((t) => t.customerId === c.id))
+  const orders = (full.orders || []).filter((o) => customers.some((c) => c.id === o.customerId) || o.workspaceId === workspaceId)
+  const platformAccounts = (full.platformAccounts || []).filter((a) => pageIds.has(a.pageId))
+  const pageRuntimeSettings = (full.pageRuntimeSettings || []).filter((s) => pageIds.has(s.pageId))
+  const actionAudits = (full.actionAudits || []).filter((a) => a.workspaceId === workspaceId || threadIds.has(a.threadId))
+  const aiDecisions = (full.aiDecisions || []).filter((d) => threadIds.has(d.threadId))
+  const knowledgeSources = (full.knowledgeSources || []).filter((k) => (k.workspaceId || 'ws_oagent') === workspaceId)
+  const orderIds = new Set(orders.map((o) => o.id))
+  const orderLinks = (full.orderLinks || []).filter((l) => threadIds.has(l.threadId) || orderIds.has(l.orderId))
+  const paymentRequests = (full.paymentRequests || []).filter((p) => threadIds.has(p.threadId) || orderIds.has(p.orderId))
+  const paymentRequestIds = new Set(paymentRequests.map((p) => p.id))
+  const paymentEvents = (full.paymentEvents || []).filter((e) => paymentRequestIds.has(e.paymentRequestId))
+  const approvalTasks = (full.approvalTasks || []).filter((t) => threadIds.has(t.threadId) || orderIds.has(t.orderId))
+  return { ...full, pages, threads, messages, customers, orders, platformAccounts, pageRuntimeSettings, actionAudits, aiDecisions, knowledgeSources, orderLinks, paymentRequests, paymentEvents, approvalTasks }
+}
+
+export function subscribeOmniSnapshots(onSnapshot, { workspaceId } = {}) {
   if (isSupabaseRealtimeEnabled()) {
     let closed = false
     const refresh = () => {
       if (closed) return
-      fetchOmniSnapshot().then(onSnapshot).catch(() => {})
+      fetchOmniSnapshot(workspaceId || undefined).then(onSnapshot).catch(() => {})
     }
     refresh()
     const unsubscribe = subscribeOmniDatabaseChanges(refresh)
@@ -68,7 +96,10 @@ export function subscribeOmniSnapshots(onSnapshot) {
     ws.onmessage = (event) => {
       let envelope
       try { envelope = JSON.parse(event.data) } catch { return }
-      if (envelope?.event === 'omni' && envelope.state) onSnapshot(envelope.state)
+      if (envelope?.event === 'omni' && envelope.state) {
+        // Filter incoming full snapshot to workspace scope before passing to UI
+        onSnapshot(filterSnapshotByWorkspace(envelope.state, workspaceId))
+      }
     }
     ws.onclose = () => {
       if (closed) return

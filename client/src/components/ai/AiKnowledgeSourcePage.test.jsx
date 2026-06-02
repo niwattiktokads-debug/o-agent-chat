@@ -131,3 +131,36 @@ describe('AiKnowledgeSourcePage', () => {
     })
   })
 })
+
+describe('AiKnowledgeSourcePage workspace reload', () => {
+  beforeEach(() => {
+    apiMocks.fetchKnowledgeSources.mockReset()
+    apiMocks.fetchOmniSnapshot.mockReset()
+    apiMocks.saveKnowledgeSource.mockReset()
+    apiMocks.deleteKnowledgeSource.mockReset()
+  })
+
+  it('reloads sources when workspaceId prop changes and clears stale state', async () => {
+    const sourcesWs1 = [{ id: 'ks_1', title: 'WS1 Source', type: 'manual', scope: 'all_pages', status: 'ready', content: 'ws1 content', tags: [], updatedAt: '2026-05-23T01:20:00.000Z' }]
+    const sourcesWs2 = [{ id: 'ks_2', title: 'WS2 Source', type: 'manual', scope: 'all_pages', status: 'ready', content: 'ws2 content', tags: [], updatedAt: '2026-05-23T02:00:00.000Z' }]
+
+    apiMocks.fetchKnowledgeSources.mockResolvedValue(sourcesWs1)
+    apiMocks.fetchOmniSnapshot.mockResolvedValue({ pages: [{ id: 'page_annalynn', name: 'Anna Lynn', workspaceId: 'ws_1' }] })
+
+    const { rerender } = render(<AiKnowledgeSourcePage workspaceId="ws_1" />)
+
+    expect(await screen.findByText('WS1 Source')).toBeInTheDocument()
+    expect(apiMocks.fetchKnowledgeSources).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: 'ws_1' }))
+
+    // Change workspace
+    apiMocks.fetchKnowledgeSources.mockResolvedValue(sourcesWs2)
+    apiMocks.fetchOmniSnapshot.mockResolvedValue({ pages: [{ id: 'page_custom', name: 'Custom', workspaceId: 'ws_2' }] })
+
+    rerender(<AiKnowledgeSourcePage workspaceId="ws_2" />)
+
+    expect(await screen.findByText('WS2 Source')).toBeInTheDocument()
+    expect(apiMocks.fetchKnowledgeSources).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: 'ws_2' }))
+    // Old source should no longer be visible
+    expect(screen.queryByText('WS1 Source')).not.toBeInTheDocument()
+  })
+})

@@ -104,8 +104,49 @@ export function mountRoutes(app, hub, room, options = {}) {
     res.json(result)
   })
 
-  app.get('/api/omni/snapshot', (_req, res) => {
-    res.json({ ok: true, snapshot: omni.snapshot() })
+  app.get('/api/omni/snapshot', (req, res) => {
+    const workspaceId = req.query.workspaceId || ''
+    const full = omni.snapshot()
+    if (!workspaceId) return res.json({ ok: true, snapshot: full })
+    // Filter snapshot collections by workspace
+    const pages = (full.pages || []).filter((p) => p.workspaceId === workspaceId)
+    const pageIds = new Set(pages.map((p) => p.id))
+    const threads = (full.threads || []).filter((t) => pageIds.has(t.pageId))
+    const threadIds = new Set(threads.map((t) => t.id))
+    const messages = (full.messages || []).filter((m) => threadIds.has(m.threadId))
+    const customers = (full.customers || []).filter((c) => threads.some((t) => t.customerId === c.id))
+    const orders = (full.orders || []).filter((o) => customers.some((c) => c.id === o.customerId) || o.workspaceId === workspaceId)
+    const platformAccounts = (full.platformAccounts || []).filter((a) => pageIds.has(a.pageId))
+    const pageRuntimeSettings = (full.pageRuntimeSettings || []).filter((s) => pageIds.has(s.pageId))
+    const actionAudits = (full.actionAudits || []).filter((a) => a.workspaceId === workspaceId || threadIds.has(a.threadId))
+    const aiDecisions = (full.aiDecisions || []).filter((d) => threadIds.has(d.threadId))
+    const knowledgeSources = (full.knowledgeSources || []).filter((k) => (k.workspaceId || 'ws_oagent') === workspaceId)
+    const orderIds = new Set(orders.map((o) => o.id))
+    const orderLinks = (full.orderLinks || []).filter((l) => threadIds.has(l.threadId) || orderIds.has(l.orderId))
+    const paymentRequests = (full.paymentRequests || []).filter((p) => threadIds.has(p.threadId) || orderIds.has(p.orderId))
+    const paymentRequestIds = new Set(paymentRequests.map((p) => p.id))
+    const paymentEvents = (full.paymentEvents || []).filter((e) => paymentRequestIds.has(e.paymentRequestId))
+    const approvalTasks = (full.approvalTasks || []).filter((t) => threadIds.has(t.threadId) || orderIds.has(t.orderId))
+    res.json({
+      ok: true,
+      snapshot: {
+        ...full,
+        pages,
+        threads,
+        messages,
+        customers,
+        orders,
+        platformAccounts,
+        pageRuntimeSettings,
+        actionAudits,
+        aiDecisions,
+        knowledgeSources,
+        orderLinks,
+        paymentRequests,
+        paymentEvents,
+        approvalTasks,
+      },
+    })
   })
 
   app.get('/api/omni/schema', (_req, res) => {
