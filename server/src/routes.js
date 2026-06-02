@@ -66,8 +66,20 @@ export function mountRoutes(app, hub, room, options = {}) {
 
   app.get('/api/health', (_req, res) => res.json({ ok: true }))
 
-  app.get('/api/omni/pages', (_req, res) => {
-    res.json({ ok: true, pages: omni.listPages() })
+  // --- Workspace Foundation (Private SaaS v1) ---
+  app.get('/api/omni/workspaces', (_req, res) => {
+    res.json({ ok: true, workspaces: omni.listWorkspaces() })
+  })
+
+  app.get('/api/omni/workspaces/:workspaceId', (req, res) => {
+    const workspace = omni.getWorkspace(req.params.workspaceId)
+    if (!workspace) return res.status(404).json({ ok: false, error: 'workspace_not_found' })
+    res.json({ ok: true, workspace })
+  })
+
+  app.get('/api/omni/pages', (req, res) => {
+    const workspaceId = req.query.workspaceId || undefined
+    res.json({ ok: true, pages: omni.listPages({ workspaceId }) })
   })
 
   app.post('/api/omni/pages/registry', (req, res) => {

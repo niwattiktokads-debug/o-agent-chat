@@ -8,6 +8,7 @@ import ConnectorHealth from './ConnectorHealth.jsx'
 import FacebookLivePreview from './FacebookLivePreview.jsx'
 import PageManagement from './PageManagement.jsx'
 import TikTokOrderSync from './TikTokOrderSync.jsx'
+import WorkspacePanel from './WorkspacePanel.jsx'
 import ConnectionsPage from '../connections/ConnectionsPage.jsx'
 
 const DEFAULT_SETTINGS = {
@@ -206,6 +207,9 @@ export default function SettingsPage({
               />
             </SettingsCard>
           </section>
+          <section className="mt-4">
+            <WorkspacePanel snapshot={localSnapshot} />
+          </section>
           <section className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             <div className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)]">
               <PageManagement pages={pages} onSnapshot={handleSnapshot} />
@@ -307,7 +311,7 @@ function AiConfigCard({ row }) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="text-base font-bold text-[var(--color-ink)]">{page.name}</h3>
-          <p className="mt-1 text-xs font-semibold text-[var(--color-muted)]">{page.id}</p>
+          <p className="mt-1 text-xs font-semibold text-[var(--color-muted)]">{page.id}{page.workspaceId ? ` · ${page.workspaceId}` : ''}</p>
         </div>
         <StatusPill tone={warnings.length ? 'warn' : 'ready'} label={warnings.length ? 'ต้องเช็ก' : 'พร้อม'} />
       </div>

@@ -7,6 +7,7 @@ import { createOmniSeed } from '../seed.js'
 const schemaPath = fileURLToPath(new URL('./schema.sql', import.meta.url))
 
 const COLLECTIONS = [
+  'workspaces',
   'pages',
   'pageRuntimeSettings',
   'platformAccounts',
@@ -32,6 +33,7 @@ const COLLECTIONS = [
 ]
 
 const SEED_BACKED_COLLECTIONS = [
+  'workspaces',
   'pages',
   'platformAccounts',
   'brandGroups',

@@ -1,4 +1,5 @@
 import { DEFAULT_CHAT_RETENTION_POLICY } from './retention.js'
+import { DEFAULT_WORKSPACE, DEFAULT_WORKSPACE_ID } from './workspace.js'
 
 export function createOmniSeed() {
   const pages = [
@@ -10,8 +11,11 @@ export function createOmniSeed() {
     { id: 'page_fb_112154661515664', name: 'Viris Zamara', shortName: 'VZ', status: 'active', brandGroupId: 'brand_shared', policySetId: 'policy_default', agentProfileId: 'agent_default' },
   ]
 
+  const pagesWithWorkspace = pages.map((page) => ({ ...page, workspaceId: DEFAULT_WORKSPACE_ID }))
+
   return {
-    pages,
+    workspaces: [DEFAULT_WORKSPACE],
+    pages: pagesWithWorkspace,
     platformAccounts: [
       { id: 'acct_fb_mankynd', pageId: 'page_mankynd', platform: 'facebook', provider: 'meta', providerAccountId: '189971841184132', status: 'healthy' },
       { id: 'acct_fb_annalynn', pageId: 'page_annalynn', platform: 'facebook', provider: 'meta', providerAccountId: '122106446570001676', status: 'healthy' },
@@ -127,6 +131,7 @@ export function createOmniSeed() {
     knowledgeSources: [
       {
         id: 'ks_return_exchange',
+        workspaceId: DEFAULT_WORKSPACE_ID,
         title: 'Return and exchange policy',
         type: 'manual',
         scope: 'all_pages',
@@ -138,6 +143,7 @@ export function createOmniSeed() {
       },
       {
         id: 'ks_annalynn_product_faq',
+        workspaceId: DEFAULT_WORKSPACE_ID,
         title: 'Anna Lynn product FAQ',
         type: 'manual',
         scope: 'page_annalynn',
@@ -149,6 +155,7 @@ export function createOmniSeed() {
       },
       {
         id: 'ks_annalynn_ai_persona',
+        workspaceId: DEFAULT_WORKSPACE_ID,
         title: 'Anna Lynn AI persona - น้องอันนา',
         type: 'manual',
         scope: 'page_annalynn',
@@ -169,6 +176,7 @@ export function createOmniSeed() {
       },
       {
         id: 'ks_comment_to_inbox_workflow',
+        workspaceId: DEFAULT_WORKSPACE_ID,
         title: 'Facebook comment to inbox workflow',
         type: 'manual',
         scope: 'all_pages',
@@ -188,6 +196,7 @@ export function createOmniSeed() {
       },
       {
         id: 'ks_shipping_payment',
+        workspaceId: DEFAULT_WORKSPACE_ID,
         title: 'Shipping and payment answers',
         type: 'manual',
         scope: 'all_pages',

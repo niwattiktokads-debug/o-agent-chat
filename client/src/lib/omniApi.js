@@ -23,6 +23,14 @@ export async function fetchOmniSnapshot() {
   return (await getJson('/api/omni/snapshot')).snapshot
 }
 
+export async function fetchWorkspaces() {
+  return (await getJson('/api/omni/workspaces')).workspaces
+}
+
+export async function fetchWorkspace(workspaceId) {
+  return (await getJson(`/api/omni/workspaces/${encodeURIComponent(workspaceId)}`)).workspace
+}
+
 export async function loginOmniAccess(password) {
   const response = await apiFetch('/auth/login', {
     method: 'POST',

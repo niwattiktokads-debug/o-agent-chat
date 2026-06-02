@@ -2,6 +2,7 @@ import { createOmniSeed } from './seed.js'
 import { DEFAULT_CHAT_RETENTION_POLICY, normalizeRetentionPolicy, planChatRetentionCleanup } from './retention.js'
 import { extractThaiOrderAddress } from './orderAddressIntake.js'
 import { normalizeStoredShippingAddress, validateThaiShippingAddress } from './thaiAddress.js'
+import { DEFAULT_WORKSPACE_ID, backfillWorkspaceId, filterByWorkspace, normalizeWorkspace, buildWorkspaceSummary } from './workspace.js'
 
 function resolveOptions(input) {
   if (input?.store || input?.seed) return { seed: input.seed || createOmniSeed(), store: input.store || null }
@@ -433,8 +434,26 @@ export function createOmniService(options = createOmniSeed()) {
     snapshot() {
       return withPageRuntimeSettings(currentData())
     },
-    listPages() {
-      return withPageRuntimeSettings(currentData()).pages
+    listWorkspaces() {
+      return (currentData().workspaces || []).map((ws) => structuredClone(ws))
+    },
+    getWorkspace(workspaceId) {
+      const id = String(workspaceId || '').trim()
+      if (!id) return null
+      const snapshot = currentData()
+      const ws = (snapshot.workspaces || []).find((item) => item.id === id)
+      if (!ws) return null
+      return buildWorkspaceSummary(ws, snapshot)
+    },
+    upsertWorkspace(input = {}) {
+      const normalized = normalizeWorkspace(input)
+      if (!normalized.ok) return normalized
+      const result = upsert('workspaces', [normalized.workspace])
+      return { ok: true, result, workspace: structuredClone(normalized.workspace), snapshot: this.snapshot() }
+    },
+    listPages(options = {}) {
+      const allPages = withPageRuntimeSettings(currentData()).pages
+      return filterByWorkspace(allPages, options.workspaceId)
     },
     getSettings() {
       const row = (currentData().omniSettings || []).find((item) => item.id === 'default')
