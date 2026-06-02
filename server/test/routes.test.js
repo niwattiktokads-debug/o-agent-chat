@@ -1965,3 +1965,31 @@ test('audit rows include workspaceId for manual reply draft', async () => {
   assert.equal(result.ok, true)
   assert.ok(result.audit.workspaceId !== undefined, 'workspaceId should be present in audit')
 })
+
+test('GET /api/omni/snapshot?workspaceId filters pages/threads/messages by workspace', async () => {
+  const { body, status } = await req('GET', '/api/omni/snapshot?workspaceId=ws_oagent')
+  assert.equal(status, 200)
+  assert.equal(body.ok, true)
+  // All seed pages belong to ws_oagent, so all should be present
+  assert.ok(body.snapshot.pages.length > 0)
+  assert.ok(body.snapshot.pages.every((p) => p.workspaceId === 'ws_oagent'))
+  // Threads should only be for pages in this workspace
+  const pageIds = new Set(body.snapshot.pages.map((p) => p.id))
+  assert.ok(body.snapshot.threads.every((t) => pageIds.has(t.pageId)))
+})
+
+test('GET /api/omni/snapshot?workspaceId=nonexistent returns empty collections', async () => {
+  const { body, status } = await req('GET', '/api/omni/snapshot?workspaceId=ws_nonexistent')
+  assert.equal(status, 200)
+  assert.equal(body.ok, true)
+  assert.equal(body.snapshot.pages.length, 0)
+  assert.equal(body.snapshot.threads.length, 0)
+  assert.equal(body.snapshot.messages.length, 0)
+})
+
+test('GET /api/omni/snapshot without workspaceId returns full unfiltered snapshot', async () => {
+  const { body, status } = await req('GET', '/api/omni/snapshot')
+  assert.equal(status, 200)
+  assert.equal(body.ok, true)
+  assert.ok(body.snapshot.pages.length > 0)
+})

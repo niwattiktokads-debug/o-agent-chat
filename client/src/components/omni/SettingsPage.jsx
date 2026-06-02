@@ -173,7 +173,7 @@ export default function SettingsPage({
           <ConnectionsPage embedded showPageNav={false} />
         </div>
       ) : section === 'ai-config' ? (
-        <AiConfigPanel snapshot={localSnapshot} onOpenChat={onOpenChat} />
+        <AiConfigPanel snapshot={localSnapshot} onOpenChat={onOpenChat} workspaceId={workspaceId} />
       ) : (
         <>
           <section className="mt-4 grid gap-4 lg:grid-cols-2">
@@ -236,8 +236,9 @@ export default function SettingsPage({
   )
 }
 
-function AiConfigPanel({ snapshot, onOpenChat }) {
-  const pages = snapshot?.pages || []
+function AiConfigPanel({ snapshot, onOpenChat, workspaceId }) {
+  const allPages = snapshot?.pages || []
+  const pages = workspaceId ? allPages.filter((p) => p.workspaceId === workspaceId) : allPages
   const agentProfiles = snapshot?.agentProfiles || []
   const policySets = snapshot?.policySets || []
   const knowledgeSources = snapshot?.knowledgeSources || []

@@ -137,6 +137,7 @@ function AppInner() {
             operationMode={omniOperationMode}
             onOperationModeChange={setOmniOperationMode}
             showOperationRail={false}
+            workspaceId={activeWorkspaceId}
           />
         </div>
       </div>

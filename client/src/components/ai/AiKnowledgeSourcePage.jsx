@@ -107,9 +107,12 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat, onOpenC
     let ignore = false
     setBusy(true)
     setError('')
+    setNotice('')
+    setTestResult(null)
+    setForm(EMPTY_FORM)
     Promise.all([
       fetchKnowledgeSources({ workspaceId: propWorkspaceId }),
-      fetchOmniSnapshot().catch(() => ({ pages: [] })),
+      fetchOmniSnapshot(propWorkspaceId || undefined).catch(() => ({ pages: [] })),
     ])
       .then(([nextSources, snapshot]) => {
         if (!ignore) {
@@ -126,7 +129,7 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat, onOpenC
     return () => {
       ignore = true
     }
-  }, [])
+  }, [propWorkspaceId])
 
   async function loadSources(search = query, type = typeFilter) {
     setBusy(true)

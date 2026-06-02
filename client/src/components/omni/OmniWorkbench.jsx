@@ -18,6 +18,7 @@ export default function OmniWorkbench({
   operationMode: controlledOperationMode,
   onOperationModeChange,
   showOperationRail = true,
+  workspaceId,
 }) {
   const [snapshot, setSnapshot] = useState(null)
   const [loadError, setLoadError] = useState('')
@@ -45,14 +46,15 @@ export default function OmniWorkbench({
 
   const loadSnapshot = useCallback(async () => {
     setLoadError('')
-    const data = await fetchOmniSnapshot()
+    const data = await fetchOmniSnapshot(workspaceId || undefined)
     setSnapshot(data)
+    setPageId('all')
     setThreadId(filterThreads(data.threads || [], { pageId: 'all' })[0]?.id || null)
-  }, [])
+  }, [workspaceId])
 
   useEffect(() => {
     loadSnapshot().catch((error) => setLoadError(error.message || 'snapshot_load_failed'))
-  }, [loadSnapshot])
+  }, [loadSnapshot])  // re-loads when workspaceId changes via loadSnapshot dep
 
   useEffect(() => subscribeOmniSnapshots((data) => {
     setSnapshot(data)

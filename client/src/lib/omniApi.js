@@ -19,8 +19,9 @@ async function postJson(path, payload = {}) {
   return body
 }
 
-export async function fetchOmniSnapshot() {
-  return (await getJson('/api/omni/snapshot')).snapshot
+export async function fetchOmniSnapshot(workspaceId) {
+  const qs = workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : ''
+  return (await getJson(`/api/omni/snapshot${qs}`)).snapshot
 }
 
 export async function fetchWorkspaces() {
