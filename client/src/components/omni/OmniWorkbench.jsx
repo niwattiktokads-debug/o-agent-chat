@@ -59,7 +59,7 @@ export default function OmniWorkbench({
   useEffect(() => subscribeOmniSnapshots((data) => {
     setSnapshot(data)
     setThreadId((current) => current || filterThreads(data.threads || [], { pageId: 'all' })[0]?.id || null)
-  }), [])
+  }, { workspaceId: workspaceId || undefined }), [workspaceId])
 
   async function submitLogin(event) {
     event.preventDefault()

@@ -43,12 +43,33 @@ export async function loginOmniAccess(password) {
   return body
 }
 
-export function subscribeOmniSnapshots(onSnapshot) {
+/**
+ * Filter a full snapshot to only include data belonging to the given workspace.
+ * Reusable by both subscription paths.
+ */
+export function filterSnapshotByWorkspace(full, workspaceId) {
+  if (!workspaceId) return full
+  const pages = (full.pages || []).filter((p) => p.workspaceId === workspaceId)
+  const pageIds = new Set(pages.map((p) => p.id))
+  const threads = (full.threads || []).filter((t) => pageIds.has(t.pageId))
+  const threadIds = new Set(threads.map((t) => t.id))
+  const messages = (full.messages || []).filter((m) => threadIds.has(m.threadId))
+  const customers = (full.customers || []).filter((c) => threads.some((t) => t.customerId === c.id))
+  const orders = (full.orders || []).filter((o) => customers.some((c) => c.id === o.customerId))
+  const platformAccounts = (full.platformAccounts || []).filter((a) => pageIds.has(a.pageId))
+  const pageRuntimeSettings = (full.pageRuntimeSettings || []).filter((s) => pageIds.has(s.pageId))
+  const actionAudits = (full.actionAudits || []).filter((a) => a.workspaceId === workspaceId || threadIds.has(a.threadId))
+  const aiDecisions = (full.aiDecisions || []).filter((d) => threadIds.has(d.threadId))
+  const knowledgeSources = (full.knowledgeSources || []).filter((k) => (k.workspaceId || 'ws_oagent') === workspaceId)
+  return { ...full, pages, threads, messages, customers, orders, platformAccounts, pageRuntimeSettings, actionAudits, aiDecisions, knowledgeSources }
+}
+
+export function subscribeOmniSnapshots(onSnapshot, { workspaceId } = {}) {
   if (isSupabaseRealtimeEnabled()) {
     let closed = false
     const refresh = () => {
       if (closed) return
-      fetchOmniSnapshot().then(onSnapshot).catch(() => {})
+      fetchOmniSnapshot(workspaceId || undefined).then(onSnapshot).catch(() => {})
     }
     refresh()
     const unsubscribe = subscribeOmniDatabaseChanges(refresh)
@@ -69,7 +90,10 @@ export function subscribeOmniSnapshots(onSnapshot) {
     ws.onmessage = (event) => {
       let envelope
       try { envelope = JSON.parse(event.data) } catch { return }
-      if (envelope?.event === 'omni' && envelope.state) onSnapshot(envelope.state)
+      if (envelope?.event === 'omni' && envelope.state) {
+        // Filter incoming full snapshot to workspace scope before passing to UI
+        onSnapshot(filterSnapshotByWorkspace(envelope.state, workspaceId))
+      }
     }
     ws.onclose = () => {
       if (closed) return
