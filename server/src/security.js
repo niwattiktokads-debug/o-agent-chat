@@ -42,6 +42,7 @@ export function createSecurityMiddleware({
       res.setHeader('Vary', 'Origin')
       res.setHeader('Access-Control-Allow-Headers', 'content-type,x-omni-action-token')
       res.setHeader('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS')
+      res.setHeader('Access-Control-Allow-Credentials', 'true')
     }
 
     if (req.method === 'OPTIONS') return res.sendStatus(allowed ? 204 : 403)
@@ -121,10 +122,10 @@ export function createSecurityMiddleware({
     const cookie = [
       `${ACCESS_COOKIE}=${payload}.${signPayload(payload)}`,
       'HttpOnly',
-      'SameSite=Lax',
+      secure ? 'SameSite=None' : 'SameSite=Lax',
       'Path=/',
       `Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`,
-      secure ? 'Secure' : '',
+      secure ? 'Secure' : ''
     ].filter(Boolean).join('; ')
     res.setHeader('Set-Cookie', cookie)
   }
