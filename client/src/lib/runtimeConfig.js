@@ -1,5 +1,5 @@
-const API_BASE_URL = (import.meta.env.VITE_OMNI_API_BASE_URL || '').replace(/\/$/, '')
-const WS_BASE_URL = (import.meta.env.VITE_OMNI_WS_BASE_URL || '').replace(/\/$/, '')
+const API_BASE_URL = (import.meta.env.VITE_OMNI_API_BASE_URL || 'https://omni-server-production.up.railway.app').replace(/\/$/, '')
+const WS_BASE_URL = (import.meta.env.VITE_OMNI_WS_BASE_URL || 'wss://omni-server-production.up.railway.app').replace(/\/$/, '')
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || ''
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
 const SUPABASE_REALTIME_ENABLED = import.meta.env.VITE_OMNI_REALTIME_PROVIDER === 'supabase'
