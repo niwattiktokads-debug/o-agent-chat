@@ -501,7 +501,7 @@ function KnowledgeSourceList({ busy, query, setQuery, typeFilter, setTypeFilter,
           <article key={row.id} className="grid gap-3 px-4 py-3 lg:grid-cols-[minmax(0,1fr)_110px_160px_120px_170px] lg:items-center">
             <div>
               <p className="font-bold text-[var(--color-ink)]">{row.title}</p>
-              <p className="mt-1 line-clamp-1 text-sm text-[var(--color-muted)]">{row.type} · {row.scope}</p>
+              <p className="mt-1 line-clamp-1 text-sm text-[var(--color-muted)]">{row.type} · {row.scope} · <span className="text-[var(--color-accent)]">{row.workspaceId || 'ws_oagent'}</span></p>
             </div>
             <span className="text-sm text-[var(--color-ink-2)]">{String(row.content || '').length.toLocaleString('en-US')} chars</span>
             <span className="text-sm text-[var(--color-ink-2)]">{formatUpdated(row.updatedAt)}</span>

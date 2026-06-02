@@ -130,7 +130,7 @@ function normalizeKnowledgeSource(input = {}) {
     ? input.tags.map((tag) => String(tag).trim()).filter(Boolean)
     : String(input.tags || '').split(',').map((tag) => tag.trim()).filter(Boolean)
 
-  const workspaceId = String(input.workspaceId || '').trim() || undefined
+  const workspaceId = String(input.workspaceId || '').trim() || DEFAULT_WORKSPACE_ID
 
   return {
     ok: true,
@@ -142,7 +142,7 @@ function normalizeKnowledgeSource(input = {}) {
       status,
       content,
       tags,
-      ...(workspaceId ? { workspaceId } : {}),
+      workspaceId,
       sourceRef: input.sourceRef || null,
       createdAt: input.createdAt || now,
       updatedAt: now,
@@ -577,10 +577,11 @@ export function createOmniService(options = createOmniSeed()) {
       const workspaceId = String(filters.workspaceId || '').trim() || undefined
       return (currentData().knowledgeSources || [])
         .filter((source) => {
-          // Workspace boundary: if workspaceId filter is given, only return sources in that workspace
-          // Legacy: sources without workspaceId are visible to all (backward-compatible)
-          if (workspaceId && source.workspaceId && source.workspaceId !== workspaceId) return false
-          return true
+          // Workspace boundary: sources without workspaceId are treated as ws_oagent (default backfill)
+          // When workspaceId filter is given, strictly match — no cross-workspace leakage
+          if (!workspaceId) return true // legacy: no filter → show all
+          const sourceWs = source.workspaceId || DEFAULT_WORKSPACE_ID
+          return sourceWs === workspaceId
         })
         .filter((source) => !filters.status || source.status === filters.status)
         .filter((source) => !filters.type || source.type === filters.type)

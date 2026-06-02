@@ -76,10 +76,11 @@ function relevantKnowledge(intent, snapshot, { workspaceId } = {}) {
   return (snapshot.knowledgeSources || [])
     .filter((source) => source.status === 'ready')
     .filter((source) => {
-      // Workspace boundary: only include sources belonging to the same workspace
-      // Legacy: if no workspaceId filter or source has no workspaceId, include it
-      if (workspaceId && source.workspaceId && source.workspaceId !== workspaceId) return false
-      return true
+      // Workspace boundary: sources without workspaceId default to ws_oagent
+      // When workspaceId is given, strict match — no cross-workspace leakage
+      if (!workspaceId) return true
+      const sourceWs = source.workspaceId || 'ws_oagent'
+      return sourceWs === workspaceId
     })
     .filter((source) => {
       const haystack = [source.title, source.content, ...(source.tags || [])].join(' ').toLowerCase()

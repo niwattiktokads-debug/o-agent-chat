@@ -249,8 +249,10 @@ function AiConfigPanel({ snapshot, onOpenChat }) {
     const accounts = platformAccounts.filter((item) => item.pageId === page.id)
     const knowledge = knowledgeSources
       .filter((item) => {
-        // Workspace boundary: only show knowledge from the same workspace
-        if (page.workspaceId && item.workspaceId && item.workspaceId !== page.workspaceId) return false
+        // Workspace boundary: sources without workspaceId default to ws_oagent
+        const pageWs = page.workspaceId || 'ws_oagent'
+        const itemWs = item.workspaceId || 'ws_oagent'
+        if (pageWs !== itemWs) return false
         return item.scope === page.id || item.scope === 'all_pages'
       })
       .sort((a, b) => Number(b.scope === page.id) - Number(a.scope === page.id))
@@ -262,7 +264,9 @@ function AiConfigPanel({ snapshot, onOpenChat }) {
     return { page, agent, policy, accounts, knowledge, warnings }
   })
   const readyCount = rows.filter((row) => !row.warnings.length).length
-  const sourceCount = knowledgeSources.length
+  // Count only sources visible to the workspace (deduplicated)
+  const wsSourceIds = new Set(rows.flatMap((row) => row.knowledge.map((k) => k.id)))
+  const sourceCount = wsSourceIds.size
 
   return (
     <section className="mt-4 space-y-4">

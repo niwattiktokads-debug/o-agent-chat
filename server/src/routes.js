@@ -331,9 +331,10 @@ export function mountRoutes(app, hub, room, options = {}) {
 
   app.post('/api/omni/social/posts/:postId/capture', async (req, res) => {
     try {
-      const settings = omni.getSettings()
-      if (settings.postCf?.enabled === false) return res.status(409).json({ ok: false, error: 'post_cf_disabled' })
       const pageProfile = String(req.body?.pageProfile || req.query.pageProfile || req.query.page || 'man_kynd')
+      const wsId = req.body?.workspaceId || req.query.workspaceId || undefined
+      const settings = omni.getSettings({ workspaceId: wsId })
+      if (settings.postCf?.enabled === false) return res.status(409).json({ ok: false, error: 'post_cf_disabled' })
       const comments = await social.listPostComments({
         objectId: req.params.postId,
         pageProfile,
@@ -394,7 +395,7 @@ export function mountRoutes(app, hub, room, options = {}) {
 
   app.get('/api/omni/social/live', async (req, res) => {
     try {
-      const settings = omni.getSettings()
+      const settings = omni.getSettings({ workspaceId: req.query.workspaceId || undefined })
       if (settings.liveCf?.enabled === false) return res.status(409).json({ ok: false, error: 'live_cf_disabled' })
       const result = await social.listLiveCommentSources({
         pageProfile: String(req.query.pageProfile || req.query.page || 'man_kynd'),
