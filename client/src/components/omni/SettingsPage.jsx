@@ -248,7 +248,11 @@ function AiConfigPanel({ snapshot, onOpenChat }) {
     const policy = policySets.find((item) => item.id === policySetId)
     const accounts = platformAccounts.filter((item) => item.pageId === page.id)
     const knowledge = knowledgeSources
-      .filter((item) => item.scope === page.id || item.scope === 'all_pages')
+      .filter((item) => {
+        // Workspace boundary: only show knowledge from the same workspace
+        if (page.workspaceId && item.workspaceId && item.workspaceId !== page.workspaceId) return false
+        return item.scope === page.id || item.scope === 'all_pages'
+      })
       .sort((a, b) => Number(b.scope === page.id) - Number(a.scope === page.id))
     const warnings = []
     if (!agent) warnings.push('ยังไม่พบ AI profile')

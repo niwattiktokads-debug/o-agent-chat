@@ -10,6 +10,7 @@ const EMPTY_FORM = {
   scope: 'all_pages',
   content: '',
   tags: '',
+  workspaceId: '',
 }
 
 const DEFAULT_INSTRUCTIONS = [
@@ -52,7 +53,9 @@ function termsFrom(value) {
   return [...new Set(terms)]
 }
 
-function sourceMatchesPrompt(source, prompt, scope = '') {
+function sourceMatchesPrompt(source, prompt, scope = '', workspaceId = '') {
+  // Workspace boundary: skip sources from a different workspace
+  if (workspaceId && source.workspaceId && source.workspaceId !== workspaceId) return false
   if (scope && scope !== 'all_pages' && source.scope !== 'all_pages' && source.scope !== scope) return false
   const haystack = [source.title, source.content, source.scope, ...(source.tags || [])].join(' ').toLowerCase()
   const terms = termsFrom(prompt)
@@ -79,7 +82,7 @@ function buildTestAnswer(source, prompt) {
   }
 }
 
-export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat, onOpenConnections, showPageNav = true }) {
+export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat, onOpenConnections, showPageNav = true, workspaceId: propWorkspaceId = '' }) {
   const [sources, setSources] = useState([])
   const [pages, setPages] = useState([])
   const [query, setQuery] = useState('')
@@ -93,13 +96,19 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat, onOpenC
   const [testScope, setTestScope] = useState('all_pages')
   const [testResult, setTestResult] = useState(null)
   const [form, setForm] = useState(EMPTY_FORM)
+  // Derive workspaceId from the selected page scope for workspace boundary
+  const activeWorkspaceId = useMemo(() => {
+    if (!testScope || testScope === 'all_pages') return ''
+    const page = pages.find((p) => p.id === testScope)
+    return page?.workspaceId || ''
+  }, [testScope, pages])
 
   useEffect(() => {
     let ignore = false
     setBusy(true)
     setError('')
     Promise.all([
-      fetchKnowledgeSources(),
+      fetchKnowledgeSources({ workspaceId: propWorkspaceId }),
       fetchOmniSnapshot().catch(() => ({ pages: [] })),
     ])
       .then(([nextSources, snapshot]) => {
@@ -123,7 +132,7 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat, onOpenC
     setBusy(true)
     setError('')
     try {
-      setSources(await fetchKnowledgeSources({ query: search, type }))
+      setSources(await fetchKnowledgeSources({ query: search, type, workspaceId: propWorkspaceId }))
     } catch (err) {
       setError(err.message || 'knowledge_load_failed')
     } finally {
@@ -152,6 +161,7 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat, onOpenC
       scope: row.scope,
       content: row.content,
       tags: (row.tags || []).join(', '),
+      workspaceId: row.workspaceId || '',
     })
     setError('')
     setNotice(`กำลังแก้ไข: ${row.title}`)
@@ -169,7 +179,8 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat, onOpenC
     setError('')
     setNotice('')
     try {
-      const saved = await saveKnowledgeSource(form)
+      const payload = { ...form, workspaceId: form.workspaceId || propWorkspaceId }
+      const saved = await saveKnowledgeSource(payload)
       await loadSources(query, typeFilter)
       setForm(EMPTY_FORM)
       setNotice(`บันทึกแล้ว: ${saved.source?.title || form.title}`)
@@ -197,7 +208,10 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat, onOpenC
   }
 
   function runTest(prompt = testPrompt, scope = testScope, forcedSource = null) {
-    const source = forcedSource || sources.find((item) => sourceMatchesPrompt(item, prompt, scope))
+    const wsId = scope && scope !== 'all_pages'
+      ? (pages.find((p) => p.id === scope)?.workspaceId || '')
+      : activeWorkspaceId
+    const source = forcedSource || sources.find((item) => sourceMatchesPrompt(item, prompt, scope, wsId))
     setActiveSection('Testing')
     setTestPrompt(prompt)
     setTestScope(scope)

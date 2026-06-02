@@ -252,10 +252,11 @@ export async function saveLineSudaGroupRules(groupId, responseRules) {
   return body
 }
 
-export async function fetchKnowledgeSources({ query = '', type = '' } = {}) {
+export async function fetchKnowledgeSources({ query = '', type = '', workspaceId = '' } = {}) {
   const params = new URLSearchParams()
   if (query) params.set('q', query)
   if (type) params.set('type', type)
+  if (workspaceId) params.set('workspaceId', workspaceId)
   const suffix = params.toString() ? `?${params.toString()}` : ''
   return (await getJson(`/api/omni/knowledge-sources${suffix}`)).sources
 }

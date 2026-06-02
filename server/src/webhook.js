@@ -376,6 +376,11 @@ async function draftThreadReply({ omni, ai, threadId, send = false, sendReply = 
   if (omni.isPageAutoReplyEnabled?.(thread.pageId) === false) {
     return { ok: true, threadId, sent: false, sendSkipped: 'page_auto_reply_disabled' }
   }
+  // Workspace-scoped settings gate: derive settings from thread's workspace
+  const wsSettings = omni.getSettingsForThread ? omni.getSettingsForThread(threadId) : omni.getSettings()
+  if (wsSettings?.ai?.enabled === false) {
+    return { ok: true, threadId, sent: false, sendSkipped: 'ai_disabled_for_workspace' }
+  }
   const snapshot = omni.snapshot()
   const policy = omni.getPolicyForThread(thread)
   const decision = recoverAllowedFallbackDecision(await ai.draft({ thread, snapshot, policy }))

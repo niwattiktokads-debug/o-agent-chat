@@ -2,7 +2,7 @@ import { createOmniSeed } from './seed.js'
 import { DEFAULT_CHAT_RETENTION_POLICY, normalizeRetentionPolicy, planChatRetentionCleanup } from './retention.js'
 import { extractThaiOrderAddress } from './orderAddressIntake.js'
 import { normalizeStoredShippingAddress, validateThaiShippingAddress } from './thaiAddress.js'
-import { DEFAULT_WORKSPACE_ID, backfillWorkspaceId, filterByWorkspace, normalizeWorkspace, buildWorkspaceSummary } from './workspace.js'
+import { DEFAULT_WORKSPACE_ID, backfillWorkspaceId, filterByWorkspace, normalizeWorkspace, buildWorkspaceSummary, resolveWorkspaceId } from './workspace.js'
 
 function resolveOptions(input) {
   if (input?.store || input?.seed) return { seed: input.seed || createOmniSeed(), store: input.store || null }
@@ -130,6 +130,8 @@ function normalizeKnowledgeSource(input = {}) {
     ? input.tags.map((tag) => String(tag).trim()).filter(Boolean)
     : String(input.tags || '').split(',').map((tag) => tag.trim()).filter(Boolean)
 
+  const workspaceId = String(input.workspaceId || '').trim() || undefined
+
   return {
     ok: true,
     row: {
@@ -140,6 +142,7 @@ function normalizeKnowledgeSource(input = {}) {
       status,
       content,
       tags,
+      ...(workspaceId ? { workspaceId } : {}),
       sourceRef: input.sourceRef || null,
       createdAt: input.createdAt || now,
       updatedAt: now,
@@ -486,6 +489,17 @@ export function createOmniService(options = createOmniSeed()) {
       const auditResult = upsert('actionAudits', [audit])
       return { ok: true, result: { omniSettings: result, actionAudits: auditResult }, settings: structuredClone(nextSettings), audit, snapshot: this.snapshot() }
     },
+    resolveWorkspaceId({ threadId, pageId } = {}) {
+      return resolveWorkspaceId(currentData(), { threadId, pageId })
+    },
+    getSettingsForThread(threadId) {
+      const wsId = resolveWorkspaceId(currentData(), { threadId })
+      return this.getSettings({ workspaceId: wsId })
+    },
+    getSettingsForPage(pageId) {
+      const wsId = resolveWorkspaceId(currentData(), { pageId })
+      return this.getSettings({ workspaceId: wsId })
+    },
     getPageRuntimeSetting(pageId) {
       const page = currentData().pages.find((item) => item.id === pageId)
       if (!page) return null
@@ -560,7 +574,14 @@ export function createOmniService(options = createOmniSeed()) {
     },
     listKnowledgeSources(filters = {}) {
       const query = String(filters.query || '').trim().toLowerCase()
+      const workspaceId = String(filters.workspaceId || '').trim() || undefined
       return (currentData().knowledgeSources || [])
+        .filter((source) => {
+          // Workspace boundary: if workspaceId filter is given, only return sources in that workspace
+          // Legacy: sources without workspaceId are visible to all (backward-compatible)
+          if (workspaceId && source.workspaceId && source.workspaceId !== workspaceId) return false
+          return true
+        })
         .filter((source) => !filters.status || source.status === filters.status)
         .filter((source) => !filters.type || source.type === filters.type)
         .filter((source) => !query || [source.title, source.content, source.scope, ...(source.tags || [])].join(' ').toLowerCase().includes(query))
@@ -630,7 +651,8 @@ export function createOmniService(options = createOmniSeed()) {
       }
     },
     createOrderDraft(input = {}) {
-      const settings = this.getSettings()
+      const threadId = String(input.threadId || '').trim()
+      const settings = threadId ? this.getSettingsForThread(threadId) : this.getSettings()
       if (settings.orderDraft?.enabled === false) return { ok: false, error: 'order_draft_disabled' }
       const normalized = createOrderDraftRow(input, currentData())
       if (!normalized.ok) return normalized
@@ -665,7 +687,8 @@ export function createOmniService(options = createOmniSeed()) {
       const order = (snapshot.orders || []).find((item) => item.id === orderId)
       if (!order) return { ok: false, error: 'order_not_found' }
       if (order.status !== 'draft') return { ok: false, error: 'order_not_draft' }
-      const settings = this.getSettings()
+      const orderLink = (snapshot.orderLinks || []).find((link) => link.orderId === orderId)
+      const settings = orderLink?.threadId ? this.getSettingsForThread(orderLink.threadId) : this.getSettings()
       if (settings.orderDraft?.enabled === false) return { ok: false, error: 'order_draft_disabled' }
       if (settings.orderDraft?.createZortOrderOnApprove === false) return { ok: false, error: 'zort_order_create_disabled' }
       if (typeof createExternalOrder !== 'function') return { ok: false, error: 'order_runtime_missing' }
@@ -707,7 +730,8 @@ export function createOmniService(options = createOmniSeed()) {
     },
     messageVolumeReport({ from, to, pageId } = {}) {
       const snapshot = currentData()
-      const timeZone = this.getSettings().report?.timezone || 'UTC'
+      const settings = pageId ? this.getSettingsForPage(pageId) : this.getSettings()
+      const timeZone = settings.report?.timezone || 'UTC'
       const fromDate = normalizeDateBoundary(from, new Date(0), false, timeZone)
       const toDate = normalizeDateBoundary(to, new Date('9999-12-31T23:59:59.999Z'), true, timeZone)
       const threadsById = new Map((snapshot.threads || []).map((thread) => [thread.id, thread]))
@@ -909,7 +933,7 @@ export function createOmniService(options = createOmniSeed()) {
       return { ok: true, message: structuredClone(message), thread: structuredClone(updatedThread), audit: structuredClone(audit), snapshot: this.snapshot() }
     },
     async createOrderAddressIntake({ threadId, text = '', createConfirmationDraft, authorName = 'AI' } = {}) {
-      const settings = this.getSettings()
+      const settings = threadId ? this.getSettingsForThread(threadId) : this.getSettings()
       if (settings.orderAddressIntake?.enabled === false) return { ok: false, error: 'order_address_intake_disabled' }
       const snapshot = currentData()
       const thread = snapshot.threads.find((item) => item.id === threadId)

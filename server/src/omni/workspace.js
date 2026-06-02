@@ -71,6 +71,25 @@ export function filterByWorkspace(items = [], workspaceId) {
 }
 
 /**
+ * Resolve workspaceId from a thread or page context.
+ * Falls back to DEFAULT_WORKSPACE_ID for legacy calls without workspace data.
+ */
+export function resolveWorkspaceId(snapshot, { threadId, pageId } = {}) {
+  if (pageId) {
+    const page = (snapshot.pages || []).find((p) => p.id === pageId)
+    return page?.workspaceId || DEFAULT_WORKSPACE_ID
+  }
+  if (threadId) {
+    const thread = (snapshot.threads || []).find((t) => t.id === threadId)
+    if (thread?.pageId) {
+      const page = (snapshot.pages || []).find((p) => p.id === thread.pageId)
+      return page?.workspaceId || DEFAULT_WORKSPACE_ID
+    }
+  }
+  return DEFAULT_WORKSPACE_ID
+}
+
+/**
  * Build workspace summary from snapshot data.
  */
 export function buildWorkspaceSummary(workspace, snapshot = {}) {
