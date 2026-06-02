@@ -23,6 +23,17 @@ export async function fetchOmniSnapshot() {
   return (await getJson('/api/omni/snapshot')).snapshot
 }
 
+export async function loginOmniAccess(password) {
+  const response = await apiFetch('/auth/login', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify({ password }),
+  })
+  const body = await response.json()
+  if (!response.ok || !body.ok || body.authenticated !== true) throw new Error(body.error || 'login_failed')
+  return body
+}
+
 export function subscribeOmniSnapshots(onSnapshot) {
   if (isSupabaseRealtimeEnabled()) {
     let closed = false

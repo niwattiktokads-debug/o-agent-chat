@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react'
-import { fetchOmniSnapshot, subscribeOmniSnapshots } from '../../lib/omniApi.js'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { fetchOmniSnapshot, loginOmniAccess, subscribeOmniSnapshots } from '../../lib/omniApi.js'
 import { filterThreads } from '../../lib/omniModel.js'
 import PageRail from './PageRail.jsx'
 import ThreadList from './ThreadList.jsx'
@@ -20,6 +20,9 @@ export default function OmniWorkbench({
   showOperationRail = true,
 }) {
   const [snapshot, setSnapshot] = useState(null)
+  const [loadError, setLoadError] = useState('')
+  const [loginPassword, setLoginPassword] = useState('')
+  const [loginBusy, setLoginBusy] = useState(false)
   const [pageId, setPageId] = useState('all')
   const [threadId, setThreadId] = useState(null)
   const [localOperationMode, setLocalOperationMode] = useState('chat')
@@ -40,21 +43,71 @@ export default function OmniWorkbench({
     setLocalOperationMode(nextMode)
   }
 
-  useEffect(() => {
-    fetchOmniSnapshot().then((data) => {
-      setSnapshot(data)
-      setThreadId(filterThreads(data.threads || [], { pageId: 'all' })[0]?.id || null)
-    })
+  const loadSnapshot = useCallback(async () => {
+    setLoadError('')
+    const data = await fetchOmniSnapshot()
+    setSnapshot(data)
+    setThreadId(filterThreads(data.threads || [], { pageId: 'all' })[0]?.id || null)
   }, [])
+
+  useEffect(() => {
+    loadSnapshot().catch((error) => setLoadError(error.message || 'snapshot_load_failed'))
+  }, [loadSnapshot])
 
   useEffect(() => subscribeOmniSnapshots((data) => {
     setSnapshot(data)
     setThreadId((current) => current || filterThreads(data.threads || [], { pageId: 'all' })[0]?.id || null)
   }), [])
 
+  async function submitLogin(event) {
+    event.preventDefault()
+    if (!loginPassword.trim()) return
+    setLoginBusy(true)
+    setLoadError('')
+    try {
+      await loginOmniAccess(loginPassword)
+      setLoginPassword('')
+      await loadSnapshot()
+    } catch (error) {
+      setLoadError(error.message || 'login_failed')
+    } finally {
+      setLoginBusy(false)
+    }
+  }
+
   const threads = useMemo(() => filterThreads(snapshot?.threads || [], { pageId }), [snapshot, pageId])
   const selectedThread = threads.find((thread) => thread.id === threadId) || threads[0] || null
   const activeAutoReplyPages = (snapshot?.pages || []).filter((page) => page.autoReplyEnabled !== false).length
+
+  if (!snapshot && loadError === 'access_password_required') {
+    return (
+      <OmniAccessGate
+        password={loginPassword}
+        busy={loginBusy}
+        error={loadError}
+        onPasswordChange={setLoginPassword}
+        onSubmit={submitLogin}
+      />
+    )
+  }
+
+  if (!snapshot && loadError) {
+    return (
+      <div className="bg-[var(--color-paper)] p-6 text-[var(--color-ink)]">
+        <div className="max-w-md rounded-[var(--radius-md)] border border-[var(--color-danger)] bg-[var(--color-danger-soft)] p-4">
+          <h1 className="text-base font-bold">โหลดข้อมูลไม่สำเร็จ</h1>
+          <p className="mt-2 text-sm font-semibold">{loadError}</p>
+          <button
+            type="button"
+            className="mt-4 rounded-[var(--radius-md)] bg-[var(--color-accent)] px-4 py-2 text-sm font-bold text-[var(--color-accent-ink)]"
+            onClick={() => loadSnapshot().catch((error) => setLoadError(error.message || 'snapshot_load_failed'))}
+          >
+            โหลดใหม่
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   if (!snapshot) return <div className="bg-[var(--color-paper)] p-6 text-[var(--color-muted)]">Loading omnichannel workbench...</div>
 
@@ -97,6 +150,39 @@ export default function OmniWorkbench({
       ) : (
         <SocialOpsBoard mode={operationMode} snapshot={snapshot} onSnapshot={setSnapshot} onOpenChat={() => selectOperationMode('chat')} />
       )}
+    </div>
+  )
+}
+
+function OmniAccessGate({ password, busy, error, onPasswordChange, onSubmit }) {
+  return (
+    <div className="grid min-h-full place-items-start bg-[var(--color-paper)] p-6 text-[var(--color-ink)]">
+      <form
+        className="w-full max-w-sm rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] p-5 shadow-sm"
+        onSubmit={onSubmit}
+      >
+        <h1 className="text-lg font-bold">เข้าสู่ระบบ Omni</h1>
+        <label className="mt-4 block text-sm font-semibold" htmlFor="omni-access-password">รหัสเข้าใช้งาน</label>
+        <input
+          id="omni-access-password"
+          type="password"
+          value={password}
+          onChange={(event) => onPasswordChange(event.target.value)}
+          className="mt-2 h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-paper)] px-3 text-base outline-none focus:border-[var(--color-accent)]"
+          autoComplete="current-password"
+          autoFocus
+        />
+        {error && error !== 'access_password_required' ? (
+          <p className="mt-3 text-sm font-semibold text-[var(--color-danger)]">{error}</p>
+        ) : null}
+        <button
+          type="submit"
+          disabled={busy || !password.trim()}
+          className="mt-4 h-11 w-full rounded-[var(--radius-md)] bg-[var(--color-accent)] px-4 text-sm font-bold text-[var(--color-accent-ink)] disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {busy ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบ'}
+        </button>
+      </form>
     </div>
   )
 }
