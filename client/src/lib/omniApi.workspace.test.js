@@ -169,4 +169,27 @@ describe('filterSnapshotByWorkspace', () => {
     expect(scopedCustom.orderLinks.map((l) => l.id)).toEqual(['link_2'])
     expect(scopedCustom.orderLinks.find((l) => l.threadId === 'thread_1')).toBeUndefined()
   })
+
+  it('includes order-only payments (threadId null) when orderId is in workspace scope', () => {
+    // Scenario: payment created for an order without a thread (e.g. manual order)
+    const snapshotWithOrderOnlyPayment = {
+      ...fullSnapshot,
+      paymentRequests: [
+        ...fullSnapshot.paymentRequests,
+        { id: 'pay_order_only', threadId: null, orderId: 'order_2', provider: 'bank', amount: 300 },
+      ],
+      paymentEvents: [
+        ...fullSnapshot.paymentEvents,
+        { id: 'pay_event_order_only', paymentRequestId: 'pay_order_only', type: 'created' },
+      ],
+    }
+    const scoped = filterSnapshotByWorkspace(snapshotWithOrderOnlyPayment, 'ws_custom')
+    // order_2 belongs to cust_2 which is in ws_custom, so order-only payment should appear
+    expect(scoped.paymentRequests.map((p) => p.id)).toContain('pay_order_only')
+    expect(scoped.paymentEvents.map((e) => e.id)).toContain('pay_event_order_only')
+    // But ws_oagent should NOT see this order-only payment
+    const scopedOagent = filterSnapshotByWorkspace(snapshotWithOrderOnlyPayment, 'ws_oagent')
+    expect(scopedOagent.paymentRequests.find((p) => p.id === 'pay_order_only')).toBeUndefined()
+    expect(scopedOagent.paymentEvents.find((e) => e.id === 'pay_event_order_only')).toBeUndefined()
+  })
 })

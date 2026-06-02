@@ -123,7 +123,7 @@ export function mountRoutes(app, hub, room, options = {}) {
     const knowledgeSources = (full.knowledgeSources || []).filter((k) => (k.workspaceId || 'ws_oagent') === workspaceId)
     const orderIds = new Set(orders.map((o) => o.id))
     const orderLinks = (full.orderLinks || []).filter((l) => threadIds.has(l.threadId) || orderIds.has(l.orderId))
-    const paymentRequests = (full.paymentRequests || []).filter((p) => threadIds.has(p.threadId))
+    const paymentRequests = (full.paymentRequests || []).filter((p) => threadIds.has(p.threadId) || orderIds.has(p.orderId))
     const paymentRequestIds = new Set(paymentRequests.map((p) => p.id))
     const paymentEvents = (full.paymentEvents || []).filter((e) => paymentRequestIds.has(e.paymentRequestId))
     const approvalTasks = (full.approvalTasks || []).filter((t) => threadIds.has(t.threadId) || orderIds.has(t.orderId))

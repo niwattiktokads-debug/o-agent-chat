@@ -2021,3 +2021,45 @@ test('GET /api/omni/snapshot?workspaceId=ws_nonexistent returns empty payment/or
   assert.equal((body.snapshot.orderLinks || []).length, 0)
   assert.equal((body.snapshot.approvalTasks || []).length, 0)
 })
+
+test('GET /api/omni/snapshot?workspaceId includes order-only payments (threadId null) when orderId is in scope', async () => {
+  // Use a local app with custom seed that has an order-only payment in ws_custom
+  const localApp = express()
+  localApp.use(express.json())
+  const seed = createOmniSeed()
+  seed.workspaces.push({ id: 'ws_custom', name: 'Custom', slug: 'custom', plan: 'private_saas', status: 'active', ownerRef: 'boss', settings: {}, createdAt: '2026-06-01T00:00:00.000Z', updatedAt: '2026-06-01T00:00:00.000Z' })
+  // Move page_annalynn to ws_custom
+  const annaPage = seed.pages.find((p) => p.id === 'page_annalynn')
+  if (annaPage) annaPage.workspaceId = 'ws_custom'
+  // Add a customer and order in ws_custom scope
+  seed.customers.push({ id: 'cust_custom', displayName: 'Custom Customer' })
+  seed.threads.push({ id: 'thread_custom', pageId: 'page_annalynn', customerId: 'cust_custom', status: 'open' })
+  seed.orders.push({ id: 'order_custom', customerId: 'cust_custom', platform: 'manual', status: 'draft', total: 500 })
+  // Add an order-only payment (no threadId)
+  seed.paymentRequests.push({ id: 'pay_order_only', threadId: null, orderId: 'order_custom', provider: 'bank', status: 'draft', amount: 500, currency: 'THB', approvalRequired: false })
+  seed.paymentEvents.push({ id: 'pay_event_order_only', paymentRequestId: 'pay_order_only', type: 'created', source: 'test', createdAt: '2026-06-02T00:00:00.000Z' })
+  const localOmni = createOmniService({ seed })
+  const localHub = { broadcast: () => {} }
+  const localRoom = createState()
+  mountRoutes(localApp, localHub, localRoom, { omni: localOmni })
+  const localServer = localApp.listen(0)
+  const localPort = localServer.address().port
+  try {
+    const res = await fetch(`http://localhost:${localPort}/api/omni/snapshot?workspaceId=ws_custom`)
+    const body = await res.json()
+    assert.equal(res.status, 200)
+    assert.equal(body.ok, true)
+    // order_custom should be in scope
+    assert.ok(body.snapshot.orders.some((o) => o.id === 'order_custom'), 'order_custom should be in ws_custom scope')
+    // order-only payment should be included via orderId match
+    assert.ok(body.snapshot.paymentRequests.some((p) => p.id === 'pay_order_only'), 'order-only payment should be in ws_custom scope')
+    assert.ok(body.snapshot.paymentEvents.some((e) => e.id === 'pay_event_order_only'), 'order-only payment event should be in ws_custom scope')
+    // ws_oagent should NOT see the order-only payment
+    const res2 = await fetch(`http://localhost:${localPort}/api/omni/snapshot?workspaceId=ws_oagent`)
+    const body2 = await res2.json()
+    assert.ok(!body2.snapshot.paymentRequests.some((p) => p.id === 'pay_order_only'), 'order-only payment should NOT be in ws_oagent scope')
+    assert.ok(!body2.snapshot.paymentEvents.some((e) => e.id === 'pay_event_order_only'), 'order-only payment event should NOT be in ws_oagent scope')
+  } finally {
+    localServer.close()
+  }
+})
