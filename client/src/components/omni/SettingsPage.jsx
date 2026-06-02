@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import {
   fetchOmniSettings,
   fetchOmniSnapshot,
+  fetchOmniStorageStatus,
   saveOmniSettings,
 } from '../../lib/omniApi.js'
 import ConnectorHealth from './ConnectorHealth.jsx'
@@ -55,6 +56,7 @@ export default function SettingsPage({
   const [settings, setSettings] = useState(DEFAULT_SETTINGS)
   const [status, setStatus] = useState('')
   const [snapshotStatus, setSnapshotStatus] = useState('')
+  const [storageStatus, setStorageStatus] = useState(null)
   const [localSection, setLocalSection] = useState(activeSection || 'settings')
 
   useEffect(() => {
@@ -83,6 +85,18 @@ export default function SettingsPage({
       })
     return () => { ignore = true }
   }, [snapshot])
+
+  useEffect(() => {
+    let ignore = false
+    fetchOmniStorageStatus()
+      .then((data) => {
+        if (!ignore) setStorageStatus(data)
+      })
+      .catch((error) => {
+        if (!ignore) setStatus(error.message)
+      })
+    return () => { ignore = true }
+  }, [])
 
   function updateSetting(path, valueOrUpdater) {
     setSettings((current) => {
@@ -214,6 +228,9 @@ export default function SettingsPage({
           <section className="mt-4">
             <WorkspacePanel snapshot={localSnapshot} />
           </section>
+          <section className="mt-4">
+            <StorageStatusPanel storage={storageStatus} />
+          </section>
           <section className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             <div className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)]">
               <PageManagement pages={pages} onSnapshot={handleSnapshot} />
@@ -233,6 +250,26 @@ export default function SettingsPage({
         </>
       )}
     </main>
+  )
+}
+
+function StorageStatusPanel({ storage }) {
+  const persistent = storage?.persistent === true
+  return (
+    <section className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-bold text-[var(--color-ink)]">Persistent storage</h2>
+          <p className="mt-1 text-sm text-[var(--color-ink-2)]">{storage?.note || 'กำลังตรวจสถานะ storage'}</p>
+        </div>
+        <StatusPill tone={persistent ? 'ready' : 'warn'} label={persistent ? 'persistent' : 'not persistent'} />
+      </div>
+      <dl className="mt-4 grid gap-3 sm:grid-cols-3">
+        <InfoItem label="Driver" value={storage?.driver || '-'} />
+        <InfoItem label="DB path" value={storage?.dbPath || '-'} />
+        <InfoItem label="Volume" value={storage?.volumeMountPath || '-'} />
+      </dl>
+    </section>
   )
 }
 

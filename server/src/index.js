@@ -18,6 +18,16 @@ const PORT = process.env.PORT || 8787
 const OMNI_DB_PATH = process.env.OMNI_DB_PATH || new URL('../data/omni.sqlite', import.meta.url).pathname
 const CLIENT_DIST_PATH = process.env.CLIENT_DIST_PATH || new URL('../../client/dist', import.meta.url).pathname
 const CORS_ORIGIN = process.env.OMNI_CORS_ORIGIN || ''
+const storageStatus = {
+  driver: 'sqlite',
+  dbPath: OMNI_DB_PATH,
+  configuredByEnv: Boolean(process.env.OMNI_DB_PATH),
+  persistent: OMNI_DB_PATH.startsWith('/data/'),
+  volumeMountPath: OMNI_DB_PATH.startsWith('/data/') ? '/data' : null,
+  note: OMNI_DB_PATH.startsWith('/data/')
+    ? 'Railway volume-backed SQLite storage'
+    : 'Container-local SQLite storage; data may reset on deploy/restart',
+}
 const app = express()
 const security = createSecurityMiddleware({ allowedOrigins: CORS_ORIGIN })
 app.use(security.setSecurityHeaders)
@@ -35,7 +45,7 @@ const retention = startChatRetentionScheduler({ omni })
 
 app.use(security.requireAccess)
 
-mountRoutes(app, hub, room, { omni })
+mountRoutes(app, hub, room, { omni, storageStatus })
 mountWebhook(app, hub, room, { omni })
 
 if (existsSync(CLIENT_DIST_PATH)) {
