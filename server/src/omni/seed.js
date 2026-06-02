@@ -108,6 +108,7 @@ export function createOmniSeed() {
     omniSettings: [
       {
         id: 'default',
+        workspaceId: DEFAULT_WORKSPACE_ID,
         settings: {
           postCf: { enabled: true, autoCreateDrafts: true },
           liveCf: { enabled: true, mode: 'fallback_post_comment_capture' },

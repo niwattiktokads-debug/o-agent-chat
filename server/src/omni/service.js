@@ -455,15 +455,21 @@ export function createOmniService(options = createOmniSeed()) {
       const allPages = withPageRuntimeSettings(currentData()).pages
       return filterByWorkspace(allPages, options.workspaceId)
     },
-    getSettings() {
-      const row = (currentData().omniSettings || []).find((item) => item.id === 'default')
+    getSettings(options = {}) {
+      const workspaceId = String(options.workspaceId || '').trim()
+      const rows = currentData().omniSettings || []
+      const row = workspaceId
+        ? rows.find((item) => item.workspaceId === workspaceId || item.id === `workspace:${workspaceId}`)
+        : rows.find((item) => item.id === 'default')
       return deepMerge(DEFAULT_OMNI_SETTINGS, row?.settings || {})
     },
-    updateSettings({ settings = {}, updatedBy = 'boss' } = {}) {
-      const before = this.getSettings()
+    updateSettings({ workspaceId, settings = {}, updatedBy = 'boss' } = {}) {
+      const id = String(workspaceId || '').trim()
+      const before = this.getSettings(id ? { workspaceId: id } : {})
       const nextSettings = deepMerge(before, settings)
       const row = {
-        id: 'default',
+        id: id ? `workspace:${id}` : 'default',
+        ...(id ? { workspaceId: id } : {}),
         settings: nextSettings,
         updatedAt: new Date().toISOString(),
         updatedBy: String(updatedBy || 'boss'),
@@ -475,7 +481,7 @@ export function createOmniService(options = createOmniSeed()) {
         actorId: row.updatedBy,
         before,
         after: nextSettings,
-        sourceRef: 'omni_settings:default',
+        sourceRef: id ? `omni_settings:workspace:${id}` : 'omni_settings:default',
       })
       const auditResult = upsert('actionAudits', [audit])
       return { ok: true, result: { omniSettings: result, actionAudits: auditResult }, settings: structuredClone(nextSettings), audit, snapshot: this.snapshot() }

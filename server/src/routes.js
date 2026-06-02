@@ -279,12 +279,16 @@ export function mountRoutes(app, hub, room, options = {}) {
     res.status(sudaOagentNotifier.responseStatus(result)).json(result)
   })
 
-  app.get('/api/omni/settings', (_req, res) => {
-    res.json({ ok: true, settings: omni.getSettings() })
+  app.get('/api/omni/settings', (req, res) => {
+    res.json({ ok: true, settings: omni.getSettings({ workspaceId: req.query.workspaceId }) })
   })
 
   app.post('/api/omni/settings', (req, res) => {
-    const result = omni.updateSettings({ settings: req.body?.settings || {}, updatedBy: req.body?.updatedBy || 'boss' })
+    const result = omni.updateSettings({
+      workspaceId: req.body?.workspaceId || req.query.workspaceId,
+      settings: req.body?.settings || {},
+      updatedBy: req.body?.updatedBy || 'boss',
+    })
     hub.broadcast('omni', result.snapshot)
     res.json(result)
   })
