@@ -437,6 +437,33 @@ async function draftThreadReply({ omni, ai, threadId, send = false, sendReply = 
   return { ...result, sent: true, sendResult, outbound: recordedOutbound.message, outboundAudit: recordedOutbound.audit, snapshot: recordedOutbound.snapshot }
 }
 
+async function runMetaAutoReplies({
+  omni,
+  ai,
+  hub,
+  threadIds,
+  shouldSend,
+  sendReply,
+  sendCommentReply,
+  sendIgCommentReply,
+}) {
+  try {
+    const autoReplies = await Promise.all(threadIds.map((threadId) => (
+      draftThreadReply({ omni, ai, threadId, send: shouldSend, sendReply, sendCommentReply, sendIgCommentReply })
+    )))
+    const latestSnapshot = autoReplies.slice().reverse().find((reply) => reply?.snapshot)?.snapshot || omni.snapshot()
+    if (threadIds.length) {
+      hub.broadcast('omni', latestSnapshot)
+      hub.broadcast('omni:auto-replies', { ok: true, autoReplies })
+    }
+    return autoReplies
+  } catch (error) {
+    const payload = { ok: false, error: error.message || 'meta_auto_reply_failed', threadIds }
+    hub.broadcast('omni:auto-replies', payload)
+    return [{ ok: false, error: payload.error }]
+  }
+}
+
 export function mountWebhook(app, hub, room, options = {}) {
   const omni = options.omni || null
   const ai = options.ai || createAiReplyEngine()
@@ -451,6 +478,7 @@ export function mountWebhook(app, hub, room, options = {}) {
   const lineRegistryLog = options.lineRegistryLog || LINE_GROUP_REGISTRY_LOG
   const lineRulesFile = options.lineRulesFile || LINE_GROUP_RULES_FILE
   const lineJoinIntakePush = options.lineJoinIntakePush ?? LINE_JOIN_INTAKE_PUSH_DEFAULT
+  const awaitAutoReplies = options.awaitAutoReplies === true
 
   app.post('/webhook/telegram', (req, res) => {
     const { update_id, message } = req.body || {}
@@ -480,19 +508,31 @@ export function mountWebhook(app, hub, room, options = {}) {
     const result = omni.syncFacebookWebhookEvents(normalized)
     const dexSignals = createDexSignals({ normalized, snapshot: result.snapshot, insertedMessages: result.messages.inserted })
     const dexSignalMessage = signalDex({ room, hub, signals: dexSignals })
+    hub.broadcast('omni', result.snapshot)
     const shouldAutoReply = req.query.autoReply === '0' || req.body?.autoReply === false
       ? false
       : req.query.autoReply === '1' || req.body?.autoReply === true || metaAutoReplyDefault
     const shouldSend = req.query.send === '0' || req.body?.send === false
       ? false
       : req.query.send === '1' || req.body?.send === true || metaAutoSendDefault
-    const autoReplies = shouldAutoReply
-      ? await Promise.all(autoReplyThreadIds({ normalized, snapshot: result.snapshot }).map((threadId) => (
-        draftThreadReply({ omni, ai, threadId, send: shouldSend, sendReply, sendCommentReply, sendIgCommentReply })
-      )))
-      : []
-    hub.broadcast('omni', autoReplies.at(-1)?.snapshot || result.snapshot)
-    res.json({ ok: true, result: { customers: result.customers, threads: result.threads, messages: result.messages, autoReplies, dexSignals, dexSignalMessage } })
+    const threadIds = shouldAutoReply ? autoReplyThreadIds({ normalized, snapshot: result.snapshot }) : []
+    const autoReplyJob = threadIds.length
+      ? runMetaAutoReplies({ omni, ai, hub, threadIds, shouldSend, sendReply, sendCommentReply, sendIgCommentReply })
+      : Promise.resolve([])
+    const autoReplies = awaitAutoReplies ? await autoReplyJob : []
+    res.json({
+      ok: true,
+      result: {
+        customers: result.customers,
+        threads: result.threads,
+        messages: result.messages,
+        autoReplies,
+        autoRepliesPending: awaitAutoReplies ? 0 : threadIds.length,
+        autoReplyMode: awaitAutoReplies ? 'inline' : 'background',
+        dexSignals,
+        dexSignalMessage,
+      },
+    })
   })
 
   app.post('/webhook/tiktok/business-messaging', async (req, res) => {

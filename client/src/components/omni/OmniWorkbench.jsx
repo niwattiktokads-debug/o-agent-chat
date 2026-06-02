@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { fetchOmniSnapshot, loginOmniAccess, subscribeOmniSnapshots } from '../../lib/omniApi.js'
-import { filterThreads } from '../../lib/omniModel.js'
+import { autoSendStatus, filterThreads } from '../../lib/omniModel.js'
 import PageRail from './PageRail.jsx'
 import ThreadList from './ThreadList.jsx'
 import ThreadDetail from './ThreadDetail.jsx'
@@ -80,6 +80,7 @@ export default function OmniWorkbench({
   const threads = useMemo(() => filterThreads(snapshot?.threads || [], { pageId }), [snapshot, pageId])
   const selectedThread = threads.find((thread) => thread.id === threadId) || threads[0] || null
   const activeAutoReplyPages = (snapshot?.pages || []).filter((page) => page.autoReplyEnabled !== false).length
+  const autoSend = useMemo(() => autoSendStatus(snapshot || {}), [snapshot])
 
   if (!snapshot && loadError === 'access_password_required') {
     return (
@@ -139,7 +140,7 @@ export default function OmniWorkbench({
             <div className="flex flex-wrap items-center gap-2 text-xs">
               <span className="rounded-[var(--radius-pill)] bg-[var(--color-live-soft)] px-2 py-1 font-semibold text-[var(--color-live)]">Webhook live</span>
               <span className="rounded-[var(--radius-pill)] bg-[var(--color-ai-soft)] px-2 py-1 font-semibold text-[var(--color-ai)]">AI auto-reply {activeAutoReplyPages}/{snapshot.pages.length}</span>
-              <span className="rounded-[var(--radius-pill)] bg-[var(--color-warn-soft)] px-2 py-1 font-semibold text-[var(--color-warn)]">Auto-send off</span>
+              <span className={`rounded-[var(--radius-pill)] px-2 py-1 font-semibold ${autoSend.active ? 'bg-[var(--color-live-soft)] text-[var(--color-live)]' : 'bg-[var(--color-warn-soft)] text-[var(--color-warn)]'}`}>{autoSend.label}</span>
             </div>
           </div>
         </header>

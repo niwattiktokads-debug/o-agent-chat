@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { customerForThread, formatShortTime, pageForThread, sourceLabel, statusLabel } from '../../lib/omniModel.js'
+import { autoSendStatus, customerForThread, formatShortTime, pageForThread, sourceLabel, statusLabel } from '../../lib/omniModel.js'
 import { saveManualReplyDraft } from '../../lib/omniApi.js'
 
 export default function ThreadDetail({ snapshot, thread, onSnapshot }) {
@@ -10,6 +10,7 @@ export default function ThreadDetail({ snapshot, thread, onSnapshot }) {
     .filter((message) => message.threadId === thread?.id)
     .slice()
     .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')))
+  const autoSend = autoSendStatus(snapshot || {}, thread)
 
   useEffect(() => {
     if (typeof endRef.current?.scrollIntoView === 'function') {
@@ -30,7 +31,7 @@ export default function ThreadDetail({ snapshot, thread, onSnapshot }) {
           <div className="flex items-center gap-2 text-xs">
             <span className="rounded-[var(--radius-pill)] bg-[var(--color-live-soft)] px-2 py-1 font-semibold text-[var(--color-live)]">Webhook live</span>
             <span className="rounded-[var(--radius-pill)] bg-[var(--color-ai-soft)] px-2 py-1 font-semibold text-[var(--color-ai)]">AI draft on</span>
-            <span className="rounded-[var(--radius-pill)] bg-[var(--color-warn-soft)] px-2 py-1 font-semibold text-[var(--color-warn)]">Auto-send off</span>
+            <span className={`rounded-[var(--radius-pill)] px-2 py-1 font-semibold ${autoSend.active ? 'bg-[var(--color-live-soft)] text-[var(--color-live)]' : 'bg-[var(--color-warn-soft)] text-[var(--color-warn)]'}`}>{autoSend.label}</span>
           </div>
         </div>
       </div>
