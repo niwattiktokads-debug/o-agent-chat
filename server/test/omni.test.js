@@ -20,6 +20,7 @@ import { createSqliteOmniStore } from '../src/omni/db/sqliteStore.js'
 import { mountRoutes } from '../src/routes.js'
 import { mountWebhook } from '../src/webhook.js'
 import { createState } from '../src/state.js'
+import { createEasyStoreRuntime } from '../src/omni/easystoreRuntime.js'
 import { createZortCommerceRuntime } from '../src/omni/zortCommerceRuntime.js'
 
 test('omni seed starts with configured production page data', () => {
@@ -139,6 +140,46 @@ test('ZORT runtime reports missing cloud credentials instead of spawning a missi
   await assert.rejects(
     () => runtime.searchProducts({ keyword: 'Lorra' }),
     /missing_zort_credentials/,
+  )
+})
+
+test('EasyStore runtime uses direct Storefront API when cloud credentials are present', async () => {
+  const calls = []
+  const runtime = createEasyStoreRuntime({
+    env: {
+      EASY_STORE_SHOP: 'annalynna.easy.co',
+      EASY_STORE_ACCESS_TOKEN: 'access_token_1',
+      EASY_STORE_CLIENT_ID: 'app_1',
+      EASY_STORE_CLIENT_SECRET: 'secret_1',
+    },
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options })
+      return new Response(JSON.stringify({ products: [{ id: 1, title: 'Lorra' }] }), {
+        status: 200,
+        headers: { 'X-RateLimit-Remaining': '39', 'X-RateLimit-Limit': '40' },
+      })
+    },
+  })
+
+  const result = await runtime.verify({ limit: 1 })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.mode, 'storefront_api_ready')
+  assert.equal(result.endpoint, 'GET /products.json')
+  assert.equal(result.productCount, 1)
+  assert.equal(calls[0].url, 'https://annalynna.easy.co/api/3.0/products.json?page=1&limit=1')
+  assert.equal(calls[0].options.headers['EasyStore-Access-Token'], 'access_token_1')
+})
+
+test('EasyStore runtime reports missing credentials instead of spawning a missing local helper', async () => {
+  const runtime = createEasyStoreRuntime({
+    env: {},
+    helper: '/tmp/omni-missing-easystore-helper',
+  })
+
+  await assert.rejects(
+    () => runtime.verify(),
+    /missing_easystore_credentials/,
   )
 })
 

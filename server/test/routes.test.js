@@ -197,6 +197,7 @@ test('GET /api/omni/connections includes ZORT Social parity options missing from
   assert.ok(ids.has('facebook_post_cf'))
   assert.ok(ids.has('facebook_live_cf'))
   assert.ok(ids.has('social_message_report'))
+  assert.ok(ids.has('easystore_storefront'))
 })
 
 test('GET /api/omni/storage/status exposes persistent storage status', async () => {
@@ -519,6 +520,35 @@ test('POST /api/omni/connections verifies ZORT through commerce runtime', async 
     assert.equal(body.provider, 'zort')
     assert.equal(body.model, 'open-api')
     assert.equal(calls[0].action, 'searchProducts')
+  } finally {
+    localServer.close()
+  }
+})
+
+test('POST /api/omni/connections verifies EasyStore through storefront runtime', async () => {
+  const localApp = express()
+  localApp.use(express.json())
+  const calls = []
+  const connections = createConnectionRuntime({
+    easyStore: {
+      verify: async ({ limit }) => {
+        calls.push({ action: 'verifyEasyStore', limit })
+        return { ok: true, mode: 'storefront_api_ready', productCount: 1 }
+      },
+    },
+  })
+  mountRoutes(localApp, { broadcast: () => {} }, createState(), { connections })
+  const localServer = localApp.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const response = await fetch(`http://localhost:${localPort}/api/omni/connections/easystore_storefront/verify`, { method: 'POST' })
+    const body = await response.json()
+    assert.equal(response.status, 200)
+    assert.equal(body.ok, true)
+    assert.equal(body.provider, 'easystore')
+    assert.equal(body.model, 'storefront-api-3.0')
+    assert.equal(calls[0].action, 'verifyEasyStore')
+    assert.equal(calls[0].limit, 1)
   } finally {
     localServer.close()
   }
