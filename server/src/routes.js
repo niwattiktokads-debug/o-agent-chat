@@ -9,6 +9,7 @@ import { parsePostSessionComment } from './omni/postSessionParser.js'
 import { createMetaSocialRuntime } from './omni/metaSocialRuntime.js'
 import { lookupThaiAddressByPostcode } from './omni/thaiAddress.js'
 import { createZortCommerceRuntime } from './omni/zortCommerceRuntime.js'
+import { createEasyStoreRuntime } from './omni/easystoreRuntime.js'
 import { createLineSudaOagentNotifier } from './omni/lineSudaOagentNotifier.js'
 import { appendPageRegistryEntry, FALLBACK_PAGE_PROFILES, loadPageRegistry } from './omni/pageRegistry.js'
 import { resolveWorkspaceId } from './omni/workspace.js'
@@ -40,6 +41,7 @@ export function mountRoutes(app, hub, room, options = {}) {
   const connections = options.connections || createConnectionRuntime()
   const social = options.social || createMetaSocialRuntime()
   const commerce = options.commerce || createZortCommerceRuntime()
+  const easyStore = options.easyStore || createEasyStoreRuntime()
   const sudaOagentNotifier = options.sudaOagentNotifier || createLineSudaOagentNotifier()
   const storageStatus = options.storageStatus || {
     driver: 'memory',
@@ -480,6 +482,16 @@ export function mountRoutes(app, hub, room, options = {}) {
       res.json(result)
     } catch (error) {
       res.status(400).json({ ok: false, error: error.message || 'zort_products_failed' })
+    }
+  })
+
+  app.get('/api/omni/easystore/products/:productId/preview', async (req, res) => {
+    try {
+      const result = await easyStore.getProductPreview({ productId: req.params.productId })
+      res.json(result)
+    } catch (error) {
+      const status = error.status === 404 || error.message === 'easystore_product_not_found' ? 404 : 400
+      res.status(status).json({ ok: false, error: error.message || 'easystore_product_preview_failed' })
     }
   })
 

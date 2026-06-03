@@ -140,6 +140,8 @@ export function createSecurityMiddleware({
 function isPublicPath(path = '') {
   return path === '/api/health'
     || path.startsWith('/auth/')
+    || path.startsWith('/api/omni/easystore/products/')
+    || path.startsWith('/p/easystore/')
     || path.startsWith('/webhook/meta')
     || path.startsWith('/webhook/tiktok')
     || path.startsWith('/webhook/easystore')

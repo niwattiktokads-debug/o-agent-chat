@@ -5,6 +5,7 @@ import Composer from './components/Composer.jsx'
 import MobileDrawer from './components/MobileDrawer.jsx'
 import OmniWorkbench, { OMNI_OPERATION_MODES } from './components/omni/OmniWorkbench.jsx'
 import SettingsPage from './components/omni/SettingsPage.jsx'
+import EasyStoreProductPreview from './components/omni/EasyStoreProductPreview.jsx'
 import AiKnowledgeSourcePage from './components/ai/AiKnowledgeSourcePage.jsx'
 import {
   subscribe, sendMessage, setLeader, setField, sendTyping, onConnectivity, setIdentity,
@@ -28,7 +29,20 @@ const TOP_MODE_NAV = [
 const SETTINGS_SECTIONS = new Set(['settings', 'ai-config', 'connections'])
 const OPERATION_MODE_IDS = new Set(OMNI_OPERATION_MODES.map((item) => item.id))
 
+function getEasyStorePreviewRoute() {
+  const match = window.location.pathname.match(/^\/p\/easystore\/([^/?#]+)/)
+  if (!match) return null
+  const params = new URLSearchParams(window.location.search)
+  return {
+    productId: decodeURIComponent(match[1]),
+    threadId: params.get('threadId') || params.get('thread') || '',
+  }
+}
+
 export default function App() {
+  const easyStorePreview = getEasyStorePreviewRoute()
+  if (easyStorePreview) return <EasyStoreProductPreview {...easyStorePreview} />
+
   return (
     <WorkspaceProvider>
       <AppInner />
