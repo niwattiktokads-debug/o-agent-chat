@@ -1,4 +1,5 @@
 import { normalizeMetaWebhookPayload } from './omni/metaWebhook.js'
+import { normalizeEasyStoreWebhookPayload } from './omni/easystoreWebhook.js'
 import { createAiReplyEngine } from './omni/aiReplyEngine.js'
 import { sendFacebookCommentReply, sendFacebookReply, sendInstagramCommentReply } from './omni/metaInboxClient.js'
 import { getProfileKeyForOmniPage } from './omni/pageRegistry.js'
@@ -6,6 +7,7 @@ import { normalizeTikTokMessagingWebhookPayload } from './omni/tiktokMessagingCl
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { execFile } from 'node:child_process'
+import { createHmac, timingSafeEqual } from 'node:crypto'
 
 const seen = new Set()
 const LINE_CAPTURE_LOG = process.env.LINE_SUDA_OAGENT_CAPTURE_LOG || '/Users/babycuca/Documents/O-Agent workspace/finance/staging/line_suda_oagent_capture_events.jsonl'
@@ -295,6 +297,22 @@ function compactText(value, limit = 160) {
   return `${text.slice(0, limit - 1)}…`
 }
 
+function rawBodyBuffer(req) {
+  if (Buffer.isBuffer(req.rawBody)) return req.rawBody
+  if (typeof req.rawBody === 'string') return Buffer.from(req.rawBody)
+  return Buffer.from(JSON.stringify(req.body || {}))
+}
+
+function verifyEasyStoreHmac(req, secret) {
+  const value = String(req.get?.('EasyStore-Hmac-SHA256') || req.get?.('Easystore-Hmac-Sha256') || '').trim()
+  if (!value || !secret) return false
+  const calculated = createHmac('sha256', String(secret)).update(rawBodyBuffer(req)).digest('hex')
+  const expected = Buffer.from(value)
+  const actual = Buffer.from(calculated)
+  if (expected.length !== actual.length) return false
+  return timingSafeEqual(expected, actual)
+}
+
 function createDexSignals({ normalized, snapshot, insertedMessages = 0 }) {
   if (!insertedMessages) return []
   const pagesById = new Map((snapshot.pages || []).map((page) => [page.id, page]))
@@ -485,6 +503,7 @@ export function mountWebhook(app, hub, room, options = {}) {
   const lineRegistryLog = options.lineRegistryLog || LINE_GROUP_REGISTRY_LOG
   const lineRulesFile = options.lineRulesFile || LINE_GROUP_RULES_FILE
   const lineJoinIntakePush = options.lineJoinIntakePush ?? LINE_JOIN_INTAKE_PUSH_DEFAULT
+  const easyStoreClientSecret = options.easyStoreClientSecret || process.env.EASY_STORE_CLIENT_SECRET || ''
   const awaitAutoReplies = options.awaitAutoReplies === true
 
   app.post('/webhook/telegram', (req, res) => {
@@ -551,6 +570,32 @@ export function mountWebhook(app, hub, room, options = {}) {
     const dexSignalMessage = signalDex({ room, hub, signals: dexSignals })
     hub.broadcast('omni', result.snapshot)
     res.json({ ok: true, result: { customers: result.customers, threads: result.threads, messages: result.messages, dexSignals, dexSignalMessage } })
+  })
+
+  app.post('/webhook/easystore', async (req, res) => {
+    if (!omni) return res.status(503).json({ ok: false, error: 'omni_service_unavailable' })
+    if (!easyStoreClientSecret) return res.status(503).json({ ok: false, error: 'easystore_secret_missing' })
+    if (!verifyEasyStoreHmac(req, easyStoreClientSecret)) {
+      return res.status(401).json({ ok: false, error: 'invalid_easystore_hmac' })
+    }
+    const topic = req.query.topic || req.get('Easystore-Topic') || req.get('EasyStore-Topic') || req.body?.topic || ''
+    const shopDomain = req.get('Easystore-Shop-Domain') || req.get('EasyStore-Shop-Domain') || req.body?.shop_domain || ''
+    const normalized = normalizeEasyStoreWebhookPayload(req.body || {}, { topic, shopDomain })
+    const result = omni.syncEasyStoreWebhookEvents(normalized)
+    hub.broadcast('omni', result.snapshot)
+    res.json({
+      ok: true,
+      result: {
+        source: result.source,
+        topic: result.topic,
+        customers: result.customers,
+        threads: result.threads,
+        messages: result.messages,
+        orders: result.orders,
+        inventorySnapshots: result.inventorySnapshots,
+        connectorHealth: result.connectorHealth,
+      },
+    })
   })
 
   app.post('/webhook/line/suda-oagent', async (req, res) => {

@@ -32,7 +32,13 @@ const app = express()
 const security = createSecurityMiddleware({ allowedOrigins: CORS_ORIGIN })
 app.use(security.setSecurityHeaders)
 app.use(security.corsGuard)
-app.use(express.json({ limit: security.jsonLimit, strict: true }))
+app.use(express.json({
+  limit: security.jsonLimit,
+  strict: true,
+  verify: (req, _res, buffer) => {
+    if (req.path.startsWith('/webhook/easystore')) req.rawBody = Buffer.from(buffer)
+  },
+}))
 app.use(express.urlencoded({ extended: false, limit: '16kb' }))
 security.mountAccessRoutes(app)
 

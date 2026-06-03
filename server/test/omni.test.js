@@ -13,6 +13,7 @@ import { loadPageRegistry } from '../src/omni/pageRegistry.js'
 import { createMetaSocialRuntime } from '../src/omni/metaSocialRuntime.js'
 import { createAiReplyEngine } from '../src/omni/aiReplyEngine.js'
 import { normalizeMetaWebhookPayload } from '../src/omni/metaWebhook.js'
+import { normalizeEasyStoreWebhookPayload } from '../src/omni/easystoreWebhook.js'
 import { listTikTokOrders, normalizeTikTokOrders } from '../src/omni/tiktokOrderClient.js'
 import { normalizeTikTokMessagingWebhookPayload } from '../src/omni/tiktokMessagingClient.js'
 import { getOmniSchemaSummary, loadOmniSchemaSql, REQUIRED_OMNI_TABLES } from '../src/omni/db/schema.js'
@@ -25,14 +26,16 @@ import { createZortCommerceRuntime } from '../src/omni/zortCommerceRuntime.js'
 
 test('omni seed starts with configured production page data', () => {
   const seed = createOmniSeed()
-  assert.equal(seed.pages.length, 6)
+  assert.equal(seed.pages.length, 7)
   assert.equal(seed.pages.find((page) => page.id === 'page_annalynn').name, 'Anna Lynn')
   assert.equal(seed.pages.find((page) => page.id === 'page_ig_annalynn').name, 'Anna Lynn IG')
   assert.equal(seed.pages.find((page) => page.id === 'page_annalynn_tiktok').name, 'AnnaLynn')
+  assert.equal(seed.pages.find((page) => page.id === 'page_easystore_annalynna').name, 'AnnaLynn EasyStore')
   assert.equal(seed.platformAccounts.find((account) => account.id === 'acct_fb_annalynn').pageId, 'page_annalynn')
   assert.equal(seed.platformAccounts.find((account) => account.id === 'acct_ig_annalynn').pageId, 'page_ig_annalynn')
   assert.equal(seed.platformAccounts.find((account) => account.id === 'acct_tt_shop').pageId, 'page_annalynn_tiktok')
   assert.equal(seed.platformAccounts.find((account) => account.id === 'acct_tt_annalynn_dm').provider, 'tiktok_business_messaging')
+  assert.equal(seed.platformAccounts.find((account) => account.id === 'acct_es_annalynna').provider, 'easystore')
   assert.ok(seed.pages.find((page) => page.id === 'page_fb_112154661515664'))
   assert.equal(seed.pages.find((page) => page.id === 'page_fb_112154661515664').name, 'Viris Zamara')
   assert.equal(seed.pages.some((page) => page.id === 'page_shop_4'), false)
@@ -183,6 +186,75 @@ test('EasyStore runtime reports missing credentials instead of spawning a missin
   )
 })
 
+test('normalizes EasyStore order webhook payload into Omni order thread rows', () => {
+  const normalized = normalizeEasyStoreWebhookPayload({
+    id: 11001,
+    order_number: 'AL-1001',
+    financial_status: 'paid',
+    fulfillment_status: 'unfulfilled',
+    total_price: '1290.00',
+    currency: 'THB',
+    created_at: '2026-06-03T10:00:00+07:00',
+    updated_at: '2026-06-03T10:05:00+07:00',
+    customer: {
+      id: 501,
+      first_name: 'Anna',
+      last_name: 'Buyer',
+      email: 'buyer@example.com',
+      phone: '0812345678',
+    },
+    shipping_address: {
+      name: 'Anna Buyer',
+      phone: '0812345678',
+      address1: '99 Sukhumvit',
+      province: 'Bangkok',
+      zip: '10110',
+    },
+    line_items: [{
+      id: 1,
+      product_id: 77,
+      variant_id: 88,
+      sku: 'LORRA-M',
+      name: 'Lorra M',
+      quantity: 1,
+      price: '1290.00',
+    }],
+  }, { topic: 'order/paid', shopDomain: 'annalynna.easy.co' })
+
+  assert.equal(normalized.source, 'easystore_webhook')
+  assert.equal(normalized.topic, 'order/paid')
+  assert.equal(normalized.customers[0].id, 'es_customer_501')
+  assert.equal(normalized.customers[0].phone, '0812345678')
+  assert.equal(normalized.threads[0].id, 'es_order_11001')
+  assert.equal(normalized.threads[0].pageId, 'page_easystore_annalynna')
+  assert.equal(normalized.threads[0].platform, 'easystore')
+  assert.equal(normalized.threads[0].status, 'open')
+  assert.equal(normalized.messages[0].direction, 'system')
+  assert.equal(normalized.messages[0].providerMessageId, 'order/paid:11001')
+  assert.equal(normalized.orders[0].id, 'es_order_11001')
+  assert.equal(normalized.orders[0].orderNumber, 'AL-1001')
+  assert.equal(normalized.orders[0].total, 1290)
+  assert.equal(normalized.orders[0].itemSummary[0].sellerSku, 'LORRA-M')
+})
+
+test('normalizes EasyStore product webhook payload into product thread and inventory rows', () => {
+  const normalized = normalizeEasyStoreWebhookPayload({
+    product: {
+      id: 77,
+      title: 'Lorra',
+      updated_at: '2026-06-03T11:00:00+07:00',
+      variants: [{ id: 88, sku: 'LORRA-M', inventory_quantity: 12, price: '1290.00' }],
+    },
+  }, { topic: 'product/update', shopDomain: 'annalynna.easy.co' })
+
+  assert.equal(normalized.threads[0].id, 'es_product_77')
+  assert.equal(normalized.threads[0].intent, 'product')
+  assert.equal(normalized.messages[0].direction, 'system')
+  assert.equal(normalized.inventorySnapshots[0].id, 'es_stock_77_88')
+  assert.equal(normalized.inventorySnapshots[0].sku, 'LORRA-M')
+  assert.equal(normalized.inventorySnapshots[0].available, 12)
+})
+
 test('normalizes TikTok Business Messaging webhook payload into Omni threads', () => {
   const normalized = normalizeTikTokMessagingWebhookPayload({
     events: [{
@@ -320,7 +392,7 @@ test('omni routes are mounted under api', async () => {
 
     assert.equal(response.status, 200)
     assert.equal(body.ok, true)
-    assert.equal(body.pages.length, 6)
+    assert.equal(body.pages.length, 7)
   } finally {
     server.close()
   }
@@ -1406,6 +1478,25 @@ test('omni service syncs normalized TikTok orders into memory store', () => {
   assert.equal(result.customers.inserted, 1)
   assert.equal(result.orders.inserted, 1)
   assert.equal(service.snapshot().orders.find((order) => order.id === 'tt_order_1').total, 841.5)
+})
+
+test('omni service syncs normalized EasyStore webhook rows into memory store', () => {
+  const service = createOmniService()
+  const normalized = normalizeEasyStoreWebhookPayload({
+    id: 11002,
+    order_number: 'AL-1002',
+    total_price: '890.00',
+    currency: 'THB',
+    customer: { id: 502, name: 'Easy Customer', phone: '0899999999' },
+  }, { topic: 'order/create', shopDomain: 'annalynna.easy.co' })
+
+  const result = service.syncEasyStoreWebhookEvents(normalized)
+
+  assert.equal(result.customers.inserted, 1)
+  assert.equal(result.threads.inserted, 1)
+  assert.equal(result.messages.inserted, 1)
+  assert.equal(result.orders.inserted, 1)
+  assert.equal(service.snapshot().orders.find((order) => order.id === 'es_order_11002').total, 890)
 })
 
 test('TikTok order route rejects unknown status before helper mutation', async () => {

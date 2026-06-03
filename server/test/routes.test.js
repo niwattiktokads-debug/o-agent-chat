@@ -1,6 +1,7 @@
 import { test, after } from 'node:test'
 import assert from 'node:assert/strict'
 import express from 'express'
+import { createHmac } from 'node:crypto'
 import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -28,6 +29,10 @@ const req = (method, path, body) => fetch(`http://localhost:${port}${path}`, {
   headers: { 'Content-Type': 'application/json' },
   body: body && JSON.stringify(body),
 }).then(async (r) => ({ status: r.status, body: await r.json() }))
+
+function signEasyStorePayload(rawBody, secret = 'easy-secret-test') {
+  return createHmac('sha256', secret).update(rawBody).digest('hex')
+}
 
 async function waitForCondition(assertion, { timeoutMs = 1000, intervalMs = 10 } = {}) {
   const started = Date.now()
@@ -148,7 +153,11 @@ test('access password protects Omni UI and API while leaving provider webhooks p
   security.mountAccessRoutes(localApp)
   localApp.use(security.requireAccess)
   mountRoutes(localApp, { broadcast: () => {} }, createState())
-  mountWebhook(localApp, { broadcast: () => {} }, createState(), { metaVerifyToken: 'verify-token-test' })
+  mountWebhook(localApp, { broadcast: () => {} }, createState(), {
+    omni: createOmniService(),
+    metaVerifyToken: 'verify-token-test',
+    easyStoreClientSecret: 'easy-secret-test',
+  })
   const localServer = localApp.listen(0)
   try {
     const localPort = localServer.address().port
@@ -159,6 +168,14 @@ test('access password protects Omni UI and API while leaving provider webhooks p
     const webhook = await fetch(`http://localhost:${localPort}/webhook/meta?hub.mode=subscribe&hub.verify_token=verify-token-test&hub.challenge=abc123`)
     assert.equal(webhook.status, 200)
     assert.equal(await webhook.text(), 'abc123')
+
+    const easyStoreWebhook = await fetch(`http://localhost:${localPort}/webhook/easystore`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'EasyStore-Hmac-SHA256': 'bad-signature' },
+      body: JSON.stringify({ id: 1 }),
+    })
+    assert.equal(easyStoreWebhook.status, 401)
+    assert.equal((await easyStoreWebhook.json()).error, 'invalid_easystore_hmac')
 
     const badLogin = await fetch(`http://localhost:${localPort}/auth/login`, {
       method: 'POST',
@@ -1379,6 +1396,87 @@ test('POST /webhook/tiktok/business-messaging syncs TikTok DM event', async () =
   assert.equal(body.result.messages.inserted, 1)
   assert.equal(body.result.dexSignals.length, 1)
   assert.equal(events.some((event) => event.event === 'omni:attention'), true)
+})
+
+test('POST /webhook/easystore rejects invalid HMAC without mutation', async () => {
+  const localApp = express()
+  localApp.use(express.json({
+    verify: (req, _res, buffer) => {
+      req.rawBody = Buffer.from(buffer)
+    },
+  }))
+  const localOmni = createOmniService()
+  mountWebhook(localApp, { broadcast: () => {} }, createState(), {
+    omni: localOmni,
+    easyStoreClientSecret: 'easy-secret-test',
+  })
+  const localServer = localApp.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const beforeCount = localOmni.snapshot().orders.length
+    const rawBody = JSON.stringify({ id: 11003, order_number: 'AL-1003', total_price: '100.00' })
+    const response = await fetch(`http://localhost:${localPort}/webhook/easystore?topic=order/create`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'EasyStore-Hmac-SHA256': 'bad-signature' },
+      body: rawBody,
+    })
+    const body = await response.json()
+
+    assert.equal(response.status, 401)
+    assert.equal(body.ok, false)
+    assert.equal(body.error, 'invalid_easystore_hmac')
+    assert.equal(localOmni.snapshot().orders.length, beforeCount)
+  } finally {
+    localServer.close()
+  }
+})
+
+test('POST /webhook/easystore verifies HMAC and syncs order event', async () => {
+  const localApp = express()
+  localApp.use(express.json({
+    verify: (req, _res, buffer) => {
+      req.rawBody = Buffer.from(buffer)
+    },
+  }))
+  const localEvents = []
+  const localOmni = createOmniService()
+  mountWebhook(localApp, { broadcast: (event, payload) => localEvents.push({ event, payload }) }, createState(), {
+    omni: localOmni,
+    easyStoreClientSecret: 'easy-secret-test',
+  })
+  const localServer = localApp.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const rawBody = JSON.stringify({
+      id: 11004,
+      order_number: 'AL-1004',
+      financial_status: 'paid',
+      total_price: '1290.00',
+      currency: 'THB',
+      customer: { id: 504, name: 'Route Customer', phone: '0800000004' },
+      line_items: [{ sku: 'LORRA-M', name: 'Lorra M', quantity: 1, price: '1290.00' }],
+    })
+    const response = await fetch(`http://localhost:${localPort}/webhook/easystore?topic=order/paid`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'EasyStore-Hmac-SHA256': signEasyStorePayload(rawBody),
+        'Easystore-Shop-Domain': 'annalynna.easy.co',
+      },
+      body: rawBody,
+    })
+    const body = await response.json()
+
+    assert.equal(response.status, 200)
+    assert.equal(body.ok, true)
+    assert.equal(body.result.orders.inserted, 1)
+    assert.equal(body.result.messages.inserted, 1)
+    assert.equal(localOmni.snapshot().orders.find((order) => order.id === 'es_order_11004').total, 1290)
+    assert.equal(localEvents.some((event) => event.event === 'omni'), true)
+    assert.equal(localEvents.some((event) => event.event === 'omni:attention'), false)
+  } finally {
+    localServer.close()
+  }
 })
 
 test('POST /webhook/meta can auto draft a reply for synced messages', async () => {
