@@ -186,6 +186,50 @@ test('EasyStore runtime reports missing credentials instead of spawning a missin
   )
 })
 
+test('EasyStore runtime returns a normalized product preview from direct API', async () => {
+  const calls = []
+  const runtime = createEasyStoreRuntime({
+    env: {
+      EASY_STORE_SHOP: 'annalynna.easy.co',
+      EASY_STORE_ACCESS_TOKEN: 'access_token_1',
+      EASY_STORE_CLIENT_ID: 'app_1',
+      EASY_STORE_CLIENT_SECRET: 'secret_1',
+      OMNI_META_PIXEL_ID: '401272399141441',
+    },
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options })
+      return new Response(JSON.stringify({
+        product: {
+          id: 16462646,
+          title: 'Amanda Jumpsuit',
+          handle: 'amanda-jumpsuit',
+          currency: 'THB',
+          description: '<p>ชุดจั๊มสูทพร้อมส่ง</p>',
+          images: [{ src: 'https://cdn.example/amanda.jpg', alt: 'Amanda Jumpsuit' }],
+          variants: [
+            { id: 7001, sku: 'AMANDA-BLK-M', title: 'Black / M', price: '1290.00', quantity: 3 },
+            { id: 7002, sku: 'AMANDA-BLK-L', title: 'Black / L', price: '1290.00', quantity: 0 },
+          ],
+        },
+      }), { status: 200 })
+    },
+  })
+
+  const result = await runtime.getProductPreview({ productId: '16462646' })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.product.id, '16462646')
+  assert.equal(result.product.title, 'Amanda Jumpsuit')
+  assert.equal(result.product.descriptionText, 'ชุดจั๊มสูทพร้อมส่ง')
+  assert.equal(result.product.images[0].url, 'https://cdn.example/amanda.jpg')
+  assert.equal(result.product.price.amount, 1290)
+  assert.equal(result.product.stock.totalQuantity, 3)
+  assert.equal(result.product.variants[0].sku, 'AMANDA-BLK-M')
+  assert.equal(result.product.links.storefrontUrl, 'https://annalynna.easy.co/products/amanda-jumpsuit')
+  assert.equal(result.tracking.pixelId, '401272399141441')
+  assert.equal(calls[0].url, 'https://annalynna.easy.co/api/3.0/products/16462646.json')
+})
+
 test('normalizes EasyStore order webhook payload into Omni order thread rows', () => {
   const normalized = normalizeEasyStoreWebhookPayload({
     id: 11001,

@@ -195,6 +195,10 @@ export async function searchZortProducts(query, limit = 8) {
   return getJson(`/api/omni/zort/products?${params.toString()}`)
 }
 
+export async function fetchEasyStoreProductPreview(productId) {
+  return getJson(`/api/omni/easystore/products/${encodeURIComponent(productId)}/preview`)
+}
+
 export async function lookupThaiAddressByPostcode(postcode) {
   return getJson(`/api/omni/thai-address/postcodes/${encodeURIComponent(postcode)}`)
 }

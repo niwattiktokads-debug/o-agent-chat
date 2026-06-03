@@ -203,6 +203,50 @@ test('access password protects Omni UI and API while leaving provider webhooks p
   }
 })
 
+test('EasyStore product preview API is public when Omni access password is enabled', async () => {
+  const localApp = express()
+  const security = createSecurityMiddleware({ accessPassword: 'test-password' })
+  const calls = []
+  const fakeEasyStore = {
+    getProductPreview: async ({ productId }) => {
+      calls.push(productId)
+      return {
+        ok: true,
+        product: {
+          id: productId,
+          title: 'Amanda Jumpsuit',
+          descriptionText: 'ชุดจั๊มสูทพร้อมส่ง',
+          price: { amount: 1290, currency: 'THB', formatted: '฿1,290' },
+          stock: { totalQuantity: 3, status: 'in_stock' },
+          images: [{ url: 'https://cdn.example/amanda.jpg', alt: 'Amanda Jumpsuit' }],
+          variants: [{ id: '7001', sku: 'AMANDA-BLK-M', title: 'Black / M', quantity: 3 }],
+          links: { storefrontUrl: 'https://annalynna.easy.co/products/amanda-jumpsuit' },
+        },
+        tracking: { pixelId: '401272399141441' },
+      }
+    },
+  }
+  localApp.use(express.json())
+  security.mountAccessRoutes(localApp)
+  localApp.use(security.requireAccess)
+  mountRoutes(localApp, { broadcast: () => {} }, createState(), { easyStore: fakeEasyStore })
+  const localServer = localApp.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const response = await fetch(`http://localhost:${localPort}/api/omni/easystore/products/16462646/preview`)
+    const body = await response.json()
+
+    assert.equal(response.status, 200)
+    assert.equal(body.ok, true)
+    assert.equal(body.product.id, '16462646')
+    assert.equal(body.product.images[0].url, 'https://cdn.example/amanda.jpg')
+    assert.equal(body.tracking.pixelId, '401272399141441')
+    assert.deepEqual(calls, ['16462646'])
+  } finally {
+    localServer.close()
+  }
+})
+
 test('GET /api/omni/connections includes ZORT Social parity options missing from the MVP', async () => {
   const { body, status } = await req('GET', '/api/omni/connections')
   assert.equal(status, 200)
