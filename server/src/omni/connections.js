@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { createEasyStoreRuntime } from './easystoreRuntime.js'
 import { createZortCommerceRuntime } from './zortCommerceRuntime.js'
 
 const execFileAsync = promisify(execFile)
@@ -16,6 +17,7 @@ const OMNI_AI_REPLY_HELPER = process.env.OMNI_AI_REPLY_HELPER || '/Users/babycuc
 const PERPLEXITY_HELPER = process.env.PERPLEXITY_HELPER || '/Users/babycuca/.codex/bin/perplexity-api'
 const FLOWACCOUNT_HELPER = process.env.FLOWACCOUNT_HELPER || '/Users/babycuca/.codex/bin/flowaccount-oa-api'
 const ZORT_HELPER = process.env.ZORT_HELPER || '/Users/babycuca/.codex/bin/zort-api'
+const EASYSTORE_HELPER = process.env.EASYSTORE_HELPER || process.env.EASY_STORE_HELPER || '/Users/babycuca/.codex/bin/easystore-api'
 const GEMINI_PROFILE_PATH = process.env.GEMINI_PROFILE_PATH || join(homedir(), '.gemini')
 const CUSTOM_CONNECTIONS_PATH = process.env.OMNI_CUSTOM_CONNECTIONS_PATH || new URL('../../data/custom-connections.json', import.meta.url).pathname
 
@@ -353,6 +355,49 @@ const CONNECTIONS = [
       'เปิด Open API ใน ZORT: ตั้งค่า > เชื่อมต่อบริการอื่น > API Reference > เปิดใช้งาน',
       'Read stock ได้อัตโนมัติ แต่ create order / decrease stock ต้องมี approval guard.',
       'ใช้เป็น backend ให้ Omni เท่านั้น ห้ามให้ AI ตัดสต็อกหรือส่งลูกค้าเองโดยไม่มีคนอนุมัติ.',
+    ],
+  },
+  {
+    id: 'easystore_storefront',
+    title: 'EasyStore · Storefront API',
+    provider: 'easystore',
+    group: 'marketplace_channel',
+    description: 'EasyStore order/customer/product connector for Omni Chat. ใช้ดึงสินค้า ออเดอร์ ลูกค้า และเตรียม webhook เข้าระบบ Omni โดย write operation อยู่หลัง approval guard.',
+    helper: EASYSTORE_HELPER,
+    verify: { command: EASYSTORE_HELPER, args: ['list-products', '--limit', '1'] },
+    fields: [
+      { id: 'shop', label: 'Shop host', credentialName: 'EasyStore Shop -OA', envName: 'EASY_STORE_SHOP', secret: false, required: true },
+      { id: 'access_token', label: 'Access token', credentialName: 'EasyStore Access Token -OA', envName: 'EASY_STORE_ACCESS_TOKEN', secret: true, required: true },
+      { id: 'client_id', label: 'App ID', credentialName: 'EasyStore Client ID -OA', envName: 'EASY_STORE_CLIENT_ID', secret: false, required: true },
+      { id: 'client_secret', label: 'App secret', credentialName: 'EasyStore Client Secret -OA', envName: 'EASY_STORE_CLIENT_SECRET', secret: true, required: true },
+    ],
+    docs: '/Users/babycuca/.codex/integrations/easystore_api.json',
+    endpoints: [
+      {
+        method: 'GET',
+        path: '/products.json',
+        purpose: 'อ่านสินค้าและ variants เพื่อให้ Omni ใช้เช็กสินค้า/ราคา',
+      },
+      {
+        method: 'GET',
+        path: '/orders.json',
+        purpose: 'อ่านออเดอร์ EasyStore เพื่อผูกกับ Omni customer thread',
+      },
+      {
+        method: 'GET',
+        path: '/customers/search.json',
+        purpose: 'ค้นลูกค้าด้วยเบอร์/อีเมลก่อนช่วยตอบแชท',
+      },
+      {
+        method: 'WEBHOOK',
+        path: '/webhook/easystore',
+        purpose: 'รับ order/customer/product events เข้า Omni หลังตั้ง public HTTPS และ HMAC verify',
+      },
+    ],
+    productionNotes: [
+      'ตั้ง Railway env EASY_STORE_* ก่อนถือว่า cloud-ready.',
+      'ถ้า verify ขึ้น 403 Permission denied ให้ตรวจว่ากดบันทึก/ติดตั้งแอปแล้ว และ token ตรงกับ store host.',
+      'POST/PUT/DELETE กับ order, fulfillment, refund, product, customer, webhook ต้องมี Boss approval และ write guard.',
     ],
   },
 ]
@@ -758,10 +803,36 @@ async function verifyZortConnection(connectionId, startedAt, commerce) {
   }
 }
 
-async function verifyConnection(connectionId, { commerce = createZortCommerceRuntime() } = {}) {
+async function verifyEasyStoreConnection(connectionId, startedAt, easyStore) {
+  try {
+    const result = await easyStore.verify({ limit: 1 })
+    return {
+      ok: true,
+      connectionId,
+      checkedAt: startedAt,
+      status: 'healthy',
+      provider: 'easystore',
+      model: 'storefront-api-3.0',
+      summary: compact(JSON.stringify(result)),
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      connectionId,
+      checkedAt: startedAt,
+      status: error.message === 'missing_easystore_credentials' ? 'runtime_gap' : 'failed',
+      provider: 'easystore',
+      model: 'storefront-api-3.0',
+      summary: compact(error.status ? `HTTP ${error.status}: ${error.message}` : error.message || 'easystore_verify_failed'),
+    }
+  }
+}
+
+async function verifyConnection(connectionId, { commerce = createZortCommerceRuntime(), easyStore = createEasyStoreRuntime() } = {}) {
   const connection = findConnection(connectionId)
   const startedAt = new Date().toISOString()
   if (connection.id === 'zort_open_api') return verifyZortConnection(connectionId, startedAt, commerce)
+  if (connection.id === 'easystore_storefront') return verifyEasyStoreConnection(connectionId, startedAt, easyStore)
   if (!connection.verify?.command) {
     return {
       ok: false,
@@ -863,7 +934,7 @@ async function removeConnection(connectionId) {
   return { ok: true, removedId: connectionId }
 }
 
-export function createConnectionRuntime({ commerce = createZortCommerceRuntime() } = {}) {
+export function createConnectionRuntime({ commerce = createZortCommerceRuntime(), easyStore = createEasyStoreRuntime() } = {}) {
   return {
     async list() {
       const cSnap = await listCredentials()
@@ -875,7 +946,7 @@ export function createConnectionRuntime({ commerce = createZortCommerceRuntime()
     },
     add: addConnection,
     remove: removeConnection,
-    verify: (connectionId) => verifyConnection(connectionId, { commerce }),
+    verify: (connectionId) => verifyConnection(connectionId, { commerce, easyStore }),
     saveSecrets: saveConnectionSecrets,
     async listConversations(connectionId, options) {
       const connection = findConnection(connectionId)
