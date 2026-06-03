@@ -7,6 +7,7 @@ export function createOmniSeed() {
     { id: 'page_annalynn', name: 'Anna Lynn', status: 'active', brandGroupId: 'brand_fashion', policySetId: 'policy_annalynn', agentProfileId: 'agent_annalynn' },
     { id: 'page_ig_annalynn', name: 'Anna Lynn IG', status: 'active', brandGroupId: 'brand_fashion', policySetId: 'policy_annalynn', agentProfileId: 'agent_annalynn' },
     { id: 'page_annalynn_tiktok', name: 'AnnaLynn', status: 'active', brandGroupId: 'brand_fashion', policySetId: 'policy_annalynn', agentProfileId: 'agent_annalynn' },
+    { id: 'page_easystore_annalynna', name: 'AnnaLynn EasyStore', status: 'active', brandGroupId: 'brand_fashion', policySetId: 'policy_annalynn', agentProfileId: 'agent_annalynn' },
     { id: 'page_des', name: 'เพจเดส', status: 'active', brandGroupId: 'brand_oagent', policySetId: 'policy_page_des', agentProfileId: 'agent_page_des' },
     { id: 'page_fb_112154661515664', name: 'Viris Zamara', shortName: 'VZ', status: 'active', brandGroupId: 'brand_shared', policySetId: 'policy_default', agentProfileId: 'agent_default' },
   ]
@@ -23,6 +24,7 @@ export function createOmniSeed() {
       { id: 'acct_fb_112154661515664', pageId: 'page_fb_112154661515664', platform: 'facebook', provider: 'meta', status: 'pending_token' },
       { id: 'acct_tt_shop', pageId: 'page_annalynn_tiktok', platform: 'tiktok', provider: 'tiktok_shop', providerAccountId: '7494912558026296148', status: 'healthy' },
       { id: 'acct_tt_annalynn_dm', pageId: 'page_annalynn_tiktok', platform: 'tiktok', provider: 'tiktok_business_messaging', providerAccountId: 'AnnaLynn', status: 'pending_oauth_approval' },
+      { id: 'acct_es_annalynna', pageId: 'page_easystore_annalynna', platform: 'easystore', provider: 'easystore', providerAccountId: 'annalynna.easy.co', status: 'healthy' },
     ],
     pageRuntimeSettings: pages.map((page) => ({
       pageId: page.id,
@@ -125,6 +127,7 @@ export function createOmniSeed() {
       { id: 'health_meta', provider: 'meta', status: 'healthy', lastCheckedAt: '2026-05-22T10:00:00.000Z' },
       { id: 'health_tiktok', provider: 'tiktok_shop', status: 'healthy', lastCheckedAt: '2026-05-22T10:00:00.000Z' },
       { id: 'health_tiktok_business_messaging', provider: 'tiktok_business_messaging', status: 'pending_oauth_approval', lastCheckedAt: null },
+      { id: 'health_easystore', provider: 'easystore', status: 'healthy', lastCheckedAt: '2026-06-03T16:53:00.000Z', sourceRef: 'easystore_storefront:production_verify' },
       { id: 'health_bigseller', provider: 'bigseller', status: 'disabled', lastCheckedAt: null },
       { id: 'health_shopee', provider: 'shopee', status: 'disabled', lastCheckedAt: null },
       { id: 'health_meta_pay_kgp', provider: 'meta_pay_kgp', status: 'disabled', lastCheckedAt: null },

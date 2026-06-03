@@ -1090,5 +1090,34 @@ export function createOmniService(options = createOmniSeed()) {
         snapshot: this.snapshot(),
       }
     },
+    syncEasyStoreWebhookEvents(normalized) {
+      const now = new Date().toISOString()
+      const customerResult = upsert('customers', normalized.customers)
+      const threadResult = upsert('threads', normalized.threads)
+      const messageResult = upsert('messages', normalized.messages)
+      const orderResult = upsert('orders', normalized.orders)
+      const inventoryResult = upsert('inventorySnapshots', normalized.inventorySnapshots)
+      const connectorHealthResult = upsert('connectorHealth', [{
+        id: 'health_easystore',
+        provider: 'easystore',
+        status: 'healthy',
+        lastCheckedAt: normalized.receivedAt || now,
+        lastWebhookTopic: normalized.topic || 'unknown',
+        lastWebhookReceivedAt: normalized.receivedAt || now,
+        sourceRef: `easystore_webhook:${normalized.topic || 'unknown'}`,
+      }])
+      return {
+        ok: true,
+        source: normalized.source,
+        topic: normalized.topic,
+        customers: customerResult,
+        threads: threadResult,
+        messages: messageResult,
+        orders: orderResult,
+        inventorySnapshots: inventoryResult,
+        connectorHealth: connectorHealthResult,
+        snapshot: this.snapshot(),
+      }
+    },
   }
 }
