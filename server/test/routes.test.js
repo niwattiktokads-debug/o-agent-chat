@@ -53,6 +53,12 @@ function assertBroadcastedOmni(broadcasts) {
   assert.equal(broadcasts.some((event) => event.event === 'omni'), true)
 }
 
+function createOmniServiceWithCustomerSend() {
+  const service = createOmniService()
+  service.updateSettings({ settings: { ai: { customerSendEnabled: true } }, updatedBy: 'test' })
+  return service
+}
+
 function zortReadyDraftPayload(overrides = {}) {
   return {
     threadId: 'thread_1',
@@ -1414,7 +1420,7 @@ test('POST /webhook/meta broadcasts inbound before background auto reply finishe
   const draftStartedPromise = new Promise((resolve) => { draftStarted = resolve })
   const releaseDraftPromise = new Promise((resolve) => { releaseDraft = resolve })
   mountWebhook(app, localHub, createState(), {
-    omni: createOmniService(),
+    omni: createOmniServiceWithCustomerSend(),
     metaVerifyToken: 'verify-token-test',
     ai: {
       async draft() {
@@ -2017,8 +2023,10 @@ test('POST /webhook/meta can send guarded auto reply for Anna Lynn only', async 
   const sent = []
   const localEvents = []
   const localHub = { broadcast: (event, payload) => localEvents.push({ event, payload }) }
+  const localOmni = createOmniService()
+  localOmni.updateSettings({ settings: { ai: { customerSendEnabled: true } }, updatedBy: 'test' })
   mountWebhook(app, localHub, createState(), {
-    omni: createOmniService(),
+    omni: localOmni,
     metaVerifyToken: 'verify-token-test',
     awaitAutoReplies: true,
     sendReply: async (payload) => {
@@ -2062,6 +2070,48 @@ test('POST /webhook/meta can send guarded auto reply for Anna Lynn only', async 
   }
 })
 
+test('POST /webhook/meta keeps customer send blocked until customerSendEnabled is on', async () => {
+  const app = express()
+  app.use(express.json())
+  const sent = []
+  mountWebhook(app, { broadcast: () => {} }, createState(), {
+    omni: createOmniService(),
+    metaVerifyToken: 'verify-token-test',
+    awaitAutoReplies: true,
+    sendReply: async (payload) => {
+      sent.push(payload)
+      return { ok: true, response: { message_id: 'sent_mid_blocked' } }
+    },
+  })
+  const localServer = app.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const response = await fetch(`http://localhost:${localPort}/webhook/meta?autoReply=1&send=1`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        object: 'page',
+        entry: [{
+          id: '122106446570001676',
+          messaging: [{
+            sender: { id: 'customer_anna_guard_blocked' },
+            recipient: { id: '122106446570001676' },
+            timestamp: 1779470301000,
+            message: { mid: 'route_mid_anna_guard_blocked', text: 'มีสินค้าไหม' },
+          }],
+        }],
+      }),
+    })
+    const body = await response.json()
+    assert.equal(response.status, 200)
+    assert.equal(body.result.autoReplies[0].sent, false)
+    assert.equal(body.result.autoReplies[0].sendSkipped, 'customer_send_guard_enabled')
+    assert.equal(sent.length, 0)
+  } finally {
+    localServer.close()
+  }
+})
+
 test('POST /webhook/meta does not auto reply to Meta message echoes', async () => {
   const app = express()
   app.use(express.json())
@@ -2082,7 +2132,7 @@ test('POST /webhook/meta does not auto reply to Meta message echoes', async () =
     }),
   }
   mountWebhook(app, { broadcast: () => {} }, createState(), {
-    omni: createOmniService(),
+    omni: createOmniServiceWithCustomerSend(),
     ai: fakeAi,
     metaVerifyToken: 'verify-token-test',
     awaitAutoReplies: true,
@@ -2162,7 +2212,7 @@ test('POST /webhook/meta sends comment auto reply through comment endpoint', asy
     }),
   }
   mountWebhook(app, { broadcast: () => {} }, createState(), {
-    omni: createOmniService(),
+    omni: createOmniServiceWithCustomerSend(),
     ai: fakeAi,
     metaVerifyToken: 'verify-token-test',
     awaitAutoReplies: true,
@@ -2233,7 +2283,7 @@ test('POST /webhook/meta sends video comment auto reply through comment endpoint
     }),
   }
   mountWebhook(app, { broadcast: () => {} }, createState(), {
-    omni: createOmniService(),
+    omni: createOmniServiceWithCustomerSend(),
     ai: fakeAi,
     metaVerifyToken: 'verify-token-test',
     awaitAutoReplies: true,
@@ -2304,7 +2354,7 @@ test('POST /webhook/meta sends Instagram comment auto reply through IG comment e
     }),
   }
   mountWebhook(app, { broadcast: () => {} }, createState(), {
-    omni: createOmniService(),
+    omni: createOmniServiceWithCustomerSend(),
     ai: fakeAi,
     metaVerifyToken: 'verify-token-test',
     awaitAutoReplies: true,
@@ -2363,7 +2413,7 @@ test('POST /webhook/meta sends guarded fallback reply when AI helper fails after
   const localEvents = []
   const localHub = { broadcast: (event, payload) => localEvents.push({ event, payload }) }
   mountWebhook(app, localHub, createState(), {
-    omni: createOmniService(),
+    omni: createOmniServiceWithCustomerSend(),
     metaVerifyToken: 'verify-token-test',
     awaitAutoReplies: true,
     ai: {

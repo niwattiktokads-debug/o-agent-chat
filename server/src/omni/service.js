@@ -22,7 +22,7 @@ const DEFAULT_OMNI_SETTINGS = {
   report: { timezone: 'Asia/Bangkok' },
   orderDraft: { enabled: true, approvalRequired: true, createZortOrderOnApprove: true },
   orderAddressIntake: { enabled: true, createConfirmationDraft: true },
-  ai: { enabled: true },
+  ai: { enabled: true, customerSendEnabled: false },
 }
 
 function deepMerge(base, patch) {
