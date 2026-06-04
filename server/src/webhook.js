@@ -4,6 +4,7 @@ import { createAiReplyEngine } from './omni/aiReplyEngine.js'
 import { sendFacebookCommentReply, sendFacebookReply, sendInstagramCommentReply } from './omni/metaInboxClient.js'
 import { getProfileKeyForOmniPage } from './omni/pageRegistry.js'
 import { normalizeTikTokMessagingWebhookPayload } from './omni/tiktokMessagingClient.js'
+import { createMetaCatalogRuntime } from './omni/metaCatalogRuntime.js'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { execFile } from 'node:child_process'
@@ -504,6 +505,7 @@ export function mountWebhook(app, hub, room, options = {}) {
   const lineRulesFile = options.lineRulesFile || LINE_GROUP_RULES_FILE
   const lineJoinIntakePush = options.lineJoinIntakePush ?? LINE_JOIN_INTAKE_PUSH_DEFAULT
   const easyStoreClientSecret = options.easyStoreClientSecret || process.env.EASY_STORE_CLIENT_SECRET || ''
+  const metaCatalog = options.metaCatalog || createMetaCatalogRuntime()
   const awaitAutoReplies = options.awaitAutoReplies === true
 
   app.post('/webhook/telegram', (req, res) => {
@@ -582,12 +584,18 @@ export function mountWebhook(app, hub, room, options = {}) {
     const shopDomain = req.get('Easystore-Shop-Domain') || req.get('EasyStore-Shop-Domain') || req.body?.shop_domain || ''
     const normalized = normalizeEasyStoreWebhookPayload(req.body || {}, { topic, shopDomain })
     const result = omni.syncEasyStoreWebhookEvents(normalized)
+    const metaCatalogResult = await metaCatalog.syncEasyStoreWebhook({
+      payload: req.body || {},
+      topic: normalized.topic,
+      shopDomain,
+    })
     hub.broadcast('omni', result.snapshot)
     res.json({
       ok: true,
       result: {
         source: result.source,
         topic: result.topic,
+        metaCatalog: metaCatalogResult,
         customers: result.customers,
         threads: result.threads,
         messages: result.messages,
