@@ -1,10 +1,12 @@
 import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { promisify } from 'node:util'
+import { buildMetaCatalogFeed } from './easystoreMetaFeed.js'
 
 const execFileAsync = promisify(execFile)
 const LOCAL_HELPER = '/Users/babycuca/.codex/bin/easystore-api'
 const DEFAULT_META_PIXEL_ID = '401272399141441'
+const DEFAULT_PRODUCT_PREVIEW_BASE_URL = 'https://omni.oagent.biz'
 
 function buildQuery(params) {
   const search = new URLSearchParams()
@@ -52,6 +54,10 @@ function formatMoney(amount, currency = 'THB') {
 
 function resolvePixelId(env = process.env) {
   return String(env.OMNI_META_PIXEL_ID || env.META_PIXEL_ID || env.META_DATASET_ID || DEFAULT_META_PIXEL_ID).trim()
+}
+
+function resolveProductPreviewBaseUrl(env = process.env) {
+  return String(env.OMNI_PRODUCT_PREVIEW_BASE_URL || env.OMNI_PUBLIC_URL || env.OMNI_WEB_URL || DEFAULT_PRODUCT_PREVIEW_BASE_URL).trim()
 }
 
 function resolveDirectCredentials(env = process.env) {
@@ -157,6 +163,17 @@ function unwrapProduct(payload) {
     || null
 }
 
+function unwrapProducts(payload) {
+  const products = payload?.response?.products
+    || payload?.response?.data?.products
+    || payload?.response?.data
+    || payload?.products
+    || payload?.data?.products
+    || payload?.data
+    || []
+  return Array.isArray(products) ? products : []
+}
+
 function imageUrl(image = {}) {
   return image.url || image.src || image.image_url || image.imageUrl || image.path || ''
 }
@@ -259,34 +276,47 @@ export function createEasyStoreRuntime({
   const effectiveRunner = runner || (!directReady && canUseHelper(helper, env) ? createHelperRunner({ helper, env }) : null)
   const shopBase = normalizeShop(directCredentials.shop || env.EASY_STORE_SHOP || env.EASYSTORE_SHOP || 'https://annalynna.easy.co')
 
-  return {
-    async verify({ limit = 1 } = {}) {
-      if (directReady) {
-        const payload = await easyStoreApiRequest({
-          fetchImpl,
-          credentials: directCredentials,
-          method: 'GET',
-          pathname: '/products.json',
-          query: { page: 1, limit },
-        })
-        return {
-          ok: true,
-          mode: 'storefront_api_ready',
-          status: payload.status,
-          endpoint: 'GET /products.json',
-          productCount: payload.response?.products?.length ?? payload.response?.data?.length ?? payload.response?.count ?? 0,
-          rateLimit: payload.rateLimit,
-        }
-      }
-      if (!effectiveRunner) throw missingCredentialsError({ credentials: directCredentials, helper })
-      const payload = await runHelper(effectiveRunner, ['list-products', '--limit', String(limit)])
+  async function listProducts({ limit = 250, page = 1 } = {}) {
+    if (directReady) {
+      const payload = await easyStoreApiRequest({
+        fetchImpl,
+        credentials: directCredentials,
+        method: 'GET',
+        pathname: '/products.json',
+        query: { page, limit },
+      })
       return {
         ok: true,
-        mode: 'local_helper_ready',
+        mode: 'storefront_api_ready',
+        status: payload.status,
         endpoint: 'GET /products.json',
-        productCount: payload.response?.products?.length ?? payload.response?.data?.length ?? payload.response?.count ?? 0,
+        products: unwrapProducts(payload),
+        rateLimit: payload.rateLimit,
+      }
+    }
+    if (!effectiveRunner) throw missingCredentialsError({ credentials: directCredentials, helper })
+    const payload = await runHelper(effectiveRunner, ['list-products', '--limit', String(limit)])
+    return {
+      ok: true,
+      mode: 'local_helper_ready',
+      endpoint: 'GET /products.json',
+      products: unwrapProducts(payload),
+    }
+  }
+
+  return {
+    async verify({ limit = 1 } = {}) {
+      const payload = await listProducts({ limit })
+      return {
+        ok: true,
+        mode: payload.mode,
+        status: payload.status,
+        endpoint: 'GET /products.json',
+        productCount: payload.products.length,
+        rateLimit: payload.rateLimit,
       }
     },
+    listProducts,
     async getProductPreview({ productId, pixelId = resolvePixelId(env) } = {}) {
       const cleanProductId = String(productId || '').trim()
       if (!cleanProductId) throw new Error('easystore_product_id_required')
@@ -309,6 +339,14 @@ export function createEasyStoreRuntime({
         throw error
       }
       return normalizeProductPreview(product, { shopBase, pixelId })
+    },
+    async getMetaCatalogFeed({ limit = 250, brand = 'Annalynna', productUrlBase = resolveProductPreviewBaseUrl(env) } = {}) {
+      const result = await listProducts({ limit })
+      return buildMetaCatalogFeed({
+        products: result.products,
+        brand,
+        productUrlBase,
+      })
     },
   }
 }

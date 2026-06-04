@@ -28,6 +28,12 @@ function normalizePageSize(value) {
   return parsed
 }
 
+function normalizeMetaFeedLimit(value) {
+  const parsed = Number(value || 250)
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 500) return 250
+  return parsed
+}
+
 function normalizeAddressLimit(value) {
   const parsed = Number(value || 200)
   if (!Number.isInteger(parsed) || parsed < 1 || parsed > 500) return 200
@@ -482,6 +488,20 @@ export function mountRoutes(app, hub, room, options = {}) {
       res.json(result)
     } catch (error) {
       res.status(400).json({ ok: false, error: error.message || 'zort_products_failed' })
+    }
+  })
+
+  app.get('/feeds/meta/annalynna.csv', async (req, res) => {
+    try {
+      const result = await easyStore.getMetaCatalogFeed({
+        limit: normalizeMetaFeedLimit(req.query.limit),
+      })
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+      res.setHeader('Cache-Control', 'public, max-age=900, s-maxage=900')
+      res.setHeader('X-Omni-Feed-Count', String(result.count || 0))
+      res.send(result.csv)
+    } catch (error) {
+      res.status(400).json({ ok: false, error: error.message || 'easystore_meta_feed_failed' })
     }
   })
 
