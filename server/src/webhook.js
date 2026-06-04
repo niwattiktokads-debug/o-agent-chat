@@ -424,9 +424,30 @@ async function draftThreadReply({ omni, ai, threadId, send = false, sendReply = 
     reason: decision.reason,
   })
   const result = { ok: true, decision, recorded: recorded.decision, snapshot: recorded.snapshot }
-  if (!send) return result
+
+  function recordVisibleDraft(sendSkipped = 'draft_only') {
+    if (!String(decision.draftText || '').trim()) return { ...result, sent: false, sendSkipped }
+    const draft = omni.recordManualReplyDraft({
+      threadId: thread.id,
+      authorName: 'Anna Lynn AI',
+      text: decision.draftText,
+      sourceRef: `ai_auto_reply_draft:${recorded.decision.id}`,
+      actorType: 'ai',
+      auditAction: 'ai_reply_draft_created',
+    })
+    return {
+      ...result,
+      sent: false,
+      sendSkipped,
+      draft: draft.message,
+      draftAudit: draft.audit,
+      snapshot: draft.snapshot,
+    }
+  }
+
+  if (!send) return recordVisibleDraft('draft_only')
   if (wsSettings?.ai?.customerSendEnabled !== true) {
-    return { ...result, sent: false, sendSkipped: 'customer_send_guard_enabled' }
+    return recordVisibleDraft('customer_send_guard_enabled')
   }
 
   const pageProfile = pageProfileForThread(thread)

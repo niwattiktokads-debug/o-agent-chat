@@ -1820,7 +1820,9 @@ test('POST /webhook/meta can auto draft from realtime default without query flag
     assert.equal(response.status, 200)
     assert.equal(body.result.autoReplies.length, 1)
     assert.equal(body.result.autoReplies[0].ok, true)
-    assert.equal(body.result.autoReplies[0].sent, undefined)
+    assert.equal(body.result.autoReplies[0].sent, false)
+    assert.equal(body.result.autoReplies[0].sendSkipped, 'draft_only')
+    assert.equal(body.result.autoReplies[0].draft.deliveryStatus, 'draft_only')
     assertBroadcastedOmni(localEvents)
   } finally {
     localServer.close()
@@ -1865,7 +1867,9 @@ test('POST /webhook/meta send=0 overrides live send default for smoke tests', as
     const body = await response.json()
     assert.equal(response.status, 200)
     assert.equal(body.result.autoReplies.length, 1)
-    assert.equal(body.result.autoReplies[0].sent, undefined)
+    assert.equal(body.result.autoReplies[0].sent, false)
+    assert.equal(body.result.autoReplies[0].sendSkipped, 'draft_only')
+    assert.equal(body.result.autoReplies[0].draft.deliveryStatus, 'draft_only')
     assert.equal(sent.length, 0)
   } finally {
     localServer.close()
@@ -1928,7 +1932,9 @@ test('POST /webhook/meta auto drafts after webhook thread is remapped to existin
     assert.equal(body.result.autoReplies.length, 1)
     assert.equal(body.result.autoReplies[0].ok, true)
     assert.equal(body.result.autoReplies[0].decision.threadId, 'fb_t_existing_anna')
-    assert.equal(body.result.autoReplies[0].sent, undefined)
+    assert.equal(body.result.autoReplies[0].sent, false)
+    assert.equal(body.result.autoReplies[0].sendSkipped, 'draft_only')
+    assert.equal(body.result.autoReplies[0].draft.deliveryStatus, 'draft_only')
     assertBroadcastedOmni(localEvents)
   } finally {
     localServer.close()
@@ -2106,6 +2112,9 @@ test('POST /webhook/meta keeps customer send blocked until customerSendEnabled i
     assert.equal(response.status, 200)
     assert.equal(body.result.autoReplies[0].sent, false)
     assert.equal(body.result.autoReplies[0].sendSkipped, 'customer_send_guard_enabled')
+    assert.equal(body.result.autoReplies[0].draft.deliveryStatus, 'draft_only')
+    assert.equal(body.result.autoReplies[0].draft.authorName, 'Anna Lynn AI')
+    assert.equal(body.result.autoReplies[0].draftAudit.action, 'ai_reply_draft_created')
     assert.equal(sent.length, 0)
   } finally {
     localServer.close()
