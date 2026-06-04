@@ -1495,6 +1495,43 @@ test('AI reply engine prioritizes exact EasyStore SKU over newer color-only prod
   assert.deepEqual(decision.sourceIds.includes('es_stock_polo_black_m'), true)
 })
 
+test('AI reply engine classifies product image requests as human attachment work', async () => {
+  const seed = createOmniSeed()
+  seed.customers.push({ id: 'cust_lorra_image', displayName: 'Image Customer', matchConfidence: 1 })
+  seed.threads.push({
+    id: 'thread_lorra_image',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'cust_lorra_image',
+    status: 'open',
+    intent: 'unknown',
+    risk: 'low',
+    unreadCount: 1,
+    messageCount: 1,
+    updatedAt: '2026-06-04T05:10:00.000Z',
+  })
+  seed.messages.push({
+    id: 'msg_lorra_image',
+    threadId: 'thread_lorra_image',
+    direction: 'inbound',
+    authorName: 'Image Customer',
+    text: 'ขอดูภาพสีเทา 2xl',
+    createdAt: '2026-06-04T05:10:00.000Z',
+    providerMessageId: 'mid_lorra_image',
+  })
+  const service = createOmniService(seed)
+  const thread = service.getThread('thread_lorra_image')
+  const ai = createAiReplyEngine({ provider: 'local_rules', model: 'test' })
+  const decision = await ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
+
+  assert.equal(decision.ok, true)
+  assert.equal(decision.intent, 'productImage')
+  assert.equal(decision.allowed, false)
+  assert.equal(decision.action, 'needs_approval')
+  assert.match(decision.draftText, /แนบรูปสินค้าจริง|product card/)
+  assert.doesNotMatch(decision.draftText, /เดี๋ยวส่งให้ดู|ยินดีส่งให้ดู/)
+})
+
 test('AI reply engine calls Gemini natively for Vercel drafts', async () => {
   const previousKey = process.env.GOOGLE_API_KEY
   process.env.GOOGLE_API_KEY = 'test-gemini-key'

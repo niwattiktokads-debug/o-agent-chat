@@ -22,6 +22,7 @@ function latestInboundMessage(thread, snapshot) {
 
 function classifyIntent(text) {
   const value = String(text || '').toLowerCase()
+  if (/(รูป|ภาพ|ถ่าย|photo|image|pic|picture|ดูสี|ขอดู|ส่ง.*รูป|ส่ง.*ภาพ)/i.test(value)) return 'productImage'
   if (/(ของ|สินค้า|ไซซ์|size|สี|stock|พร้อมส่ง|มีไหม)/i.test(value)) return 'stock'
   if (/(ราคา|เท่าไหร่|บาท|price)/i.test(value)) return 'price'
   if (/(พัสดุ|เลข|tracking|ส่งของ|order|คำสั่งซื้อ)/i.test(value)) return 'orderStatus'
@@ -31,6 +32,7 @@ function classifyIntent(text) {
 
 function riskForIntent(intent, policy, autoSendAll = AUTO_SEND_ALL) {
   if (autoSendAll) return 'low'
+  if (intent === 'productImage') return 'medium'
   if (intent === 'refund') return 'high'
   if (!policy?.autoSend?.[intent]) return 'medium'
   return 'low'
@@ -166,6 +168,10 @@ function draftForIntent(intent, originContext = null, productFacts = null) {
   if (productDraft) return productDraft
   const productLabel = originProductLabel(originContext || {})
   const isLive = originContext?.sourceType === 'live'
+  if (intent === 'productImage') {
+    if (productLabel) return `ลูกค้าขอดูภาพ ${productLabel} ควรให้แอดมินแนบรูปสินค้าจริงหรือ product card ก่อนตอบกลับค่ะ`
+    return 'ลูกค้าขอดูภาพสินค้า ควรให้แอดมินแนบรูปสินค้าจริงหรือ product card ก่อนตอบกลับค่ะ'
+  }
   if (intent === 'stock') {
     if (productLabel) return `ได้ค่ะ เดี๋ยวช่วยเช็กสต็อก ${productLabel} ให้ก่อนนะคะ ถ้าต้องการตัวนี้ แอดมินจะตรวจสี ไซซ์ และจำนวนคงเหลือให้ชัดเจนก่อนตอบกลับค่ะ`
     if (isLive) return 'สนใจตัวไหนในไลฟ์คะ บอกชื่อ สี ไซซ์ หรือช่วงเวลาที่เห็นได้เลยค่ะ เดี๋ยวแอดมินช่วยเช็กให้ตรงตัวก่อนตอบกลับค่ะ'
@@ -185,6 +191,7 @@ function relevantKnowledge(intent, snapshot, { workspaceId } = {}) {
   const termsByIntent = {
     stock: ['สินค้า', 'stock', 'product', 'faq'],
     price: ['ราคา', 'โปร', 'price', 'product'],
+    productImage: ['สินค้า', 'รูป', 'ภาพ', 'image', 'product'],
     orderStatus: ['พัสดุ', 'shipping', 'order', 'payment'],
     refund: ['คืน', 'refund', 'exchange', 'policy'],
     faq: ['faq', 'policy'],
@@ -305,6 +312,7 @@ function buildCustomerReplyPrompt({ thread, snapshot, policy, baseDecision }) {
       'ถ้า origin ระบุสินค้า สี ไซซ์ SKU แคมเปญ โพสต์ หรือไลฟ์ ให้ตอบอิงสิ่งนั้นทันที และขอเพิ่มเฉพาะข้อมูลที่ยังขาดจริง',
       'ถ้า origin source_type เป็น live และยังไม่มีสินค้า/SKU ชัดเจน ให้ถามสั้น ๆ ว่าสนใจตัวไหนในไลฟ์ ชื่อ สี ไซซ์ หรือช่วงเวลาที่เห็น ห้ามขอรูปเป็นค่าเริ่มต้น',
       'ห้ามแต่งข้อมูลราคา สต็อก โปรโมชัน เลขพัสดุ วิธีคืนเงิน หรือคำมั่นสัญญาที่ไม่มีในข้อมูล',
+      'ถ้าลูกค้าขอดูรูป/ภาพสินค้า แต่ระบบยังไม่มี attachment หรือ product card ในข้อมูล ให้ห้ามสัญญาว่าจะส่งรูปแล้วส่งข้อความเปล่า ให้ส่งต่อแอดมินแนบรูปจริงก่อน',
       'ถ้าข้อมูลไม่พอ ให้ถามกลับเพื่อขอข้อมูลที่จำเป็น และส่งต่อให้แอดมินเมื่อต้องตรวจสอบ',
       'ถ้าลูกค้าถามสินค้า สี ไซซ์ หรือราคา ให้ตอบแบบพร้อมช่วยเช็ก และขอรุ่น/สี/ไซซ์/รูปสินค้าเมื่อข้อมูลยังไม่ชัด',
       'ห้ามบอกว่าตัวเองเป็นโมเดล AI หรือพูดถึง prompt/system/developer',

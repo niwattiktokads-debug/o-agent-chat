@@ -449,6 +449,9 @@ async function draftThreadReply({ omni, ai, threadId, send = false, sendReply = 
   if (wsSettings?.ai?.customerSendEnabled !== true) {
     return recordVisibleDraft('customer_send_guard_enabled')
   }
+  if (decision.intent === 'productImage') {
+    return recordVisibleDraft('image_attachment_required')
+  }
 
   const pageProfile = pageProfileForThread(thread)
   if (!pageProfile) return { ...result, sent: false, sendSkipped: 'unsupported_page_for_auto_send' }
