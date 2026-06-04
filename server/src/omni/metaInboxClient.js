@@ -371,3 +371,50 @@ export async function sendInstagramCommentReply(input = {}, _runnerArg = null) {
 
   return { ok: true, status: response.status, response: payload }
 }
+
+export async function fetchInstagramProfile(input = {}) {
+  const { pageProfile = 'ig_anna_lynn', fetchImpl = fetch } = input
+  const profile = pageProfiles()[pageProfile]
+  if (!profile || profile.platform !== 'instagram') throw new Error(`unknown_instagram_page:${pageProfile}`)
+
+  const token = igPageAccessToken(pageProfile)
+  if (!token.ok) {
+    return { ok: false, error: 'ig_page_token_missing', pageProfile, expectedEnv: token.source }
+  }
+
+  const url = new URL(`${FACEBOOK_GRAPH_BASE}/${encodeURIComponent(profile.pageId)}`)
+  url.searchParams.set('fields', 'id,username,name,profile_picture_url')
+  url.searchParams.set('access_token', token.value)
+
+  let response
+  try {
+    response = await fetchImpl(url)
+  } catch (networkError) {
+    return { ok: false, error: 'ig_graph_network_error', detail: networkError.message }
+  }
+
+  const responseText = await response.text()
+  const payload = responseText ? JSON.parse(responseText) : {}
+  if (!response.ok) {
+    return {
+      ok: false,
+      status: response.status,
+      error: payload?.error?.message || payload?.error || 'ig_graph_profile_error',
+      response: payload,
+    }
+  }
+
+  return {
+    ok: true,
+    status: response.status,
+    pageProfile,
+    profile: {
+      id: payload.id || profile.pageId,
+      username: payload.username || null,
+      name: payload.name || profile.pageName || null,
+      avatarUrl: payload.profile_picture_url || '',
+      provider: 'instagram',
+      sourceRef: `instagram_profile:${pageProfile}`,
+    },
+  }
+}

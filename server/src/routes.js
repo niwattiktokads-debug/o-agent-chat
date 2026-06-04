@@ -1,7 +1,7 @@
 import { createAdapterRegistry } from './omni/adapters.js'
 import { createAiReplyEngine } from './omni/aiReplyEngine.js'
 import { getOmniSchemaSummary } from './omni/db/schema.js'
-import { listFacebookConversations, sendFacebookReply } from './omni/metaInboxClient.js'
+import { fetchInstagramProfile, listFacebookConversations, sendFacebookReply } from './omni/metaInboxClient.js'
 import { createOmniService } from './omni/service.js'
 import { listTikTokOrders } from './omni/tiktokOrderClient.js'
 import { createConnectionRuntime } from './omni/connections.js'
@@ -167,6 +167,31 @@ export function mountRoutes(app, hub, room, options = {}) {
     if (!result.ok) return res.status(result.error === 'page_not_found' ? 404 : 400).json(result)
     hub.broadcast('omni', result.snapshot)
     res.json(result)
+  })
+
+  app.post('/api/omni/pages/:pageId/provider-profile', async (req, res) => {
+    try {
+      const pageId = String(req.params.pageId || '').trim()
+      const profileKey = String(req.body?.pageProfile || req.query.pageProfile || '').trim()
+        || Object.entries(loadPageRegistry()).find(([, profile]) => profile.omniPageId === pageId)?.[0]
+      if (!profileKey) return res.status(400).json({ ok: false, error: 'page_profile_required' })
+      const providerProfile = await (options.fetchInstagramProfile || fetchInstagramProfile)({ pageProfile: profileKey })
+      if (!providerProfile.ok) return res.status(502).json(providerProfile)
+      const result = omni.updatePageProviderProfile({
+        pageId,
+        provider: 'instagram',
+        providerAccountId: providerProfile.profile?.id,
+        username: providerProfile.profile?.username,
+        name: providerProfile.profile?.name,
+        avatarUrl: providerProfile.profile?.avatarUrl,
+        updatedBy: req.body?.updatedBy || 'provider_profile_sync',
+      })
+      if (!result.ok) return res.status(result.error === 'page_not_found' ? 404 : 400).json(result)
+      hub.broadcast('omni', result.snapshot)
+      res.json({ ...result, providerProfile })
+    } catch (error) {
+      res.status(400).json({ ok: false, error: error.message || 'provider_profile_sync_failed' })
+    }
   })
 
   app.get('/api/omni/snapshot', (req, res) => {

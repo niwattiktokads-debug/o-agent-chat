@@ -20,7 +20,7 @@ export function createOmniSeed() {
     platformAccounts: [
       { id: 'acct_fb_mankynd', pageId: 'page_mankynd', platform: 'facebook', provider: 'meta', providerAccountId: '189971841184132', status: 'healthy' },
       { id: 'acct_fb_annalynn', pageId: 'page_annalynn', platform: 'facebook', provider: 'meta', providerAccountId: '122106446570001676', status: 'healthy' },
-      { id: 'acct_ig_annalynn', pageId: 'page_ig_annalynn', platform: 'instagram', provider: 'instagram_messaging', providerAccountId: 'PLACEHOLDER_IG_PAGE_ID', status: 'pending_page_id' },
+      { id: 'acct_ig_annalynn', pageId: 'page_ig_annalynn', platform: 'instagram', provider: 'instagram_messaging', providerAccountId: '17841456216401165', status: 'healthy' },
       { id: 'acct_fb_page_des', pageId: 'page_des', platform: 'facebook', provider: 'meta', providerAccountId: '1137894522741329', status: 'healthy' },
       { id: 'acct_fb_112154661515664', pageId: 'page_fb_112154661515664', platform: 'facebook', provider: 'meta', providerAccountId: '112154661515664', status: 'pending_token' },
       { id: 'acct_tt_shop', pageId: 'page_annalynn_tiktok', platform: 'tiktok', provider: 'tiktok_shop', providerAccountId: '7494912558026296148', status: 'healthy' },

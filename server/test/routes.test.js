@@ -2693,6 +2693,43 @@ test('POST /api/omni/policy-sets/:id/auto-send updates auto-send policy and broa
   }
 })
 
+test('POST /api/omni/pages/:pageId/provider-profile syncs Instagram avatar and broadcasts snapshot', async () => {
+  const localApp = express()
+  localApp.use(express.json())
+  const localOmni = createOmniService()
+  const localEvents = []
+  const fetchInstagramProfile = async ({ pageProfile }) => ({
+    ok: true,
+    pageProfile,
+    profile: {
+      id: '17841456216401165',
+      username: 'annalynn.co',
+      name: 'Anna Lynn IG',
+      avatarUrl: 'https://cdn.example/ig-annalynn.jpg',
+      provider: 'instagram',
+    },
+  })
+  mountRoutes(localApp, { broadcast: (event, payload) => localEvents.push({ event, payload }) }, createState(), { omni: localOmni, fetchInstagramProfile })
+  const localServer = localApp.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const response = await fetch(`http://localhost:${localPort}/api/omni/pages/page_ig_annalynn/provider-profile`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ pageProfile: 'ig_anna_lynn', updatedBy: 'test' }),
+    })
+    const body = await response.json()
+    assert.equal(response.status, 200)
+    assert.equal(body.page.avatarUrl, 'https://cdn.example/ig-annalynn.jpg')
+    assert.equal(body.account.providerAccountId, '17841456216401165')
+    assert.equal(body.account.avatarUrl, 'https://cdn.example/ig-annalynn.jpg')
+    assert.equal(body.snapshot.pages.find((item) => item.id === 'page_ig_annalynn').avatarUrl, 'https://cdn.example/ig-annalynn.jpg')
+    assert.equal(localEvents.some((event) => event.event === 'omni'), true)
+  } finally {
+    localServer.close()
+  }
+})
+
 test('audit rows include workspaceId after settings update', async () => {
   const omni = createOmniService()
   const result = omni.updateSettings({ workspaceId: 'ws_test', settings: { ai: { enabled: false } } })
