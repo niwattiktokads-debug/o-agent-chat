@@ -465,6 +465,17 @@ export function mountRoutes(app, hub, room, options = {}) {
     res.json(result)
   })
 
+  app.post('/api/omni/policy-sets/:policySetId/auto-send', (req, res) => {
+    const result = omni.updatePolicyAutoSend({
+      policySetId: req.params.policySetId,
+      autoSend: req.body?.autoSend || {},
+      updatedBy: req.body?.updatedBy || 'boss',
+    })
+    if (!result.ok) return res.status(result.error === 'policy_set_not_found' ? 404 : 400).json(result)
+    hub.broadcast('omni', result.snapshot)
+    res.json(result)
+  })
+
   app.get('/api/omni/reports/message-volume', (req, res) => {
     const report = omni.messageVolumeReport({ from: req.query.from, to: req.query.to, pageId: req.query.pageId })
     if (req.query.format === 'csv') {

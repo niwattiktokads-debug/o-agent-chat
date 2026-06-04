@@ -512,6 +512,34 @@ export function createOmniService(options = createOmniSeed()) {
       const auditResult = upsert('actionAudits', [audit])
       return { ok: true, result: { omniSettings: result, actionAudits: auditResult }, settings: structuredClone(nextSettings), audit, snapshot: this.snapshot() }
     },
+    updatePolicyAutoSend({ policySetId, autoSend = {}, updatedBy = 'boss' } = {}) {
+      const id = String(policySetId || '').trim()
+      if (!id) return { ok: false, error: 'policy_set_id_required' }
+      const snapshot = currentData()
+      const policy = (snapshot.policySets || []).find((item) => item.id === id)
+      if (!policy) return { ok: false, error: 'policy_set_not_found' }
+      const nextAutoSend = Object.fromEntries(
+        Object.entries(autoSend || {}).map(([key, value]) => [String(key), value === true])
+      )
+      const row = {
+        ...policy,
+        autoSend: nextAutoSend,
+        updatedAt: new Date().toISOString(),
+        updatedBy: String(updatedBy || 'boss'),
+      }
+      const result = upsert('policySets', [row])
+      const audit = createActionAuditRow({
+        action: 'policy_auto_send_updated',
+        workspaceId: null,
+        actorType: 'human',
+        actorId: row.updatedBy,
+        before: policy.autoSend || {},
+        after: row.autoSend,
+        sourceRef: `policy_set:${id}`,
+      })
+      const auditResult = upsert('actionAudits', [audit])
+      return { ok: true, result: { policySets: result, actionAudits: auditResult }, policySet: structuredClone(row), audit, snapshot: this.snapshot() }
+    },
     resolveWorkspaceId({ threadId, pageId } = {}) {
       return resolveWorkspaceId(currentData(), { threadId, pageId })
     },

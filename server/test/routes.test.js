@@ -2668,6 +2668,31 @@ test('Live CF derives non-default workspace from profileKey mapping and respects
   }
 })
 
+test('POST /api/omni/policy-sets/:id/auto-send updates auto-send policy and broadcasts snapshot', async () => {
+  const localApp = express()
+  localApp.use(express.json())
+  const localOmni = createOmniService()
+  const localEvents = []
+  mountRoutes(localApp, { broadcast: (event, payload) => localEvents.push({ event, payload }) }, createState(), { omni: localOmni })
+  const localServer = localApp.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const response = await fetch(`http://localhost:${localPort}/api/omni/policy-sets/policy_annalynn/auto-send`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ autoSend: { faq: true, stock: true, refund: false }, updatedBy: 'boss' }),
+    })
+    const body = await response.json()
+    assert.equal(response.status, 200)
+    assert.equal(body.policySet.autoSend.stock, true)
+    assert.equal(body.policySet.autoSend.refund, false)
+    assert.equal(body.snapshot.policySets.find((item) => item.id === 'policy_annalynn').autoSend.stock, true)
+    assert.equal(localEvents.some((event) => event.event === 'omni'), true)
+  } finally {
+    localServer.close()
+  }
+})
+
 test('audit rows include workspaceId after settings update', async () => {
   const omni = createOmniService()
   const result = omni.updateSettings({ workspaceId: 'ws_test', settings: { ai: { enabled: false } } })
