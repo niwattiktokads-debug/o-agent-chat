@@ -259,7 +259,7 @@ function ManualReplyComposer({ thread, onSnapshot, suggestedDraft }) {
           </button>
         </div>
       ) : null}
-      <div className="flex items-end gap-2">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
         <textarea
           rows={2}
           value={text}
@@ -268,7 +268,7 @@ function ManualReplyComposer({ thread, onSnapshot, suggestedDraft }) {
             setSendArmed(false)
           }}
           placeholder="พิมพ์ข้อความตอบลูกค้า... (บันทึกเป็น draft ก่อน)"
-          className="min-h-[48px] flex-1 resize-none rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] px-3 py-2 text-sm leading-5 text-[var(--color-ink)] outline-none placeholder:text-[var(--color-muted)] focus:border-[var(--color-accent)]"
+          className="min-h-[48px] w-full min-w-0 resize-none rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] px-3 py-2 text-sm leading-5 text-[var(--color-ink)] outline-none placeholder:text-[var(--color-muted)] focus:border-[var(--color-accent)] sm:flex-1"
         />
         <input
           ref={fileInputRef}
@@ -281,39 +281,41 @@ function ManualReplyComposer({ thread, onSnapshot, suggestedDraft }) {
             event.target.value = ''
           }}
         />
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)]"
-        >
-          แนบภาพ
-        </button>
-        <button
-          type="button"
-          onClick={() => setProductPanelOpen((current) => !current)}
-          className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)]"
-        >
-          สินค้า
-        </button>
-        <button
-          type="submit"
-          disabled={busy || (!text.trim() && attachments.length === 0)}
-          className="rounded-[var(--radius-md)] bg-[var(--color-accent)] px-4 py-2 text-sm font-semibold text-[var(--color-accent-ink)] shadow-sm disabled:opacity-45"
-        >
-          {busy ? 'บันทึก...' : 'บันทึก draft'}
-        </button>
-        <button
-          type="button"
-          disabled={busy || !text.trim()}
-          onClick={sendLive}
-          className={`rounded-[var(--radius-md)] px-4 py-2 text-sm font-semibold shadow-sm disabled:opacity-45 ${
-            sendArmed
-              ? 'bg-rose-600 text-white'
-              : 'border border-rose-200 bg-rose-50 text-rose-700'
-          }`}
-        >
-          {busy ? 'กำลังส่ง...' : sendArmed ? 'ยืนยันส่งจริง' : 'ส่งจริง'}
-        </button>
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0 sm:items-center">
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)]"
+          >
+            แนบภาพ
+          </button>
+          <button
+            type="button"
+            onClick={() => setProductPanelOpen((current) => !current)}
+            className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)]"
+          >
+            สินค้า
+          </button>
+          <button
+            type="submit"
+            disabled={busy || (!text.trim() && attachments.length === 0)}
+            className="rounded-[var(--radius-md)] bg-[var(--color-accent)] px-4 py-2 text-sm font-semibold text-[var(--color-accent-ink)] shadow-sm disabled:opacity-45"
+          >
+            {busy ? 'บันทึก...' : 'บันทึก draft'}
+          </button>
+          <button
+            type="button"
+            disabled={busy || !text.trim()}
+            onClick={sendLive}
+            className={`rounded-[var(--radius-md)] px-4 py-2 text-sm font-semibold shadow-sm disabled:opacity-45 ${
+              sendArmed
+                ? 'bg-rose-600 text-white'
+                : 'border border-rose-200 bg-rose-50 text-rose-700'
+            }`}
+          >
+            {busy ? 'กำลังส่ง...' : sendArmed ? 'ยืนยันส่งจริง' : 'ส่งจริง'}
+          </button>
+        </div>
       </div>
       {error ? <p className="mt-2 text-xs text-rose-600">{error}</p> : null}
       {productStatus ? <p className="mt-2 text-xs text-[var(--color-muted)]">{productStatus}</p> : null}
