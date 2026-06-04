@@ -4,6 +4,13 @@ function initials(name = '') {
   return String(name).trim().split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase() || 'OA'
 }
 
+const FACEBOOK_PAGE_IDS = {
+  page_mankynd: '189971841184132',
+  page_annalynn: '122106446570001676',
+  page_des: '1137894522741329',
+  page_fb_112154661515664: '112154661515664',
+}
+
 function pageAvatarUrl(page = {}, account = {}) {
   const directUrl = page.avatarUrl
     || page.profilePictureUrl
@@ -13,8 +20,11 @@ function pageAvatarUrl(page = {}, account = {}) {
     || account.profilePictureUrl
     || account.picture?.data?.url
   if (directUrl) return directUrl
-  if (account.platform === 'facebook' && account.providerAccountId) {
-    return `https://graph.facebook.com/v23.0/${encodeURIComponent(account.providerAccountId)}/picture?type=large`
+  const facebookPageId = account.platform === 'facebook' && account.providerAccountId
+    ? account.providerAccountId
+    : FACEBOOK_PAGE_IDS[page.id]
+  if (facebookPageId) {
+    return `https://graph.facebook.com/v23.0/${encodeURIComponent(facebookPageId)}/picture?type=large`
   }
   return ''
 }
