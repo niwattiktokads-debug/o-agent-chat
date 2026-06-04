@@ -46,7 +46,107 @@ function originProductLabel(originContext = {}) {
   return [base, color, size, sku].filter(Boolean).join(' ').trim()
 }
 
-function draftForIntent(intent, originContext = null) {
+function normalizeSearchText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function searchTokens(value) {
+  return normalizeSearchText(value)
+    .split(' ')
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2)
+}
+
+function moneyText(value) {
+  const amount = Number(value)
+  if (!Number.isFinite(amount) || amount <= 0) return ''
+  return new Intl.NumberFormat('th-TH', { maximumFractionDigits: amount % 1 === 0 ? 0 : 2 }).format(amount)
+}
+
+function productFactsForThread(thread, snapshot, originContext = null) {
+  const latestInbound = latestInboundMessage(thread, snapshot)
+  const query = [
+    latestInbound?.text,
+    originProductLabel(originContext || {}),
+    originContext?.productHint?.text,
+    originContext?.live?.productName,
+    originContext?.live?.sku,
+  ].filter(Boolean).join(' ')
+  const tokens = searchTokens(query)
+  if (!tokens.length) return null
+
+  const rows = (snapshot.inventorySnapshots || [])
+    .filter((row) => row.source === 'easystore' || row.source === 'easy_store' || String(row.id || '').startsWith('es_stock_'))
+    .map((row) => {
+      const haystack = normalizeSearchText([row.productName, row.sku, row.productId].filter(Boolean).join(' '))
+      const score = tokens.reduce((sum, token) => sum + (haystack.includes(token) ? 1 : 0), 0)
+      return { row, score }
+    })
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score || String(b.row.checkedAt || '').localeCompare(String(a.row.checkedAt || '')))
+
+  if (!rows.length) return null
+  const bestProductId = rows[0].row.productId || rows[0].row.productName || rows[0].row.sku
+  const variants = rows
+    .filter((item) => (item.row.productId || item.row.productName || item.row.sku) === bestProductId)
+    .map((item) => item.row)
+    .sort((a, b) => Number(b.available || 0) - Number(a.available || 0))
+
+  const productName = variants.find((row) => row.productName)?.productName || variants[0]?.sku || 'สินค้า'
+  const availableTotal = variants.reduce((sum, row) => sum + Math.max(0, Number(row.available || 0)), 0)
+  const prices = variants.map((row) => Number(row.price || 0)).filter((price) => Number.isFinite(price) && price > 0)
+  const price = prices.length ? Math.min(...prices) : null
+  const checkedAt = variants.map((row) => row.checkedAt).filter(Boolean).sort().at(-1) || null
+  return {
+    productId: variants[0]?.productId || null,
+    productName,
+    availableTotal,
+    price,
+    checkedAt,
+    variants: variants.slice(0, 5).map((row) => ({
+      id: row.id || null,
+      sku: row.sku || '',
+      available: Number(row.available || 0),
+      price: Number(row.price || 0) || null,
+    })),
+  }
+}
+
+function productFactsText(productFacts) {
+  if (!productFacts) return ''
+  const variantText = (productFacts.variants || [])
+    .map((variant) => `${variant.sku || 'SKU'} คงเหลือ ${variant.available} ชิ้น${variant.price ? ` ราคา ${moneyText(variant.price)} บาท` : ''}`)
+    .join(' · ')
+  return [
+    `สินค้า: ${productFacts.productName}`,
+    `พร้อมส่งรวม ${productFacts.availableTotal} ชิ้น`,
+    productFacts.price ? `ราคาเริ่มต้น ${moneyText(productFacts.price)} บาท` : '',
+    variantText ? `ตัวเลือก: ${variantText}` : '',
+    productFacts.checkedAt ? `เช็กล่าสุด ${productFacts.checkedAt}` : '',
+  ].filter(Boolean).join('\n')
+}
+
+function draftFromProductFacts(intent, productFacts) {
+  if (!productFacts || !['stock', 'price'].includes(intent)) return ''
+  const price = productFacts.price ? ` ราคาเริ่มต้น ${moneyText(productFacts.price)} บาท` : ''
+  const available = Number(productFacts.availableTotal || 0)
+  const availableText = available > 0 ? `พร้อมส่งรวม ${available} ชิ้น` : 'ตอนนี้ยังไม่พบสต็อกพร้อมส่ง'
+  const variantText = (productFacts.variants || [])
+    .filter((variant) => variant.available > 0)
+    .slice(0, 3)
+    .map((variant) => `${variant.sku} ${variant.available} ชิ้น`)
+    .join(', ')
+  const optionText = variantText ? ` ตัวเลือกที่มี: ${variantText}` : ''
+  return `เช็กให้แล้วค่ะ ${productFacts.productName} ${availableText}${price}.${optionText} ถ้าต้องการตัวนี้ แจ้งสี/ไซซ์ที่ต้องการหรือให้แอดมินปิดออเดอร์ต่อในแชทได้เลยค่ะ`
+}
+
+function draftForIntent(intent, originContext = null, productFacts = null) {
+  const productDraft = draftFromProductFacts(intent, productFacts)
+  if (productDraft) return productDraft
   const productLabel = originProductLabel(originContext || {})
   const isLive = originContext?.sourceType === 'live'
   if (intent === 'stock') {
@@ -169,6 +269,7 @@ function buildCustomerReplyPrompt({ thread, snapshot, policy, baseDecision }) {
   const knowledge = relevantKnowledge(baseDecision.intent, snapshot, { workspaceId })
   const recentMessages = recentMessagesForThread(thread, snapshot)
   const origin = compactOriginContext(thread, recentMessages)
+  const productFacts = baseDecision.productFacts || productFactsForThread(thread, snapshot, origin)
   const messages = recentMessages
     .map((message) => `${message.direction === 'inbound' ? 'ลูกค้า' : 'เพจ'}: ${message.text}`)
     .join('\n')
@@ -210,6 +311,9 @@ function buildCustomerReplyPrompt({ thread, snapshot, policy, baseDecision }) {
       '',
       'ข้อมูลอ้างอิงที่ใช้ตอบ:',
       knowledgeText || '(ไม่มีข้อมูลพร้อมใช้)',
+      '',
+      'ข้อมูลสินค้า/สต็อกจากระบบ:',
+      productFactsText(productFacts) || '(ยังไม่มีข้อมูลสินค้า/สต็อกจากระบบ)',
       '',
       `fallback_draft: ${baseDecision.draftText}`,
       '',
@@ -371,6 +475,7 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
     const parsed = parseAiJson(text)
     const trustedContext = [
       JSON.stringify(baseDecision.originContext || {}),
+      productFactsText(baseDecision.productFacts),
       ...relevantKnowledge(baseDecision.intent, snapshot, { workspaceId: _oaiWsId }).map((source) => source.content || ''),
     ].join('\n')
     const draftText = guardedDraftText(parsed?.draftText || text, baseDecision.draftText, { trustedContext })
@@ -441,6 +546,7 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
     const finishedCleanly = !candidate.finishReason || candidate.finishReason === 'STOP'
     const trustedContext = [
       JSON.stringify(baseDecision.originContext || {}),
+      productFactsText(baseDecision.productFacts),
       ...relevantKnowledge(baseDecision.intent, snapshot, { workspaceId: _gemWsId }).map((source) => source.content || ''),
     ].join('\n')
     const draftText = finishedCleanly
@@ -471,6 +577,10 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
       const workspaceId = threadPage?.workspaceId || undefined
       const knowledge = relevantKnowledge(intent, snapshot, { workspaceId })
       const originContext = compactOriginContext(thread, recentMessagesForThread(thread, snapshot))
+      const productFacts = productFactsForThread(thread, snapshot, originContext)
+      const productSourceIds = productFacts
+        ? (productFacts.variants || []).map((variant) => variant.id).filter(Boolean)
+        : []
 
       const baseDecision = {
         ok: true,
@@ -482,11 +592,14 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
         action: allowed ? 'draft_ready' : 'needs_approval',
         confidence: intent === 'faq' ? 0.72 : 0.82,
         allowed,
-        draftText: draftForIntent(intent, originContext),
-        reason: allowed ? 'policy_allows_low_risk_intent' : 'guard_requires_human_or_more_data',
-        sourceIds: knowledge.map((source) => source.id),
+        draftText: draftForIntent(intent, originContext, productFacts),
+        reason: productFacts
+          ? 'product_inventory_fact_match'
+          : (allowed ? 'policy_allows_low_risk_intent' : 'guard_requires_human_or_more_data'),
+        sourceIds: [...knowledge.map((source) => source.id), ...productSourceIds],
         evidenceIds: inbound?.id ? [inbound.id] : [],
         originContext,
+        productFacts,
       }
 
       if (provider === 'local_rules') return baseDecision
