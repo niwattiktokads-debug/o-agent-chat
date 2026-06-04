@@ -1107,17 +1107,22 @@ export function createOmniService(options = createOmniSeed()) {
       const result = upsert('actionAudits', [audit])
       return { ok: true, result, audit: structuredClone(audit), snapshot: this.snapshot() }
     },
-    recordOutboundMessage({ threadId, authorName = 'AI', text, providerMessageId = null, sourceRef = 'ai_auto_reply', decisionId = null, decision = null }) {
+    recordOutboundMessage({ threadId, authorName = 'AI', text, attachments = [], providerMessageId = null, sourceRef = 'ai_auto_reply', decisionId = null, decision = null }) {
       const snapshot = currentData()
       const thread = snapshot.threads.find((item) => item.id === threadId)
       if (!thread) return { ok: false, error: 'thread_not_found' }
+      const normalizedAttachments = normalizeDraftAttachments(attachments)
+      if (!normalizedAttachments.ok) return normalizedAttachments
+      const cleanText = String(text || '')
+      if (!cleanText.trim() && normalizedAttachments.attachments.length === 0) return { ok: false, error: 'message_required' }
       const now = new Date().toISOString()
       const message = {
         id: `out_${threadId}_${Date.now()}`,
         threadId,
         direction: 'outbound',
         authorName,
-        text: String(text || ''),
+        text: cleanText,
+        attachments: normalizedAttachments.attachments,
         createdAt: now,
         providerMessageId,
         sourceRef,
@@ -1152,6 +1157,7 @@ export function createOmniService(options = createOmniSeed()) {
           sourceIds: decision?.sourceIds || [],
           policyDecision: decision?.allowed ? 'allowed' : 'not_allowed',
           replyText: message.text,
+          attachmentCount: normalizedAttachments.attachments.length,
           threadStatus: updatedThread.status,
         },
         sourceRef,

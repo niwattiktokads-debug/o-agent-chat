@@ -181,6 +181,7 @@ vi.mock('../../lib/omniApi.js', () => ({
       direction: 'outbound',
       authorName: draft.authorName,
       text: draft.text,
+      attachments: draft.attachments || [],
       sourceRef: 'manual_send:man_kynd',
       createdAt: '2026-05-24T00:01:00.000Z',
     },
@@ -190,7 +191,7 @@ vi.mock('../../lib/omniApi.js', () => ({
       threads: [{ id: 'thread_1', pageId: 'page_mankynd', platform: 'facebook', status: 'auto_sent', intent: 'stock', risk: 'low' }],
       messages: [
         { id: 'msg_1', threadId: 'thread_1', direction: 'inbound', authorName: 'ลูกค้า A', text: 'มีไซซ์ M สีดำไหม' },
-        { id: 'sent_1', threadId: 'thread_1', direction: 'outbound', authorName: draft.authorName, text: draft.text, sourceRef: 'manual_send:man_kynd', createdAt: '2026-05-24T00:01:00.000Z' },
+        { id: 'sent_1', threadId: 'thread_1', direction: 'outbound', authorName: draft.authorName, text: draft.text, attachments: draft.attachments || [], sourceRef: 'manual_send:man_kynd', createdAt: '2026-05-24T00:01:00.000Z' },
       ],
       customers: [{ id: 'cust_1', displayName: 'ลูกค้า A' }],
       orders: [],
@@ -512,6 +513,25 @@ describe('OmniWorkbench', () => {
       expect(screen.getByText('ส่งจริงจากช่องพิมพ์')).toBeInTheDocument()
     })
     expect(screen.getAllByText('ส่งจริง').length).toBeGreaterThan(0)
+  })
+
+  it('sends a suggested EasyStore product image only after send-real is enabled and clicked', async () => {
+    render(<OmniWorkbench />)
+    const draftBox = await screen.findByPlaceholderText(/พิมพ์ข้อความตอบลูกค้า/)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'ขาย' }))
+    fireEvent.click(await screen.findByText('ใช้รูปนี้'))
+    await waitFor(() => {
+      expect(draftBox).toHaveValue('ส่งภาพ เสื้อเชิ้ตโปโลผู้หญิง สีดำ ให้ดูค่ะ')
+    })
+
+    fireEvent.click(await screen.findByRole('switch', { name: /Draft only/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'ส่งลูกค้าจริง' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('ส่งภาพ เสื้อเชิ้ตโปโลผู้หญิง สีดำ ให้ดูค่ะ')).toBeInTheDocument()
+    })
+    expect(screen.getAllByAltText('เสื้อเชิ้ตโปโลผู้หญิง สีดำ M').length).toBeGreaterThan(0)
   })
 
   it('places an AI draft into the reply composer for review', async () => {

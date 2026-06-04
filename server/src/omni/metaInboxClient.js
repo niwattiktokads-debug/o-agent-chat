@@ -192,13 +192,15 @@ export async function listFacebookConversations({ pageProfile = 'anna_lynn', run
 }
 
 export async function sendFacebookReply(input = {}, runnerArg = null) {
-  const { pageProfile = 'anna_lynn', recipientId, message } = input
+  const { pageProfile = 'anna_lynn', recipientId, message, fetchImpl = fetch } = input
   if (!pageProfiles()[pageProfile]) throw new Error(`unknown_facebook_page:${pageProfile}`)
   if (!recipientId) throw new Error('recipient_id_required')
   const text = String(message || '').trim()
-  if (!text) throw new Error('message_required')
+  const attachments = normalizeFacebookSendAttachments(input.attachments || [])
+  if (!text && attachments.length === 0) throw new Error('message_required')
   // ถ้ามี custom runner inject มา (เช่นใน test) ให้ใช้ runner นั้นแทน
   if (input.runner || runnerArg) {
+    if (attachments.length > 0) return { ok: false, error: 'facebook_attachment_helper_not_supported' }
     const runner = input.runner || runnerArg
     const payload = await runner([
       'send-reply',
@@ -211,6 +213,7 @@ export async function sendFacebookReply(input = {}, runnerArg = null) {
     return payload
   }
   if (input.helperPath) {
+    if (attachments.length > 0) return { ok: false, error: 'facebook_attachment_helper_not_supported' }
     const helperPath = helperPathFrom(input)
     if (!helperExists(helperPath)) return helperUnavailable(helperPath)
     const payload = await defaultRunner([
@@ -230,27 +233,67 @@ export async function sendFacebookReply(input = {}, runnerArg = null) {
   }
   const url = new URL(`${FACEBOOK_GRAPH_BASE}/me/messages`)
   url.searchParams.set('access_token', token.value)
-  let response
-  try {
-    response = await fetch(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ recipient: { id: recipientId }, message: { text } }),
+  const messages = []
+  if (text) messages.push({ text })
+  for (const attachment of attachments) {
+    messages.push({
+      attachment: {
+        type: attachment.sendType,
+        payload: {
+          url: attachment.url,
+          is_reusable: true,
+        },
+      },
     })
-  } catch (networkError) {
-    return { ok: false, error: 'fb_graph_network_error', detail: networkError.message }
   }
-  const responseText = await response.text()
-  const payload = responseText ? JSON.parse(responseText) : {}
-  if (!response.ok) {
-    return {
-      ok: false,
-      status: response.status,
-      error: payload?.error?.message || payload?.error || 'fb_graph_error',
-      response: payload,
+  const responses = []
+  for (const messagePayload of messages) {
+    let response
+    try {
+      response = await fetchImpl(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ recipient: { id: recipientId }, messaging_type: 'RESPONSE', message: messagePayload }),
+      })
+    } catch (networkError) {
+      return { ok: false, error: 'fb_graph_network_error', detail: networkError.message, responses }
+    }
+    const responseText = await response.text()
+    const payload = responseText ? JSON.parse(responseText) : {}
+    responses.push({ status: response.status, response: payload })
+    if (!response.ok) {
+      return {
+        ok: false,
+        status: response.status,
+        error: payload?.error?.message || payload?.error || 'fb_graph_error',
+        response: payload,
+        responses,
+      }
     }
   }
-  return { ok: true, status: response.status, response: payload }
+  const last = responses[responses.length - 1] || { status: 200, response: {} }
+  return { ok: true, status: last.status, response: last.response, responses }
+}
+
+function normalizeFacebookSendAttachments(input = []) {
+  if (!Array.isArray(input)) return []
+  return input
+    .map((item) => {
+      const type = String(item?.type || '').trim()
+      const url = String(item?.url || item?.imageUrl || '').trim()
+      if (!url || !/^https:\/\//i.test(url)) return null
+      const sendType = type.startsWith('image/') || type === 'image' || !type ? 'image' : type
+      if (sendType !== 'image') return null
+      return {
+        id: item.id || null,
+        name: item.name || item.alt || 'image',
+        type: type || 'image/jpeg',
+        sendType,
+        url,
+      }
+    })
+    .filter(Boolean)
+    .slice(0, 5)
 }
 
 export async function sendFacebookCommentReply(input = {}, runnerArg = null) {

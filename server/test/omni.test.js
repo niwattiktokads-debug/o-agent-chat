@@ -1106,6 +1106,50 @@ test('Facebook reply connector skips send when meta helper binary is unavailable
   assert.equal(result.helperPath, helperPath)
 })
 
+test('Facebook reply connector sends text and image attachments through direct Graph API', async () => {
+  const savedToken = process.env.META_PAGE_TOKEN_ANNA_LYNN
+  const calls = []
+  try {
+    process.env.META_PAGE_TOKEN_ANNA_LYNN = 'test_anna_page_token'
+    const result = await sendFacebookReply({
+      pageProfile: 'anna_lynn',
+      recipientId: 'psid_123',
+      message: 'ส่งภาพสินค้าให้ดูค่ะ',
+      attachments: [{
+        id: 'img_1',
+        name: 'black-m.jpg',
+        type: 'image/jpeg',
+        url: 'https://cdn.example.com/black-m.jpg',
+      }],
+      fetchImpl: async (url, options) => {
+        calls.push({ url: url.toString(), body: JSON.parse(options.body) })
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ message_id: `mid_${calls.length}` }),
+        }
+      },
+    })
+
+    assert.equal(result.ok, true)
+    assert.equal(calls.length, 2)
+    assert.equal(calls[0].body.messaging_type, 'RESPONSE')
+    assert.deepEqual(calls[0].body.message, { text: 'ส่งภาพสินค้าให้ดูค่ะ' })
+    assert.deepEqual(calls[1].body.message, {
+      attachment: {
+        type: 'image',
+        payload: {
+          url: 'https://cdn.example.com/black-m.jpg',
+          is_reusable: true,
+        },
+      },
+    })
+  } finally {
+    if (savedToken === undefined) delete process.env.META_PAGE_TOKEN_ANNA_LYNN
+    else process.env.META_PAGE_TOKEN_ANNA_LYNN = savedToken
+  }
+})
+
 test('Facebook comment connector skips send when meta helper binary is unavailable', async () => {
   const helperPath = join(mkdtempSync(join(tmpdir(), 'meta-helper-missing-')), 'meta-inbox-api')
   const result = await sendFacebookCommentReply({

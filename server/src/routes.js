@@ -442,8 +442,18 @@ export function mountRoutes(app, hub, room, options = {}) {
     try {
       if (req.body?.approved !== true) return res.status(403).json({ ok: false, sent: false, error: 'approval_required' })
       const text = String(req.body?.text || '').trim()
-      if (!text) return res.status(400).json({ ok: false, sent: false, error: 'message_required' })
-      if ((req.body?.attachments || []).length > 0) return res.status(400).json({ ok: false, sent: false, error: 'attachments_send_not_supported' })
+      const attachments = Array.isArray(req.body?.attachments) ? req.body.attachments : []
+      const liveAttachments = attachments.map((item) => ({
+        id: item?.id,
+        name: item?.name,
+        type: item?.type,
+        size: item?.size,
+        url: String(item?.url || item?.imageUrl || '').trim(),
+      }))
+      if (!text && liveAttachments.length === 0) return res.status(400).json({ ok: false, sent: false, error: 'message_required' })
+      if (liveAttachments.some((item) => !item.type?.startsWith('image/') || !/^https:\/\//i.test(item.url))) {
+        return res.status(400).json({ ok: false, sent: false, error: 'live_attachment_https_image_required' })
+      }
 
       const thread = omni.getThread(req.params.threadId)
       if (!thread) return res.status(404).json({ ok: false, sent: false, error: 'thread_not_found' })
@@ -454,13 +464,14 @@ export function mountRoutes(app, hub, room, options = {}) {
       const recipientId = thread.customer?.providerCustomerId
       if (!recipientId) return res.status(400).json({ ok: false, sent: false, error: 'recipient_id_not_found' })
 
-      const sendResult = await sendFacebookReplyRuntime({ pageProfile, recipientId, message: text })
+      const sendResult = await sendFacebookReplyRuntime({ pageProfile, recipientId, message: text, attachments: liveAttachments })
       if (!sendResult?.ok) return res.status(400).json({ ok: false, sent: false, error: sendResult?.error || 'facebook_send_failed', sendResult })
 
       const recorded = omni.recordOutboundMessage({
         threadId: thread.id,
         authorName: req.body?.authorName || 'บอส',
         text,
+        attachments: liveAttachments,
         providerMessageId: sendResult.response?.message_id || sendResult.response?.id || sendResult.response?.recipient_id || null,
         sourceRef: `manual_send:${pageProfile}`,
       })

@@ -2152,6 +2152,123 @@ test('POST /api/omni/threads/:threadId/send requires approval', async () => {
   assert.equal(body.error, 'approval_required')
 })
 
+test('POST /api/omni/threads/:threadId/send passes HTTPS image attachments and records outbound', async () => {
+  const localApp = express()
+  localApp.use(express.json())
+  const localEvents = []
+  const localHub = { broadcast: (event, payload) => localEvents.push({ event, payload }) }
+  const seed = createOmniService().snapshot()
+  seed.customers.push({
+    id: 'fb_customer_image_send',
+    displayName: 'Image Customer',
+    platform: 'facebook',
+    providerCustomerId: 'psid_image_send',
+    matchConfidence: 1,
+  })
+  seed.threads.push({
+    id: 'fb_image_send_thread',
+    providerThreadId: 'fb_image_send_provider',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'fb_customer_image_send',
+    status: 'open',
+    intent: 'stock',
+    risk: 'medium',
+    unreadCount: 1,
+    messageCount: 1,
+    updatedAt: '2026-06-04T00:00:00.000Z',
+  })
+  const sent = []
+  mountRoutes(localApp, localHub, createState(), {
+    omni: createOmniService(seed),
+    sendFacebookReply: async (input) => {
+      sent.push(input)
+      return { ok: true, response: { message_id: 'mid_image_out' } }
+    },
+  })
+  const localServer = localApp.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const response = await fetch(`http://localhost:${localPort}/api/omni/threads/fb_image_send_thread/send`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        text: 'ส่งภาพสีดำให้ดูค่ะ',
+        attachments: [{ id: 'img_1', name: 'black-m.jpg', type: 'image/jpeg', url: 'https://cdn.example.com/black-m.jpg' }],
+        approved: true,
+        authorName: 'บอส',
+      }),
+    })
+    const body = await response.json()
+    assert.equal(response.status, 200)
+    assert.equal(body.ok, true)
+    assert.equal(body.sent, true)
+    assert.equal(sent.length, 1)
+    assert.equal(sent[0].attachments[0].url, 'https://cdn.example.com/black-m.jpg')
+    assert.equal(body.message.attachments[0].url, 'https://cdn.example.com/black-m.jpg')
+    assertBroadcastedOmni(localEvents)
+  } finally {
+    localServer.close()
+  }
+})
+
+test('POST /api/omni/threads/:threadId/send rejects non-HTTPS live image attachments', async () => {
+  const localApp = express()
+  localApp.use(express.json())
+  const localHub = { broadcast: () => {} }
+  const seed = createOmniService().snapshot()
+  seed.customers.push({
+    id: 'fb_customer_bad_image',
+    displayName: 'Bad Image Customer',
+    platform: 'facebook',
+    providerCustomerId: 'psid_bad_image',
+    matchConfidence: 1,
+  })
+  seed.threads.push({
+    id: 'fb_bad_image_thread',
+    providerThreadId: 'fb_bad_image_provider',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'fb_customer_bad_image',
+    status: 'open',
+    intent: 'stock',
+    risk: 'medium',
+    unreadCount: 1,
+    messageCount: 1,
+    updatedAt: '2026-06-04T00:00:00.000Z',
+  })
+  const sent = []
+  mountRoutes(localApp, localHub, createState(), {
+    omni: createOmniService(seed),
+    sendFacebookReply: async (input) => {
+      sent.push(input)
+      return { ok: true, response: { message_id: 'mid_bad_image' } }
+    },
+  })
+  const localServer = localApp.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const response = await fetch(`http://localhost:${localPort}/api/omni/threads/fb_bad_image_thread/send`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        text: 'ส่งรูปให้ดูค่ะ',
+        attachments: [{ id: 'img_bad', name: 'local.png', type: 'image/png', dataUrl: 'data:image/png;base64,AAAA' }],
+        approved: true,
+        authorName: 'บอส',
+      }),
+    })
+    const body = await response.json()
+    assert.equal(response.status, 400)
+    assert.equal(body.ok, false)
+    assert.equal(body.sent, false)
+    assert.equal(body.error, 'live_attachment_https_image_required')
+    assert.equal(sent.length, 0)
+  } finally {
+    localServer.close()
+  }
+})
+
 test('GET /api/omni/payments/providers/meta_pay_kgp/health reports guarded setup status', async () => {
   const { body, status } = await req('GET', '/api/omni/payments/providers/meta_pay_kgp/health')
 

@@ -167,13 +167,13 @@ function ManualReplyComposer({ thread, onSnapshot, suggestedDraft, customerSendE
   async function sendLive() {
     if (!thread || busy) return
     const cleanText = text.trim()
-    if (!cleanText) return
+    if (!cleanText && attachments.length === 0) return
     if (!customerSendEnabled) {
       setError('เปิดปุ่มส่งจริงก่อน จึงจะส่งข้อความให้ลูกค้าได้')
       return
     }
-    if (attachments.length > 0) {
-      setError('ส่งจริงตอนนี้รองรับข้อความก่อน รูปให้บันทึกเป็น draft')
+    if (attachments.some((item) => !/^https:\/\//i.test(item.url || ''))) {
+      setError('ส่งรูปจริงต้องใช้รูปจากสินค้า/EasyStore ก่อน รูปอัปโหลดในเครื่องให้บันทึกเป็น draft')
       return
     }
     setBusy(true)
@@ -303,7 +303,7 @@ function ManualReplyComposer({ thread, onSnapshot, suggestedDraft, customerSendE
           </button>
           <button
             type="button"
-            disabled={busy || !text.trim() || !customerSendEnabled}
+            disabled={busy || (!text.trim() && attachments.length === 0) || !customerSendEnabled}
             onClick={sendLive}
             className="rounded-[var(--radius-md)] border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 shadow-sm hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-45"
           >
