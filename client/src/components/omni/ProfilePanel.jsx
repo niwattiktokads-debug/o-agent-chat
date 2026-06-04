@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react'
+import { customerAvatarUrl, initialsForName } from '../../lib/omniModel.js'
 
 function pageLabel(pageId, pages = []) {
   return pages.find((page) => page.id === pageId)?.name || pageId
@@ -93,9 +94,12 @@ export default function ProfilePanel({ snapshot }) {
           {customerProfiles.map((customer) => (
             <article key={customer.id} className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] p-3 shadow-sm">
               <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-bold text-[var(--color-ink)]">{customer.displayName || customer.id}</div>
-                  <div className="mt-1 truncate text-[11px] text-[var(--color-muted)]">{customer.providerCustomerId || customer.id}</div>
+                <div className="flex min-w-0 items-start gap-3">
+                  <CustomerAvatar customer={customer} />
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-bold text-[var(--color-ink)]">{customer.displayName || customer.id}</div>
+                    <div className="mt-1 truncate text-[11px] text-[var(--color-muted)]">{customer.providerCustomerId || customer.id}</div>
+                  </div>
                 </div>
                 <span className="rounded-[var(--radius-pill)] bg-[var(--color-live-soft)] px-2 py-1 text-[10px] font-semibold text-[var(--color-live)]">
                   {customer.platform || 'unknown'}
@@ -114,5 +118,18 @@ export default function ProfilePanel({ snapshot }) {
         </div>
       </div>
     </section>
+  )
+}
+
+function CustomerAvatar({ customer }) {
+  const name = customer.displayName || customer.id
+  const avatarUrl = customerAvatarUrl(customer)
+  if (avatarUrl) {
+    return <img src={avatarUrl} alt={name} className="h-10 w-10 shrink-0 rounded-full border border-[var(--color-rule)] object-cover" />
+  }
+  return (
+    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[var(--color-rule)] bg-[var(--color-panel-2)] text-xs font-black text-[var(--color-ink-2)]">
+      {initialsForName(name)}
+    </span>
   )
 }

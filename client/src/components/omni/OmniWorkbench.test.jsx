@@ -102,6 +102,45 @@ vi.mock('../../lib/omniApi.js', () => ({
       connectorHealth: [],
     },
   }),
+  createEasyStoreProductDraft: async (threadId, productId) => ({
+    ok: true,
+    product: { id: productId, title: 'Amanda Jumpsuit' },
+    message: {
+      id: 'draft_product_1',
+      threadId,
+      direction: 'outbound',
+      authorName: 'บอส',
+      text: 'แนะนำตัวนี้ค่ะ: Amanda Jumpsuit\nดูสินค้า: https://omni.oagent.biz/p/easystore/16462646?threadId=thread_1',
+      attachments: [{ id: 'att_product_1', name: 'Amanda Jumpsuit', type: 'image/jpeg', url: 'https://cdn.example/amanda.jpg' }],
+      sourceRef: `easystore_product_draft:${productId}`,
+      createdAt: '2026-06-04T00:00:00.000Z',
+      deliveryStatus: 'draft_only',
+    },
+    snapshot: {
+      pages: [{ id: 'page_mankynd', name: 'MAN KYND', status: 'active' }],
+      platformAccounts: [{ id: 'acct_fb_mankynd', pageId: 'page_mankynd', platform: 'facebook' }],
+      threads: [{ id: 'thread_1', pageId: 'page_mankynd', platform: 'facebook', status: 'draft_ready', intent: 'stock', risk: 'low' }],
+      messages: [
+        { id: 'msg_1', threadId: 'thread_1', direction: 'inbound', authorName: 'ลูกค้า A', text: 'มีไซซ์ M สีดำไหม' },
+        {
+          id: 'draft_product_1',
+          threadId: 'thread_1',
+          direction: 'outbound',
+          authorName: 'บอส',
+          text: 'แนะนำตัวนี้ค่ะ: Amanda Jumpsuit\nดูสินค้า: https://omni.oagent.biz/p/easystore/16462646?threadId=thread_1',
+          attachments: [{ id: 'att_product_1', name: 'Amanda Jumpsuit', type: 'image/jpeg', url: 'https://cdn.example/amanda.jpg' }],
+          sourceRef: `easystore_product_draft:${productId}`,
+          createdAt: '2026-06-04T00:00:00.000Z',
+          deliveryStatus: 'draft_only',
+        },
+      ],
+      customers: [{ id: 'cust_1', displayName: 'ลูกค้า A' }],
+      orders: [],
+      aiDecisions: [],
+      paymentRequests: [],
+      connectorHealth: [],
+    },
+  }),
   setPageAutoReply: async (pageId, enabled) => ({
     ok: true,
     snapshot: {
@@ -358,5 +397,18 @@ describe('OmniWorkbench', () => {
       expect(screen.getByText('ตอบจากช่องพิมพ์ใหม่')).toBeInTheDocument()
     })
     expect(screen.getByText('Draft')).toBeInTheDocument()
+  })
+
+  it('creates an EasyStore product draft from the selected thread without sending', async () => {
+    render(<OmniWorkbench />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'สินค้า' }))
+    fireEvent.change(screen.getByLabelText('EasyStore product id'), { target: { value: '16462646' } })
+    fireEvent.click(screen.getByRole('button', { name: 'แนบสินค้า' }))
+
+    expect(await screen.findByText(/แนบสินค้าแล้ว: Amanda Jumpsuit/)).toBeInTheDocument()
+    expect((await screen.findAllByText(/แนะนำตัวนี้ค่ะ: Amanda Jumpsuit/)).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('สินค้า')).length).toBeGreaterThan(0)
+    expect(screen.getByText('Draft นี้ยังไม่ส่งออกไปหาลูกค้า')).toBeInTheDocument()
   })
 })

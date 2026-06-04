@@ -41,6 +41,47 @@ function normalizeAddressLimit(value) {
   return parsed
 }
 
+function publicOmniBaseUrl(env = process.env) {
+  return String(env.OMNI_PUBLIC_BASE_URL || env.OMNI_FRONTEND_URL || 'https://omni.oagent.biz').replace(/\/+$/, '')
+}
+
+function buildEasyStorePreviewUrl({ productId, threadId }, env = process.env) {
+  const url = new URL(`/p/easystore/${encodeURIComponent(productId)}`, publicOmniBaseUrl(env))
+  if (threadId) url.searchParams.set('threadId', threadId)
+  return url.toString()
+}
+
+function stockLine(stock = {}) {
+  const quantity = Number(stock.totalQuantity || 0)
+  if (quantity > 0) return `สถานะ: พร้อมส่ง ${quantity} ชิ้น`
+  if (stock.status === 'out_of_stock') return 'สถานะ: รอเติมสต็อก'
+  return ''
+}
+
+function buildEasyStoreProductDraft({ product, threadId }) {
+  const previewUrl = buildEasyStorePreviewUrl({ productId: product.id, threadId })
+  const image = product.images?.[0] || null
+  const lines = [
+    `แนะนำตัวนี้ค่ะ: ${product.title}`,
+    product.price?.formatted ? `ราคา: ${product.price.formatted}` : '',
+    stockLine(product.stock),
+    `ดูสินค้า: ${previewUrl}`,
+    product.links?.storefrontUrl ? `ลิงก์ร้าน: ${product.links.storefrontUrl}` : '',
+    'ถ้าสนใจตัวนี้ แอดมินปิดออเดอร์ต่อในแชทได้เลยค่ะ',
+  ].filter(Boolean)
+
+  return {
+    text: lines.join('\n'),
+    attachments: image?.url ? [{
+      id: `easystore_product_${product.id}`,
+      name: image.alt || product.title || 'EasyStore product',
+      type: 'image/jpeg',
+      size: 0,
+      url: image.url,
+    }] : [],
+  }
+}
+
 export function mountRoutes(app, hub, room, options = {}) {
   const omni = options.omni || createOmniService()
   const adapters = createAdapterRegistry()
@@ -285,6 +326,30 @@ export function mountRoutes(app, hub, room, options = {}) {
     if (!result.ok) return res.status(400).json(result)
     hub.broadcast('omni', result.snapshot)
     res.json(result)
+  })
+
+  app.post('/api/omni/threads/:threadId/easystore-product-draft', async (req, res) => {
+    try {
+      const productId = String(req.body?.productId || req.query.productId || '').trim()
+      if (!productId) return res.status(400).json({ ok: false, error: 'easystore_product_id_required' })
+      const preview = await easyStore.getProductPreview({ productId })
+      const product = preview.product || {}
+      if (!product.id) return res.status(404).json({ ok: false, error: 'easystore_product_not_found' })
+      const draft = buildEasyStoreProductDraft({ product, threadId: req.params.threadId })
+      const result = omni.recordManualReplyDraft({
+        threadId: req.params.threadId,
+        authorName: req.body?.authorName || 'บอส',
+        text: draft.text,
+        attachments: draft.attachments,
+        sourceRef: `easystore_product_draft:${product.id}`,
+      })
+      if (!result.ok) return res.status(result.error === 'thread_not_found' ? 404 : 400).json(result)
+      hub.broadcast('omni', result.snapshot)
+      res.json({ ...result, product, previewUrl: buildEasyStorePreviewUrl({ productId: product.id, threadId: req.params.threadId }) })
+    } catch (error) {
+      const status = error.status === 404 || error.message === 'easystore_product_not_found' ? 404 : 400
+      res.status(status).json({ ok: false, error: error.message || 'easystore_product_draft_failed' })
+    }
   })
 
   app.post('/api/omni/threads/:threadId/order-address-intake', async (req, res) => {

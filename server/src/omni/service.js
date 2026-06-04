@@ -171,8 +171,9 @@ function normalizeDraftAttachments(input = []) {
   for (const item of input) {
     const type = String(item?.type || '').trim()
     const dataUrl = String(item?.dataUrl || '').trim()
+    const url = String(item?.url || item?.imageUrl || '').trim()
     if (!type.startsWith('image/')) return { ok: false, error: 'attachment_must_be_image' }
-    if (!dataUrl.startsWith('data:image/')) return { ok: false, error: 'attachment_data_url_required' }
+    if (!dataUrl.startsWith('data:image/') && !/^https?:\/\//i.test(url)) return { ok: false, error: 'attachment_image_source_required' }
     const size = Number(item?.size || 0)
     if (!Number.isFinite(size) || size < 0 || size > MAX_DRAFT_ATTACHMENT_BYTES) return { ok: false, error: 'attachment_too_large' }
     attachments.push({
@@ -181,6 +182,7 @@ function normalizeDraftAttachments(input = []) {
       type,
       size,
       dataUrl,
+      url,
     })
   }
 

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { autoSendStatus, customerForThread, formatShortTime, pageForThread, sourceLabel, statusLabel } from '../../lib/omniModel.js'
-import { saveManualReplyDraft } from '../../lib/omniApi.js'
+import { autoSendStatus, customerAvatarUrl, customerForThread, formatShortTime, initialsForName, pageForThread, sourceLabel, statusLabel } from '../../lib/omniModel.js'
+import { createEasyStoreProductDraft, saveManualReplyDraft } from '../../lib/omniApi.js'
 
 export default function ThreadDetail({ snapshot, thread, onSnapshot }) {
   const endRef = useRef(null)
@@ -25,8 +25,13 @@ export default function ThreadDetail({ snapshot, thread, onSnapshot }) {
       <div className="border-b border-[var(--color-rule)] bg-[var(--color-panel)] px-5 py-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
-            <h1 className="truncate text-base font-bold text-[var(--color-ink)]">{customer?.displayName || 'Facebook Customer'}</h1>
-            <p className="mt-1 text-xs text-[var(--color-muted)]">{page?.name || thread.pageId} · {thread.platform} · {statusLabel(thread.status)}</p>
+            <div className="flex min-w-0 items-center gap-3">
+              <CustomerAvatar name={customer?.displayName || 'Facebook Customer'} avatarUrl={customerAvatarUrl(customer)} size="lg" />
+              <div className="min-w-0">
+                <h1 className="truncate text-base font-bold text-[var(--color-ink)]">{customer?.displayName || 'Facebook Customer'}</h1>
+                <p className="mt-1 text-xs text-[var(--color-muted)]">{page?.name || thread.pageId} · {thread.platform} · {statusLabel(thread.status)}</p>
+              </div>
+            </div>
           </div>
           <div className="flex items-center gap-2 text-xs">
             <span className="rounded-[var(--radius-pill)] bg-[var(--color-live-soft)] px-2 py-1 font-semibold text-[var(--color-live)]">Webhook live</span>
@@ -43,6 +48,20 @@ export default function ThreadDetail({ snapshot, thread, onSnapshot }) {
       </div>
       <ManualReplyComposer thread={thread} onSnapshot={onSnapshot} />
     </>
+  )
+}
+
+function CustomerAvatar({ name, avatarUrl, size = 'md' }) {
+  const className = size === 'lg'
+    ? 'h-11 w-11 text-sm'
+    : 'h-9 w-9 text-xs'
+  if (avatarUrl) {
+    return <img src={avatarUrl} alt={name} className={`${className} shrink-0 rounded-full border border-[var(--color-rule)] object-cover`} />
+  }
+  return (
+    <span className={`${className} grid shrink-0 place-items-center rounded-full border border-[var(--color-rule)] bg-[var(--color-panel-2)] font-black text-[var(--color-ink-2)]`}>
+      {initialsForName(name)}
+    </span>
   )
 }
 
@@ -63,7 +82,7 @@ function MessageBubble({ message, pageName, customerName }) {
             {message.attachments.map((attachment) => (
               <img
                 key={attachment.id || attachment.name}
-                src={attachment.dataUrl}
+                src={attachment.dataUrl || attachment.url}
                 alt={attachment.name || 'attachment'}
                 className="aspect-square w-full rounded-[var(--radius-sm)] border border-[var(--color-rule)] object-cover"
               />
@@ -80,12 +99,18 @@ function ManualReplyComposer({ thread, onSnapshot }) {
   const [attachments, setAttachments] = useState([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [productPanelOpen, setProductPanelOpen] = useState(false)
+  const [productId, setProductId] = useState('')
+  const [productStatus, setProductStatus] = useState('')
   const fileInputRef = useRef(null)
 
   useEffect(() => {
     setText('')
     setAttachments([])
     setError('')
+    setProductId('')
+    setProductStatus('')
+    setProductPanelOpen(false)
   }, [thread?.id])
 
   async function readFiles(files) {
@@ -128,13 +153,37 @@ function ManualReplyComposer({ thread, onSnapshot }) {
     }
   }
 
+  async function attachEasyStoreProduct() {
+    if (!thread || busy) return
+    const cleanProductId = productId.trim()
+    if (!cleanProductId) {
+      setProductStatus('ใส่ EasyStore product id ก่อน')
+      return
+    }
+    setBusy(true)
+    setError('')
+    setProductStatus('กำลังสร้าง product draft')
+    try {
+      const result = await createEasyStoreProductDraft(thread.id, cleanProductId)
+      onSnapshot?.(result.snapshot)
+      setProductId('')
+      setProductStatus(`แนบสินค้าแล้ว: ${result.product?.title || cleanProductId}`)
+      setProductPanelOpen(false)
+    } catch (err) {
+      setProductStatus('')
+      setError(err.message || 'easystore_product_draft_failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <form onSubmit={submit} className="border-t border-[var(--color-rule)] bg-[var(--color-panel)] px-4 py-3">
       {attachments.length > 0 ? (
         <div className="mb-2 flex gap-2 overflow-x-auto pb-1">
           {attachments.map((attachment) => (
             <div key={attachment.id} className="relative h-16 w-16 shrink-0 overflow-hidden rounded-[var(--radius-sm)] border border-[var(--color-rule)]">
-              <img src={attachment.dataUrl} alt={attachment.name} className="h-full w-full object-cover" />
+              <img src={attachment.dataUrl || attachment.url} alt={attachment.name} className="h-full w-full object-cover" />
               <button
                 type="button"
                 aria-label={`ลบรูป ${attachment.name}`}
@@ -145,6 +194,27 @@ function ManualReplyComposer({ thread, onSnapshot }) {
               </button>
             </div>
           ))}
+        </div>
+      ) : null}
+      {productPanelOpen ? (
+        <div className="mb-2 flex flex-wrap items-end gap-2 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] p-2">
+          <label className="min-w-48 flex-1 text-xs font-semibold text-[var(--color-muted)]">
+            EasyStore product id
+            <input
+              value={productId}
+              onChange={(event) => setProductId(event.target.value)}
+              placeholder="เช่น 16462646"
+              className="mt-1 w-full rounded-[var(--radius-sm)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-2 py-2 text-sm text-[var(--color-ink)] outline-none focus:border-[var(--color-accent)]"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={attachEasyStoreProduct}
+            disabled={busy}
+            className="rounded-[var(--radius-md)] bg-[var(--color-accent)] px-3 py-2 text-sm font-semibold text-[var(--color-accent-ink)] disabled:opacity-45"
+          >
+            แนบสินค้า
+          </button>
         </div>
       ) : null}
       <div className="flex items-end gap-2">
@@ -174,6 +244,13 @@ function ManualReplyComposer({ thread, onSnapshot }) {
           แนบภาพ
         </button>
         <button
+          type="button"
+          onClick={() => setProductPanelOpen((current) => !current)}
+          className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)]"
+        >
+          สินค้า
+        </button>
+        <button
           type="submit"
           disabled={busy || (!text.trim() && attachments.length === 0)}
           className="rounded-[var(--radius-md)] bg-[var(--color-accent)] px-4 py-2 text-sm font-semibold text-[var(--color-accent-ink)] shadow-sm disabled:opacity-45"
@@ -182,6 +259,7 @@ function ManualReplyComposer({ thread, onSnapshot }) {
         </button>
       </div>
       {error ? <p className="mt-2 text-xs text-rose-600">{error}</p> : null}
+      {productStatus ? <p className="mt-2 text-xs text-[var(--color-muted)]">{productStatus}</p> : null}
       <p className="mt-2 text-[11px] text-[var(--color-muted)]">Draft นี้ยังไม่ส่งออกไปหาลูกค้า</p>
     </form>
   )
