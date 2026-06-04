@@ -373,6 +373,35 @@ export function mountRoutes(app, hub, room, options = {}) {
     res.json({ ok: true, decision: omni.evaluateAutoSend({ threadId: req.params.threadId }) })
   })
 
+  app.get('/api/omni/threads/:threadId/sales-context', async (req, res) => {
+    try {
+      const baseContext = omni.resolveSalesContext({ threadId: req.params.threadId })
+      if (!baseContext.ok) return res.status(baseContext.error === 'thread_not_found' ? 404 : 400).json(baseContext)
+
+      const productId = String(req.query.productId || baseContext.product?.product?.productId || '').trim()
+      if (!productId || req.query.images === '0') return res.json(baseContext)
+
+      let preview = null
+      try {
+        preview = await easyStore.getProductPreview({ productId })
+      } catch (error) {
+        return res.json({
+          ...baseContext,
+          imagePicker: {
+            ...baseContext.imagePicker,
+            ok: false,
+            productId,
+            source: 'easystore_preview',
+            error: error.message || 'easystore_product_preview_failed',
+          },
+        })
+      }
+      res.json(omni.resolveSalesContext({ threadId: req.params.threadId, productPreview: preview }))
+    } catch (error) {
+      res.status(400).json({ ok: false, error: error.message || 'sales_context_failed' })
+    }
+  })
+
   app.post('/api/omni/threads/:threadId/ai-draft', async (req, res) => {
     const thread = omni.getThread(req.params.threadId)
     if (!thread) return res.status(404).json({ ok: false, error: 'thread_not_found' })

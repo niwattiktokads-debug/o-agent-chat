@@ -1667,6 +1667,102 @@ test('POST /api/omni/threads/:threadId/easystore-product-draft creates draft-onl
   }
 })
 
+test('GET /api/omni/threads/:threadId/sales-context enriches customer memory and EasyStore images', async () => {
+  const seed = createOmniSeed()
+  seed.customers.push({
+    id: 'cust_sales_route',
+    displayName: 'Facebook Customer',
+    phone: '0812345678',
+    matchConfidence: 0.98,
+  })
+  seed.threads.push({
+    id: 'thread_sales_route',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'cust_sales_route',
+    status: 'open',
+    intent: 'stock',
+    risk: 'low',
+    updatedAt: '2026-06-04T07:00:00.000Z',
+    originContext: { channel: 'facebook', sourceType: 'post', productHint: { text: 'Lorra', color: 'ดำ', size: 'XL' } },
+  })
+  seed.messages.push({
+    id: 'msg_sales_route',
+    threadId: 'thread_sales_route',
+    direction: 'inbound',
+    authorName: 'Facebook Customer',
+    text: 'ขอดูรูป Lorra สีดำ XL',
+    createdAt: '2026-06-04T07:00:00.000Z',
+  })
+  seed.orders.push({
+    id: 'es_order_route',
+    orderNumber: 'AL-2001',
+    customerId: 'cust_sales_route',
+    platform: 'easystore',
+    status: 'paid',
+    updatedAt: '2026-06-03T07:00:00.000Z',
+    shippingAddress: {
+      recipientPhone: '0812345678',
+      formattedAddress: '99/1 ถนนสุขุมวิท แขวงคลองตัน เขตคลองเตย กรุงเทพมหานคร 10110',
+      district: 'คลองเตย',
+      province: 'กรุงเทพมหานคร',
+      postalCode: '10110',
+    },
+    itemSummary: [{ sellerSku: 'LORRA-BLK-XL', productName: 'Lorra สีดำ XL' }],
+  })
+  seed.inventorySnapshots.push({
+    id: 'es_stock_route_lorra_xl',
+    sku: 'LORRA-BLK-XL',
+    source: 'easystore',
+    available: 4,
+    checkedAt: '2026-06-04T06:55:00.000Z',
+    productId: '16462646',
+    variantId: '7601',
+    productName: 'Lorra เดรสเชิ้ต Polo สีดำ',
+    price: 1290,
+  })
+  const calls = []
+  const localApp = express()
+  localApp.use(express.json())
+  const localOmni = createOmniService(seed)
+  mountRoutes(localApp, { broadcast: () => {} }, createState(), {
+    omni: localOmni,
+    easyStore: {
+      getProductPreview: async ({ productId }) => {
+        calls.push(productId)
+        return {
+          ok: true,
+          product: {
+            id: productId,
+            title: 'Lorra เดรสเชิ้ต Polo',
+            images: [{ id: 'main', url: 'https://cdn.example/lorra-main.jpg', alt: 'Lorra สีดำ' }],
+            variants: [{ id: '7601', sku: 'LORRA-BLK-XL', title: 'ดำ / XL', imageUrl: 'https://cdn.example/lorra-black-xl.jpg' }],
+          },
+        }
+      },
+    },
+  })
+  const localServer = localApp.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const response = await fetch(`http://localhost:${localPort}/api/omni/threads/thread_sales_route/sales-context`)
+    const body = await response.json()
+
+    assert.equal(response.status, 200)
+    assert.equal(body.ok, true)
+    assert.deepEqual(calls, ['16462646'])
+    assert.equal(body.customer.match.safeToUsePrivateData, true)
+    assert.equal(body.customer.memory.phoneMasked, '081***5678')
+    assert.equal(body.customer.memory.lastSize, 'XL')
+    assert.equal(body.product.product.productId, '16462646')
+    assert.equal(body.imagePicker.images[0].url, 'https://cdn.example/lorra-black-xl.jpg')
+    assert.doesNotMatch(JSON.stringify(body.customer), /0812345678/)
+    assert.doesNotMatch(JSON.stringify(body.customer), /สุขุมวิท/)
+  } finally {
+    localServer.close()
+  }
+})
+
 test('POST /webhook/easystore syncs product events to Meta Catalog runtime', async () => {
   const localApp = express()
   localApp.use(express.json({

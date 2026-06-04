@@ -560,6 +560,177 @@ test('chat retention deletes old message text while preserving customer phone an
   assert.equal(service.listRetentionRuns().length, 1)
 })
 
+test('sales context resolver returns masked customer memory from safe EasyStore match', () => {
+  const seed = createOmniSeed()
+  seed.customers.push({
+    id: 'cust_sales_memory',
+    displayName: 'Facebook Customer',
+    phone: '0812345678',
+    matchConfidence: 0.98,
+  })
+  seed.threads.push({
+    id: 'thread_sales_memory',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'cust_sales_memory',
+    status: 'open',
+    intent: 'stock',
+    risk: 'low',
+    updatedAt: '2026-06-04T06:00:00.000Z',
+  })
+  seed.messages.push({
+    id: 'msg_sales_memory',
+    threadId: 'thread_sales_memory',
+    direction: 'inbound',
+    authorName: 'Facebook Customer',
+    text: 'สนใจ Lorra สีดำ XL',
+    createdAt: '2026-06-04T06:00:00.000Z',
+  })
+  seed.orders.push({
+    id: 'es_order_1001',
+    orderNumber: 'AL-1001',
+    customerId: 'cust_sales_memory',
+    platform: 'easystore',
+    status: 'paid',
+    updatedAt: '2026-06-03T06:00:00.000Z',
+    shippingAddress: {
+      recipientPhone: '0812345678',
+      formattedAddress: '99/1 ถนนสุขุมวิท แขวงคลองตัน เขตคลองเตย กรุงเทพมหานคร 10110',
+      district: 'คลองเตย',
+      province: 'กรุงเทพมหานคร',
+      postalCode: '10110',
+    },
+    itemSummary: [{ sellerSku: 'LORRA-BLK-XL', productName: 'Lorra เดรสเชิ้ต Polo สีดำ XL' }],
+  })
+  const service = createOmniService(seed)
+
+  const context = service.resolveSalesContext({ threadId: 'thread_sales_memory' })
+
+  assert.equal(context.ok, true)
+  assert.equal(context.customer.match.safeToUsePrivateData, true)
+  assert.equal(context.customer.memory.phoneLast4, '5678')
+  assert.equal(context.customer.memory.phoneMasked, '081***5678')
+  assert.notEqual(context.customer.memory.phoneHash, '')
+  assert.equal(context.customer.memory.lastOrderNumber, 'AL-1001')
+  assert.equal(context.customer.memory.lastSize, 'XL')
+  assert.equal(context.customer.memory.lastColor, 'ดำ')
+  assert.match(context.customer.memory.lastAddressMasked, /คลองเตย/)
+  assert.doesNotMatch(JSON.stringify(context.customer), /0812345678/)
+  assert.doesNotMatch(JSON.stringify(context.customer), /สุขุมวิท/)
+})
+
+test('sales context resolver does not expose private memory from name-only match', () => {
+  const seed = createOmniSeed()
+  seed.customers.push({ id: 'cust_name_only', displayName: 'Facebook Customer', matchConfidence: 0.3 })
+  seed.threads.push({
+    id: 'thread_name_only',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'cust_name_only',
+    status: 'open',
+    intent: 'stock',
+    risk: 'low',
+    updatedAt: '2026-06-04T06:10:00.000Z',
+  })
+  seed.orders.push({
+    id: 'es_order_name_only',
+    orderNumber: 'AL-1002',
+    customerId: 'es_customer_2',
+    customerName: 'Facebook Customer',
+    platform: 'easystore',
+    status: 'paid',
+    updatedAt: '2026-06-03T06:10:00.000Z',
+    shippingAddress: {
+      recipientPhone: '0899999999',
+      formattedAddress: '88/8 ถนนพระรามสอง กรุงเทพมหานคร 10150',
+      province: 'กรุงเทพมหานคร',
+      postalCode: '10150',
+    },
+    itemSummary: [{ sellerSku: 'LORRA-BLK-M', productName: 'Lorra สีดำ M' }],
+  })
+  const service = createOmniService(seed)
+
+  const context = service.resolveSalesContext({ threadId: 'thread_name_only' })
+
+  assert.equal(context.ok, true)
+  assert.equal(context.customer.match.safeToUsePrivateData, false)
+  assert.deepEqual(context.customer.match.basis, ['name_only'])
+  assert.equal(context.customer.memory.phoneMasked, '')
+  assert.equal(context.customer.memory.phoneLast4, '')
+  assert.equal(context.customer.memory.phoneHash, '')
+  assert.equal(context.customer.memory.lastAddressMasked, '')
+  assert.equal(context.customer.memory.lastOrderNumber, null)
+  assert.doesNotMatch(JSON.stringify(context.customer), /0899999999/)
+  assert.doesNotMatch(JSON.stringify(context.customer), /พระรามสอง/)
+})
+
+test('sales context resolver picks EasyStore product variants and image candidates', () => {
+  const seed = createOmniSeed()
+  seed.customers.push({ id: 'cust_lorra_context', displayName: 'Lorra Customer', matchConfidence: 1 })
+  seed.threads.push({
+    id: 'thread_lorra_context',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'cust_lorra_context',
+    status: 'open',
+    intent: 'stock',
+    risk: 'low',
+    updatedAt: '2026-06-04T06:20:00.000Z',
+    originContext: { channel: 'facebook', sourceType: 'post', productHint: { text: 'Lorra', color: 'ดำ', size: 'XL' } },
+  })
+  seed.messages.push({
+    id: 'msg_lorra_context',
+    threadId: 'thread_lorra_context',
+    direction: 'inbound',
+    authorName: 'Lorra Customer',
+    text: 'ขอรูป Lorra สีดำ XL',
+    createdAt: '2026-06-04T06:20:00.000Z',
+  })
+  seed.messages.push({
+    id: 'msg_lorra_old_image',
+    threadId: 'thread_lorra_context',
+    direction: 'outbound',
+    authorName: 'Anna Lynn AI',
+    text: 'รูปเดิมค่ะ',
+    attachments: [{ type: 'image', url: 'https://cdn.example/lorra-main.jpg' }],
+    createdAt: '2026-06-04T06:21:00.000Z',
+  })
+  seed.inventorySnapshots.push(
+    { id: 'es_stock_lorra_black_xl', sku: 'LORRA-BLK-XL', source: 'easystore', available: 7, checkedAt: '2026-06-04T06:00:00.000Z', productId: '16462646', variantId: '7601', productName: 'Lorra เดรสเชิ้ต Polo สีดำ', price: 1290 },
+    { id: 'es_stock_lorra_black_m', sku: 'LORRA-BLK-M', source: 'easystore', available: 3, checkedAt: '2026-06-04T06:00:00.000Z', productId: '16462646', variantId: '7602', productName: 'Lorra เดรสเชิ้ต Polo สีดำ', price: 1290 },
+    { id: 'es_stock_amanda_black_xl', sku: 'AMANDA-BLK-XL', source: 'easystore', available: 5, checkedAt: '2026-06-04T06:00:00.000Z', productId: '16460000', variantId: '9901', productName: 'Amanda Jumpsuit สีดำ', price: 1490 },
+  )
+  const service = createOmniService(seed)
+
+  const context = service.resolveSalesContext({
+    threadId: 'thread_lorra_context',
+    productPreview: {
+      ok: true,
+      product: {
+        id: '16462646',
+        title: 'Lorra เดรสเชิ้ต Polo',
+        images: [
+          { id: 'main', url: 'https://cdn.example/lorra-main.jpg', alt: 'Lorra สีดำ' },
+          { id: 'cream', url: 'https://cdn.example/lorra-cream.jpg', alt: 'Lorra สีครีม' },
+        ],
+        variants: [
+          { id: '7601', sku: 'LORRA-BLK-XL', title: 'ดำ / XL', imageUrl: 'https://cdn.example/lorra-black-xl.jpg' },
+          { id: '7602', sku: 'LORRA-BLK-M', title: 'ดำ / M', imageUrl: 'https://cdn.example/lorra-black-m.jpg' },
+        ],
+      },
+    },
+  })
+
+  assert.equal(context.ok, true)
+  assert.equal(context.product.product.productId, '16462646')
+  assert.equal(context.product.variants[0].sku, 'LORRA-BLK-XL')
+  assert.equal(context.product.variants[0].available, 7)
+  assert.equal(context.product.sourceIds.includes('es_stock_lorra_black_xl'), true)
+  assert.equal(context.imagePicker.source, 'easystore_preview')
+  assert.equal(context.imagePicker.images[0].url, 'https://cdn.example/lorra-black-xl.jpg')
+  assert.equal(new Set(context.imagePicker.images.map((image) => image.url)).size, context.imagePicker.images.length)
+})
+
 test('omni routes are mounted under api', async () => {
   const app = express()
   app.use(express.json())

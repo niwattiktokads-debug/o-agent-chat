@@ -4,6 +4,7 @@ import { extractThaiOrderAddress } from './orderAddressIntake.js'
 import { normalizeStoredShippingAddress, validateThaiShippingAddress } from './thaiAddress.js'
 import { DEFAULT_WORKSPACE_ID, backfillWorkspaceId, filterByWorkspace, normalizeWorkspace, buildWorkspaceSummary, resolveWorkspaceId } from './workspace.js'
 import { buildKgpPaymentMessage } from './kgpPaymentRuntime.js'
+import { resolveSalesContext } from './salesContextResolver.js'
 
 function resolveOptions(input) {
   if (input?.store || input?.seed) return { seed: input.seed || createOmniSeed(), store: input.store || null }
@@ -1065,6 +1066,9 @@ export function createOmniService(options = createOmniSeed()) {
         decisions: snapshot.aiDecisions.filter((decision) => decision.threadId === threadId),
         audits: (snapshot.actionAudits || []).filter((audit) => audit.threadId === threadId),
       }
+    },
+    resolveSalesContext({ threadId, productPreview = null } = {}) {
+      return resolveSalesContext({ threadId, snapshot: currentData(), productPreview })
     },
     evaluateAutoSend({ threadId }) {
       const thread = currentData().threads.find((item) => item.id === threadId)
