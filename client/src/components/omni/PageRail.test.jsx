@@ -10,6 +10,7 @@ describe('PageRail', () => {
         pages={[
           { id: 'page_annalynn', name: 'Anna Lynn', avatarUrl: 'https://cdn.example/anna.jpg' },
           { id: 'page_mankynd', name: 'MAN KYND' },
+          { id: 'page_des', name: 'เพจเดส' },
         ]}
         accounts={[
           { id: 'acct_anna', pageId: 'page_annalynn', platform: 'facebook', providerAccountId: '122106446570001676' },
@@ -24,5 +25,6 @@ describe('PageRail', () => {
     const images = screen.getAllByRole('presentation', { hidden: true })
     expect(images[0]).toHaveAttribute('src', 'https://cdn.example/anna.jpg')
     expect(images[1]).toHaveAttribute('src', 'https://graph.facebook.com/v23.0/189971841184132/picture?type=large')
+    expect(images[2]).toHaveAttribute('src', 'https://graph.facebook.com/v23.0/1137894522741329/picture?type=large')
   })
 })
