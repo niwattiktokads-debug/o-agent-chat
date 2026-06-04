@@ -345,9 +345,7 @@ describe('ConnectionsPage', () => {
     expect(fetchConnectionConversations).toHaveBeenCalledWith('meta_anna_lynn', 5)
     expect(await screen.findByText('รับทราบค่ะ เดี๋ยวช่วยดูให้ค่ะ')).toBeInTheDocument()
     expect(screen.getByText(/ยังไม่ส่งจริง/)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'ส่งจริง' }))
-    expect(screen.getByRole('button', { name: 'ยืนยันส่งจริง' })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'ยืนยันส่งจริง' }))
+    fireEvent.click(screen.getByRole('button', { name: 'ส่งลูกค้าจริง' }))
     await waitFor(() => {
       expect(sendConnectionReply).toHaveBeenCalledWith('meta_anna_lynn', 't_test_1', 'รับทราบค่ะ เดี๋ยวช่วยดูให้ค่ะ')
     })

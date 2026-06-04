@@ -11,6 +11,8 @@ export default function ThreadDetail({ snapshot, thread, onSnapshot, suggestedDr
     .slice()
     .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')))
   const autoSend = autoSendStatus(snapshot || {}, thread)
+  const settings = snapshot?.settings || snapshot?.omniSettings?.find?.((item) => item.id === 'default')?.settings || {}
+  const customerSendEnabled = settings?.ai?.customerSendEnabled === true
 
   useEffect(() => {
     if (typeof endRef.current?.scrollIntoView === 'function') {
@@ -46,7 +48,7 @@ export default function ThreadDetail({ snapshot, thread, onSnapshot, suggestedDr
         ))}
         <div ref={endRef} />
       </div>
-      <ManualReplyComposer thread={thread} onSnapshot={onSnapshot} suggestedDraft={suggestedDraft} />
+      <ManualReplyComposer thread={thread} onSnapshot={onSnapshot} suggestedDraft={suggestedDraft} customerSendEnabled={customerSendEnabled} />
     </>
   )
 }
@@ -94,7 +96,7 @@ function MessageBubble({ message, pageName, customerName }) {
   )
 }
 
-function ManualReplyComposer({ thread, onSnapshot, suggestedDraft }) {
+function ManualReplyComposer({ thread, onSnapshot, suggestedDraft, customerSendEnabled = false }) {
   const [text, setText] = useState('')
   const [attachments, setAttachments] = useState([])
   const [busy, setBusy] = useState(false)
@@ -102,7 +104,6 @@ function ManualReplyComposer({ thread, onSnapshot, suggestedDraft }) {
   const [productPanelOpen, setProductPanelOpen] = useState(false)
   const [productId, setProductId] = useState('')
   const [productStatus, setProductStatus] = useState('')
-  const [sendArmed, setSendArmed] = useState(false)
   const fileInputRef = useRef(null)
 
   useEffect(() => {
@@ -112,7 +113,6 @@ function ManualReplyComposer({ thread, onSnapshot, suggestedDraft }) {
     setProductId('')
     setProductStatus('')
     setProductPanelOpen(false)
-    setSendArmed(false)
   }, [thread?.id])
 
   useEffect(() => {
@@ -165,14 +165,12 @@ function ManualReplyComposer({ thread, onSnapshot, suggestedDraft }) {
     if (!thread || busy) return
     const cleanText = text.trim()
     if (!cleanText) return
-    if (attachments.length > 0) {
-      setError('ส่งจริงตอนนี้รองรับข้อความก่อน รูปให้บันทึกเป็น draft')
-      setSendArmed(false)
+    if (!customerSendEnabled) {
+      setError('เปิดปุ่มส่งจริงก่อน จึงจะส่งข้อความให้ลูกค้าได้')
       return
     }
-    if (!sendArmed) {
-      setSendArmed(true)
-      setError('')
+    if (attachments.length > 0) {
+      setError('ส่งจริงตอนนี้รองรับข้อความก่อน รูปให้บันทึกเป็น draft')
       return
     }
     setBusy(true)
@@ -186,10 +184,8 @@ function ManualReplyComposer({ thread, onSnapshot, suggestedDraft }) {
       onSnapshot?.(result.snapshot)
       setText('')
       setAttachments([])
-      setSendArmed(false)
     } catch (err) {
       setError(err.message || 'manual_send_failed')
-      setSendArmed(false)
     } finally {
       setBusy(false)
     }
@@ -265,9 +261,8 @@ function ManualReplyComposer({ thread, onSnapshot, suggestedDraft }) {
           value={text}
           onChange={(event) => {
             setText(event.target.value)
-            setSendArmed(false)
           }}
-          placeholder="พิมพ์ข้อความตอบลูกค้า... (บันทึกเป็น draft ก่อน)"
+          placeholder="พิมพ์ข้อความตอบลูกค้า..."
           className="min-h-[48px] w-full min-w-0 resize-none rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] px-3 py-2 text-sm leading-5 text-[var(--color-ink)] outline-none placeholder:text-[var(--color-muted)] focus:border-[var(--color-accent)] sm:flex-1"
         />
         <input
@@ -305,21 +300,19 @@ function ManualReplyComposer({ thread, onSnapshot, suggestedDraft }) {
           </button>
           <button
             type="button"
-            disabled={busy || !text.trim()}
+            disabled={busy || !text.trim() || !customerSendEnabled}
             onClick={sendLive}
-            className={`rounded-[var(--radius-md)] px-4 py-2 text-sm font-semibold shadow-sm disabled:opacity-45 ${
-              sendArmed
-                ? 'bg-rose-600 text-white'
-                : 'border border-rose-200 bg-rose-50 text-rose-700'
-            }`}
+            className="rounded-[var(--radius-md)] border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 shadow-sm hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-45"
           >
-            {busy ? 'กำลังส่ง...' : sendArmed ? 'ยืนยันส่งจริง' : 'ส่งจริง'}
+            {busy ? 'กำลังส่ง...' : 'ส่งลูกค้าจริง'}
           </button>
         </div>
       </div>
       {error ? <p className="mt-2 text-xs text-rose-600">{error}</p> : null}
       {productStatus ? <p className="mt-2 text-xs text-[var(--color-muted)]">{productStatus}</p> : null}
-      <p className="mt-2 text-[11px] text-[var(--color-muted)]">Draft ยังไม่ส่งออกไปหาลูกค้า ส่วนส่งจริงต้องกดยืนยันอีกครั้ง</p>
+      <p className="mt-2 text-[11px] text-[var(--color-muted)]">
+        Draft ยังไม่ส่งออกไปหาลูกค้า ปุ่มส่งลูกค้าจริงใช้ได้เมื่อเปิด “ส่งจริงเปิด”
+      </p>
     </form>
   )
 }
