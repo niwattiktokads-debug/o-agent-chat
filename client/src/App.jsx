@@ -258,7 +258,7 @@ function TopModeNav({ activeMode, activeOperationMode, onSelect, onOperationSele
 
 function OmniBrandMark() {
   return (
-    <div className="flex h-14 shrink-0 items-center gap-3 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 shadow-[0_10px_22px_rgba(15,35,31,0.07)]" aria-label="Omni Chat v2">
+    <div className="flex h-14 shrink-0 items-center gap-3 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 shadow-[0_10px_22px_rgba(15,35,31,0.07)]" aria-label="Omni Chat v3">
       <div className="relative h-9 w-9 overflow-hidden rounded-[10px] bg-[#101820] shadow-inner">
         <span className="absolute left-[5px] top-[5px] h-[8px] w-[18px] rounded-full bg-[#F24E1E]" />
         <span className="absolute right-[5px] top-[5px] h-[8px] w-[8px] rounded-full bg-[#FF7262]" />
@@ -271,7 +271,7 @@ function OmniBrandMark() {
         <div className="text-sm font-black text-[var(--color-ink)]">Omni</div>
         <div className="text-[11px] font-semibold uppercase tracking-normal text-[var(--color-muted)]">new runtime</div>
       </div>
-      <span className="rounded-[var(--radius-pill)] bg-[#A259FF] px-2 py-1 text-[11px] font-black uppercase tracking-normal text-white">v2</span>
+      <span className="rounded-[var(--radius-pill)] bg-[#A259FF] px-2 py-1 text-[11px] font-black uppercase tracking-normal text-white">v3</span>
     </div>
   )
 }
