@@ -146,6 +146,7 @@ function isPublicPath(path = '') {
     || path.startsWith('/webhook/meta')
     || path.startsWith('/webhook/tiktok')
     || path.startsWith('/webhook/easystore')
+    || path.startsWith('/webhook/kgp')
     || path.startsWith('/webhook/line/suda-oagent')
 }
 

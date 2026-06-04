@@ -3,6 +3,7 @@ import { DEFAULT_CHAT_RETENTION_POLICY, normalizeRetentionPolicy, planChatRetent
 import { extractThaiOrderAddress } from './orderAddressIntake.js'
 import { normalizeStoredShippingAddress, validateThaiShippingAddress } from './thaiAddress.js'
 import { DEFAULT_WORKSPACE_ID, backfillWorkspaceId, filterByWorkspace, normalizeWorkspace, buildWorkspaceSummary, resolveWorkspaceId } from './workspace.js'
+import { buildKgpPaymentMessage } from './kgpPaymentRuntime.js'
 
 function resolveOptions(input) {
   if (input?.store || input?.seed) return { seed: input.seed || createOmniSeed(), store: input.store || null }
@@ -210,6 +211,14 @@ function normalizePaymentRequest(input = {}, snapshot = {}) {
   const status = PAYMENT_STATUSES.has(input.status) ? input.status : 'draft'
   const id = input.id || `pay_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`
   const providerRef = input.providerRef || (provider === 'meta_pay_kgp' ? `kgp_draft_${id}` : null)
+  const checkoutUrl = input.checkoutUrl || null
+  const messagePreview = input.messagePreview || buildKgpPaymentMessage({
+    id,
+    orderId,
+    amount,
+    currency: String(input.currency || 'THB').trim() || 'THB',
+    checkoutUrl,
+  })
 
   return {
     ok: true,
@@ -223,6 +232,9 @@ function normalizePaymentRequest(input = {}, snapshot = {}) {
       currency: String(input.currency || 'THB').trim() || 'THB',
       approvalRequired: true,
       providerRef,
+      checkoutUrl,
+      messagePreview,
+      description: String(input.description || '').trim() || null,
       sourceRef: input.sourceRef || `omni:${provider}`,
       expiresAt: input.expiresAt || null,
       createdAt: input.createdAt || now,
@@ -725,6 +737,13 @@ export function createOmniService(options = createOmniSeed()) {
         },
       }
     },
+    getPaymentRequest(paymentRequestId) {
+      const id = String(paymentRequestId || '').trim()
+      if (!id) return { ok: false, error: 'payment_request_id_required' }
+      const payment = currentData().paymentRequests.find((item) => item.id === id)
+      if (!payment) return { ok: false, error: 'payment_request_not_found' }
+      return { ok: true, payment: structuredClone(payment) }
+    },
     createPaymentRequest(input = {}) {
       if (input.approved !== true) return { ok: false, error: 'approval_required' }
       const normalized = normalizePaymentRequest(input, currentData())
@@ -763,6 +782,140 @@ export function createOmniService(options = createOmniSeed()) {
         result: { paymentRequests: paymentResult, paymentEvents: eventResult, actionAudits: auditResult },
         payment: structuredClone(normalized.row),
         event: structuredClone(normalized.event),
+        audit: structuredClone(audit),
+        snapshot: this.snapshot(),
+      }
+    },
+    attachPaymentCheckout(input = {}) {
+      const paymentRequestId = String(input.paymentRequestId || '').trim()
+      if (!paymentRequestId) return { ok: false, error: 'payment_request_id_required' }
+      const snapshot = currentData()
+      const payment = snapshot.paymentRequests.find((item) => item.id === paymentRequestId)
+      if (!payment) return { ok: false, error: 'payment_request_not_found' }
+      if (payment.provider !== 'meta_pay_kgp') return { ok: false, error: 'unsupported_payment_provider' }
+      if (!input.checkoutUrl) return { ok: false, error: 'checkout_url_required' }
+
+      const now = new Date().toISOString()
+      const nextPayment = {
+        ...payment,
+        status: 'pending',
+        checkoutUrl: String(input.checkoutUrl),
+        providerRef: input.providerRef || payment.providerRef,
+        expiresAt: input.expiresAt || payment.expiresAt || null,
+        messagePreview: buildKgpPaymentMessage({
+          ...payment,
+          checkoutUrl: String(input.checkoutUrl),
+          providerRef: input.providerRef || payment.providerRef,
+        }),
+        providerResponse: input.providerResponse || null,
+        updatedAt: now,
+      }
+      const event = {
+        id: input.eventId || `pay_event_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`,
+        paymentRequestId,
+        type: 'checkout_created',
+        source: 'meta_pay_kgp',
+        sourceRef: input.sourceRef || `kgp_checkout:${nextPayment.providerRef || paymentRequestId}`,
+        createdAt: now,
+      }
+      const audit = createActionAuditRow({
+        threadId: nextPayment.threadId,
+        workspaceId: nextPayment.threadId ? resolveWorkspaceId(snapshot, { threadId: nextPayment.threadId }) || null : null,
+        action: 'payment_checkout_created',
+        actorType: 'human',
+        actorId: input.approvedBy || 'boss',
+        before: {
+          paymentRequestId,
+          status: payment.status,
+          providerRef: payment.providerRef || null,
+        },
+        after: {
+          paymentRequestId,
+          status: nextPayment.status,
+          providerRef: nextPayment.providerRef || null,
+          checkoutUrlPresent: true,
+        },
+        sourceRef: event.sourceRef,
+      })
+      const paymentResult = upsert('paymentRequests', [nextPayment])
+      const eventResult = upsert('paymentEvents', [event])
+      const auditResult = upsert('actionAudits', [audit])
+      return {
+        ok: true,
+        result: { paymentRequests: paymentResult, paymentEvents: eventResult, actionAudits: auditResult },
+        payment: structuredClone(nextPayment),
+        event: structuredClone(event),
+        audit: structuredClone(audit),
+        snapshot: this.snapshot(),
+      }
+    },
+    applyPaymentProviderEvent(input = {}) {
+      const provider = String(input.provider || '').trim()
+      if (provider !== 'meta_pay_kgp') return { ok: false, error: 'unsupported_payment_provider' }
+      const snapshot = currentData()
+      const paymentRequestId = String(input.paymentRequestId || '').trim()
+      const providerRef = String(input.providerRef || '').trim()
+      const payment = snapshot.paymentRequests.find((item) => (
+        (paymentRequestId && item.id === paymentRequestId) ||
+        (providerRef && item.providerRef === providerRef)
+      ))
+      if (!payment) return { ok: false, error: 'payment_request_not_found' }
+
+      const status = PAYMENT_STATUSES.has(input.status) ? input.status : 'manual_verify'
+      const sourceRef = input.sourceRef || `kgp_webhook:${input.externalEventId || providerRef || payment.id}`
+      const existingEvent = snapshot.paymentEvents.find((event) => event.sourceRef === sourceRef)
+      if (existingEvent) {
+        return {
+          ok: true,
+          deduped: true,
+          payment: structuredClone(payment),
+          event: structuredClone(existingEvent),
+          snapshot: this.snapshot(),
+        }
+      }
+
+      const now = new Date().toISOString()
+      const nextPayment = {
+        ...payment,
+        status,
+        providerRef: providerRef || payment.providerRef,
+        providerEvent: input.raw || null,
+        updatedAt: now,
+      }
+      const event = {
+        id: input.eventId || `pay_event_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`,
+        paymentRequestId: payment.id,
+        type: input.eventType || status,
+        source: provider,
+        sourceRef,
+        createdAt: now,
+      }
+      const audit = createActionAuditRow({
+        threadId: nextPayment.threadId,
+        workspaceId: nextPayment.threadId ? resolveWorkspaceId(snapshot, { threadId: nextPayment.threadId }) || null : null,
+        action: 'payment_status_updated',
+        actorType: 'system',
+        actorId: 'kgp_webhook',
+        before: {
+          paymentRequestId: payment.id,
+          status: payment.status,
+          providerRef: payment.providerRef || null,
+        },
+        after: {
+          paymentRequestId: payment.id,
+          status: nextPayment.status,
+          providerRef: nextPayment.providerRef || null,
+        },
+        sourceRef,
+      })
+      const paymentResult = upsert('paymentRequests', [nextPayment])
+      const eventResult = upsert('paymentEvents', [event])
+      const auditResult = upsert('actionAudits', [audit])
+      return {
+        ok: true,
+        result: { paymentRequests: paymentResult, paymentEvents: eventResult, actionAudits: auditResult },
+        payment: structuredClone(nextPayment),
+        event: structuredClone(event),
         audit: structuredClone(audit),
         snapshot: this.snapshot(),
       }

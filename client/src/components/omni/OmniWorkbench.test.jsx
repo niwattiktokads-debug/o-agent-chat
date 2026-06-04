@@ -25,6 +25,47 @@ vi.mock('../../lib/omniApi.js', () => ({
   }),
   subscribeOmniSnapshots: () => () => {},
   fetchConnectorHealth: async () => [{ provider: 'meta', status: 'healthy' }],
+  fetchPaymentProviderHealth: async () => ({
+    provider: 'meta_pay_kgp',
+    status: 'disabled',
+    mode: 'credentials_pending',
+    liveReady: false,
+    credentialsReady: false,
+  }),
+  createPaymentRequest: async (input) => ({
+    ok: true,
+    payment: {
+      id: 'pay_kgp_new',
+      threadId: input.threadId,
+      provider: 'meta_pay_kgp',
+      status: 'draft',
+      amount: input.amount,
+      currency: input.currency || 'THB',
+      approvalRequired: true,
+      messagePreview: 'สรุปยอดชำระค่ะ\nยอดชำระ: THB 729\nลิงก์ Meta Pay / KGP จะถูกสร้างหลังระบบชำระเงินพร้อมใช้งาน',
+    },
+    snapshot: {
+      pages: [{ id: 'page_mankynd', name: 'MAN KYND', status: 'active' }],
+      platformAccounts: [{ id: 'acct_fb_mankynd', pageId: 'page_mankynd', platform: 'facebook' }],
+      threads: [{ id: 'thread_1', pageId: 'page_mankynd', platform: 'facebook', status: 'draft_ready', intent: 'stock', risk: 'low' }],
+      messages: [{ id: 'msg_1', threadId: 'thread_1', direction: 'inbound', authorName: 'ลูกค้า A', text: 'มีไซซ์ M สีดำไหม' }],
+      customers: [{ id: 'cust_1', displayName: 'ลูกค้า A' }],
+      orders: [],
+      aiDecisions: [],
+      paymentRequests: [{
+        id: 'pay_kgp_new',
+        threadId: input.threadId,
+        provider: 'meta_pay_kgp',
+        status: 'draft',
+        amount: input.amount,
+        currency: input.currency || 'THB',
+        approvalRequired: true,
+        messagePreview: 'สรุปยอดชำระค่ะ\nยอดชำระ: THB 729\nลิงก์ Meta Pay / KGP จะถูกสร้างหลังระบบชำระเงินพร้อมใช้งาน',
+      }],
+      connectorHealth: [],
+    },
+  }),
+  createKgpCheckout: async () => ({ ok: false, error: 'kgp_provider_not_enabled' }),
   fetchConnections: async () => ({
     ok: true,
     connections: [
@@ -343,6 +384,9 @@ describe('OmniWorkbench', () => {
     expect(await screen.findByText('มั่นใจ 94%')).toBeInTheDocument()
     expect(await screen.findByText('ออเดอร์')).toBeInTheDocument()
     expect(await screen.findByText('ชำระเงิน')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'ชำระเงิน' }))
+    expect(await screen.findByText('ข้อความที่จะส่ง')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'สร้าง KGP link' })).toBeDisabled()
     expect(screen.queryByText('Connector Health')).not.toBeInTheDocument()
     expect(screen.queryByText('TikTok Order Sync')).not.toBeInTheDocument()
     expect(screen.queryByText('Facebook Live Preview')).not.toBeInTheDocument()

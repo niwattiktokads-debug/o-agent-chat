@@ -34,14 +34,25 @@ function createMockAdapter(provider) {
   }
 }
 
-export function createAdapterRegistry() {
+function createKgpAdapter(kgpPayment) {
+  const fallback = createMockAdapter('meta_pay_kgp')
+  return {
+    ...fallback,
+    async healthcheck() {
+      if (!kgpPayment?.health) return fallback.healthcheck()
+      return kgpPayment.health()
+    },
+  }
+}
+
+export function createAdapterRegistry({ kgpPayment = null } = {}) {
   const adapters = new Map([
     ['meta', createMockAdapter('meta')],
     ['tiktok_shop', createMockAdapter('tiktok_shop')],
     ['tiktok_business_messaging', createMockAdapter('tiktok_business_messaging')],
     ['bigseller', createMockAdapter('bigseller')],
     ['shopee', createMockAdapter('shopee')],
-    ['meta_pay_kgp', createMockAdapter('meta_pay_kgp')],
+    ['meta_pay_kgp', createKgpAdapter(kgpPayment)],
     ['promptpay', createMockAdapter('promptpay')],
   ])
 

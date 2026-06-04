@@ -36,6 +36,18 @@ Required minimum:
 | `ZORT_API_KEY` | ZORT Open API key |
 | `ZORT_API_SECRET` | ZORT Open API secret |
 
+Meta Pay / KGP can be deployed ahead of approval, but keep it disabled:
+
+| Variable | Value |
+| --- | --- |
+| `META_PAY_KGP_ENABLED` | `0` |
+| `META_PAY_KGP_MERCHANT_ID` | KGP merchant ID, blank until received |
+| `META_PAY_KGP_API_KEY` | KGP API key, blank until received |
+| `META_PAY_KGP_API_SECRET` | KGP API secret, blank until received |
+| `META_PAY_KGP_WEBHOOK_SECRET` | KGP webhook secret, blank until received |
+| `META_PAY_KGP_CHECKOUT_ENDPOINT` | KGP checkout API endpoint from KGP |
+| `META_PAY_KGP_WEBHOOK_PATH` | `/webhook/kgp/meta-pay` |
+
 Keep safe defaults:
 
 | Variable | Value |
@@ -107,6 +119,19 @@ Only after confirming drafts are correct:
 1. Railway Variables -> set `OMNI_META_WEBHOOK_SEND=1`.
 2. Redeploy.
 3. Test one page first before expanding scope.
+
+## Step 8: Enable KGP Payment Links After Approval
+
+Do not enable KGP until the message template is approved and a sandbox/live smoke
+test has passed.
+
+1. Add KGP merchant/API/webhook secrets in Railway Variables.
+2. Add the KGP checkout endpoint from KGP in `META_PAY_KGP_CHECKOUT_ENDPOINT`.
+3. Keep `META_PAY_KGP_ENABLED=0` and redeploy.
+4. Verify `/api/omni/payments/providers/meta_pay_kgp/health`; it should show
+   credentials ready but disabled.
+5. Run a signed webhook smoke test against `/webhook/kgp/meta-pay`.
+6. After Boss approval, set `META_PAY_KGP_ENABLED=1` and redeploy.
 
 ## Updating IG Page IDs
 

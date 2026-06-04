@@ -14,6 +14,7 @@ import { createMetaCatalogRuntime } from './omni/metaCatalogRuntime.js'
 import { createLineSudaOagentNotifier } from './omni/lineSudaOagentNotifier.js'
 import { appendPageRegistryEntry, FALLBACK_PAGE_PROFILES, loadPageRegistry } from './omni/pageRegistry.js'
 import { resolveWorkspaceId } from './omni/workspace.js'
+import { createKgpPaymentRuntime } from './omni/kgpPaymentRuntime.js'
 
 function normalizeLeader(input) {
   if (!input) return null
@@ -89,13 +90,14 @@ function pageProfileForOmniPage(pageId) {
 
 export function mountRoutes(app, hub, room, options = {}) {
   const omni = options.omni || createOmniService()
-  const adapters = createAdapterRegistry()
   const ai = options.ai || createAiReplyEngine()
   const connections = options.connections || createConnectionRuntime()
   const social = options.social || createMetaSocialRuntime()
   const commerce = options.commerce || createZortCommerceRuntime()
   const easyStore = options.easyStore || createEasyStoreRuntime()
   const metaCatalog = options.metaCatalog || createMetaCatalogRuntime()
+  const kgpPayment = options.kgpPayment || createKgpPaymentRuntime()
+  const adapters = createAdapterRegistry({ kgpPayment })
   const sendFacebookReplyRuntime = options.sendFacebookReply || sendFacebookReply
   const sudaOagentNotifier = options.sudaOagentNotifier || createLineSudaOagentNotifier()
   const storageStatus = options.storageStatus || {
@@ -297,6 +299,17 @@ export function mountRoutes(app, hub, room, options = {}) {
   app.get('/api/omni/payments/providers/:provider/health', (req, res) => {
     const result = omni.getPaymentProviderHealth(req.params.provider)
     if (!result.ok) return res.status(404).json(result)
+    if (req.params.provider === 'meta_pay_kgp') {
+      const runtimeHealth = kgpPayment.health()
+      return res.json({
+        ...result,
+        health: {
+          ...result.health,
+          ...runtimeHealth,
+          seedStatus: result.health.status,
+        },
+      })
+    }
     res.json(result)
   })
 
@@ -308,6 +321,42 @@ export function mountRoutes(app, hub, room, options = {}) {
     }
     hub.broadcast('omni', result.snapshot)
     res.json(result)
+  })
+
+  app.post('/api/omni/payment-requests/:paymentRequestId/kgp/checkout', async (req, res) => {
+    if (req.body?.approved !== true) return res.status(403).json({ ok: false, error: 'approval_required' })
+    if (req.body?.messageApproved !== true) return res.status(403).json({ ok: false, error: 'message_approval_required' })
+    const paymentResult = omni.getPaymentRequest(req.params.paymentRequestId)
+    if (!paymentResult.ok) return res.status(paymentResult.error === 'payment_request_not_found' ? 404 : 400).json(paymentResult)
+    const checkout = await kgpPayment.createCheckout(paymentResult.payment)
+    if (!checkout.ok) return res.status(checkout.error === 'kgp_provider_not_enabled' ? 409 : 502).json(checkout)
+    const result = omni.attachPaymentCheckout({
+      paymentRequestId: paymentResult.payment.id,
+      checkoutUrl: checkout.checkoutUrl,
+      providerRef: checkout.providerRef,
+      expiresAt: checkout.expiresAt,
+      providerResponse: checkout.response,
+      approvedBy: req.body?.approvedBy || 'boss',
+    })
+    if (!result.ok) return res.status(400).json(result)
+    hub.broadcast('omni', result.snapshot)
+    res.json({ ...result, checkout: { checkoutUrl: checkout.checkoutUrl, providerRef: checkout.providerRef, expiresAt: checkout.expiresAt } })
+  })
+
+  app.post('/webhook/kgp/meta-pay', (req, res) => {
+    const signature = kgpPayment.verifyWebhookSignature(req)
+    if (!signature.ok) return res.status(401).json({ ok: false, error: signature.error })
+    const event = kgpPayment.normalizeWebhookEvent(req.body || {})
+    if (!event.ok) return res.status(400).json(event)
+    const result = omni.applyPaymentProviderEvent(event)
+    if (!result.ok) return res.status(result.error === 'payment_request_not_found' ? 404 : 400).json(result)
+    if (!result.deduped) hub.broadcast('omni', result.snapshot)
+    res.json({
+      ok: true,
+      deduped: Boolean(result.deduped),
+      payment: result.payment,
+      event: result.event,
+    })
   })
 
   app.get('/api/omni/threads', (req, res) => {
