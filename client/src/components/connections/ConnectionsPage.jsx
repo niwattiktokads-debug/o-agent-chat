@@ -283,14 +283,14 @@ function LiveInboxPanel({
                     {sendState.error ? <div className="mt-2 text-xs font-semibold text-[var(--color-danger)]">{sendState.error}</div> : null}
                     {sendState.sent ? <div className="mt-2 text-xs font-semibold text-[var(--color-live)]">ส่งข้อความนี้ไปที่ Meta แล้ว</div> : null}
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                      <div className="text-xs text-[var(--color-muted)]">ปุ่มส่งจริงต้องกดสองครั้ง และ backend บังคับ approval guard</div>
+                      <div className="text-xs text-[var(--color-muted)]">Draft ไม่ส่งเอง ปุ่มนี้ส่งจริงเมื่อกด</div>
                       <button
                         type="button"
                         onClick={() => onSendReply(connection.id, selectedConversationId)}
                         disabled={!draftText.trim() || state.busy === 'send' || sendState.sent}
-                        className={`rounded-[var(--radius-md)] px-3 py-2 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)] disabled:cursor-not-allowed disabled:opacity-55 ${sendState.armed ? 'bg-[var(--color-danger)] text-white hover:opacity-90' : 'border border-[var(--color-danger)] text-[var(--color-danger)] hover:bg-[var(--color-danger-soft)]'}`}
+                        className="rounded-[var(--radius-md)] border border-[var(--color-danger)] px-3 py-2 text-sm font-bold text-[var(--color-danger)] transition hover:bg-[var(--color-danger-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)] disabled:cursor-not-allowed disabled:opacity-55"
                       >
-                        {state.busy === 'send' ? 'กำลังส่ง' : sendState.armed ? 'ยืนยันส่งจริง' : 'ส่งจริง'}
+                        {state.busy === 'send' ? 'กำลังส่ง' : 'ส่งลูกค้าจริง'}
                       </button>
                     </div>
                   </div>
@@ -824,7 +824,7 @@ export default function ConnectionsPage({ onOpenInbox, onOpenChat, onOpenAiTrain
           },
           sendByConversation: {
             ...(current[connectionId]?.sendByConversation || {}),
-            [conversationId]: { armed: false, sent: false, error: '' },
+            [conversationId]: { sent: false, error: '' },
           },
         },
       }))
@@ -844,7 +844,7 @@ export default function ConnectionsPage({ onOpenInbox, onOpenChat, onOpenAiTrain
         },
         sendByConversation: {
           ...(current[connectionId]?.sendByConversation || {}),
-          [conversationId]: { ...(current[connectionId]?.sendByConversation?.[conversationId] || {}), armed: false, error: '' },
+          [conversationId]: { ...(current[connectionId]?.sendByConversation?.[conversationId] || {}), error: '' },
         },
       },
     }))
@@ -852,21 +852,8 @@ export default function ConnectionsPage({ onOpenInbox, onOpenChat, onOpenAiTrain
 
   async function onSendReply(connectionId, conversationId) {
     const current = inboxById[connectionId] || {}
-    const sendState = current.sendByConversation?.[conversationId] || {}
     const message = String(current.draftTextByConversation?.[conversationId] || current.draftsByConversation?.[conversationId]?.draftText || '').trim()
-    if (!sendState.armed) {
-      setInboxById((state) => ({
-        ...state,
-        [connectionId]: {
-          ...(state[connectionId] || {}),
-          sendByConversation: {
-            ...(state[connectionId]?.sendByConversation || {}),
-            [conversationId]: { ...sendState, armed: true, error: '' },
-          },
-        },
-      }))
-      return
-    }
+    if (!message) return
 
     setInboxById((state) => ({ ...state, [connectionId]: { ...(state[connectionId] || {}), busy: 'send' } }))
     try {
@@ -878,7 +865,7 @@ export default function ConnectionsPage({ onOpenInbox, onOpenChat, onOpenAiTrain
           busy: null,
           sendByConversation: {
             ...(state[connectionId]?.sendByConversation || {}),
-            [conversationId]: { armed: false, sent: true, error: '' },
+            [conversationId]: { sent: true, error: '' },
           },
         },
       }))

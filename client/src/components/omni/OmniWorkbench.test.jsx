@@ -427,15 +427,15 @@ describe('OmniWorkbench', () => {
     expect(screen.getByText('Draft')).toBeInTheDocument()
   })
 
-  it('requires a second click before sending a manual reply live', async () => {
+  it('sends a manual reply with one click after customer send is enabled', async () => {
     render(<OmniWorkbench />)
     const draftBox = await screen.findByPlaceholderText(/พิมพ์ข้อความตอบลูกค้า/)
 
-    fireEvent.change(draftBox, { target: { value: 'ส่งจริงจากช่องพิมพ์' } })
-    fireEvent.click(screen.getByRole('button', { name: 'ส่งจริง' }))
-    expect(screen.getByRole('button', { name: 'ยืนยันส่งจริง' })).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('switch', { name: /Draft only/ }))
+    expect(await screen.findByRole('switch', { name: /ส่งจริงเปิด/ })).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'ยืนยันส่งจริง' }))
+    fireEvent.change(draftBox, { target: { value: 'ส่งจริงจากช่องพิมพ์' } })
+    fireEvent.click(screen.getByRole('button', { name: 'ส่งลูกค้าจริง' }))
     await waitFor(() => {
       expect(screen.getByText('ส่งจริงจากช่องพิมพ์')).toBeInTheDocument()
     })
@@ -464,6 +464,6 @@ describe('OmniWorkbench', () => {
     expect(await screen.findByText(/แนบสินค้าแล้ว: Amanda Jumpsuit/)).toBeInTheDocument()
     expect((await screen.findAllByText(/แนะนำตัวนี้ค่ะ: Amanda Jumpsuit/)).length).toBeGreaterThan(0)
     expect((await screen.findAllByText('สินค้า')).length).toBeGreaterThan(0)
-    expect(screen.getByText('Draft ยังไม่ส่งออกไปหาลูกค้า ส่วนส่งจริงต้องกดยืนยันอีกครั้ง')).toBeInTheDocument()
+    expect(screen.getByText('Draft ยังไม่ส่งออกไปหาลูกค้า ปุ่มส่งลูกค้าจริงใช้ได้เมื่อเปิด “ส่งจริงเปิด”')).toBeInTheDocument()
   })
 })
