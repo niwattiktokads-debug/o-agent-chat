@@ -19,7 +19,7 @@ const DEFAULT_SETTINGS = {
   report: { timezone: 'Asia/Bangkok' },
   orderDraft: { enabled: true, approvalRequired: true, createZortOrderOnApprove: true },
   orderAddressIntake: { enabled: true, createConfirmationDraft: true },
-  ai: { enabled: true },
+  ai: { enabled: true, customerSendEnabled: false },
 }
 
 const LIVE_CF_MODES = [
@@ -211,6 +211,7 @@ export default function SettingsPage({
               title="AI / Order"
               rows={[
                 { label: 'AI enabled', checked: settings.ai.enabled, onChange: () => updateSetting(['ai', 'enabled'], (value) => !value) },
+                { label: 'ส่งลูกค้าจริงอัตโนมัติ', checked: settings.ai.customerSendEnabled === true, onChange: () => updateSetting(['ai', 'customerSendEnabled'], (value) => !value) },
                 { label: 'Order draft enabled', checked: settings.orderDraft.enabled, onChange: () => updateSetting(['orderDraft', 'enabled'], (value) => !value) },
                 { label: 'Order approval required', checked: settings.orderDraft.approvalRequired, onChange: () => updateSetting(['orderDraft', 'approvalRequired'], (value) => !value) },
                 { label: 'Create ZORT on approve', checked: settings.orderDraft.createZortOrderOnApprove, onChange: () => updateSetting(['orderDraft', 'createZortOrderOnApprove'], (value) => !value) },

@@ -425,6 +425,9 @@ async function draftThreadReply({ omni, ai, threadId, send = false, sendReply = 
   })
   const result = { ok: true, decision, recorded: recorded.decision, snapshot: recorded.snapshot }
   if (!send) return result
+  if (wsSettings?.ai?.customerSendEnabled !== true) {
+    return { ...result, sent: false, sendSkipped: 'customer_send_guard_enabled' }
+  }
 
   const pageProfile = pageProfileForThread(thread)
   if (!pageProfile) return { ...result, sent: false, sendSkipped: 'unsupported_page_for_auto_send' }
