@@ -83,4 +83,19 @@ describe('Omni workspace settings', () => {
     assert.equal(omni.getSettings({ workspaceId: DEFAULT_WORKSPACE_ID }).ai.enabled, true)
     assert.equal(result.audit.sourceRef, 'omni_settings:workspace:ws_test')
   })
+
+  test('default workspace update is read from workspace override before legacy default row', () => {
+    const omni = createOmniService({ seed: createSeed() })
+    const result = omni.updateSettings({
+      workspaceId: DEFAULT_WORKSPACE_ID,
+      settings: { ai: { customerSendEnabled: true } },
+      updatedBy: 'test',
+    })
+
+    assert.equal(result.ok, true)
+    assert.equal(result.settings.ai.customerSendEnabled, true)
+    assert.equal(omni.getSettings({ workspaceId: DEFAULT_WORKSPACE_ID }).ai.customerSendEnabled, true)
+    assert.equal(omni.getSettings().ai.customerSendEnabled, false)
+    assert.equal(result.audit.sourceRef, `omni_settings:workspace:${DEFAULT_WORKSPACE_ID}`)
+  })
 })
