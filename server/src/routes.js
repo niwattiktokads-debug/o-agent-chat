@@ -165,7 +165,8 @@ export function mountRoutes(app, hub, room, options = {}) {
 
   app.get('/api/omni/snapshot', (req, res) => {
     const workspaceId = req.query.workspaceId || ''
-    const full = omni.snapshot()
+    const settings = omni.getSettings({ workspaceId })
+    const full = { ...omni.snapshot(), settings }
     if (!workspaceId) return res.json({ ok: true, snapshot: full })
     // Filter snapshot collections by workspace
     const pages = (full.pages || []).filter((p) => p.workspaceId === workspaceId)
@@ -419,6 +420,7 @@ export function mountRoutes(app, hub, room, options = {}) {
       settings: req.body?.settings || {},
       updatedBy: req.body?.updatedBy || 'boss',
     })
+    if (result.snapshot) result.snapshot.settings = result.settings
     hub.broadcast('omni', result.snapshot)
     res.json(result)
   })

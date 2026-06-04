@@ -147,7 +147,7 @@ export default function OmniWorkbench({
         <ThreadDetail snapshot={snapshot} thread={selectedThread} onSnapshot={setSnapshot} />
       </main>
       <div className="order-3 max-h-[50dvh] min-h-[320px] shrink-0 overflow-hidden lg:hidden xl:order-none xl:block xl:max-h-none xl:min-h-0">
-        <ContextPanel snapshot={snapshot} thread={selectedThread} onSnapshot={setSnapshot} />
+        <ContextPanel snapshot={snapshot} thread={selectedThread} onSnapshot={setSnapshot} workspaceId={workspaceId} />
       </div>
         </>
       ) : (

@@ -17,6 +17,7 @@ describe('omniModel', () => {
 
   it('marks auto-send active when the page policy enables an intent', () => {
     const status = autoSendStatus({
+      settings: { ai: { customerSendEnabled: true } },
       pages: [{ id: 'page_annalynn', policySetId: 'policy_annalynn' }],
       policySets: [{ id: 'policy_annalynn', autoSend: { faq: true, stock: false } }],
       messages: [],
@@ -29,6 +30,7 @@ describe('omniModel', () => {
 
   it('marks auto-send active when a sent outbound message is recorded', () => {
     const status = autoSendStatus({
+      settings: { ai: { customerSendEnabled: true } },
       pages: [{ id: 'page_annalynn', policySetId: 'policy_annalynn' }],
       policySets: [{ id: 'policy_annalynn', autoSend: { faq: false } }],
       messages: [
@@ -43,6 +45,7 @@ describe('omniModel', () => {
 
   it('shows draft-only when no auto-send policy or sent message exists', () => {
     const status = autoSendStatus({
+      settings: { ai: { customerSendEnabled: true } },
       pages: [{ id: 'page_annalynn', policySetId: 'policy_annalynn' }],
       policySets: [{ id: 'policy_annalynn', autoSend: { faq: false } }],
       messages: [
@@ -52,5 +55,18 @@ describe('omniModel', () => {
 
     expect(status.active).toBe(false)
     expect(status.label).toBe('Draft only')
+  })
+
+  it('shows draft-only when customer send guard is off even if policy allows auto-send', () => {
+    const status = autoSendStatus({
+      settings: { ai: { customerSendEnabled: false } },
+      pages: [{ id: 'page_annalynn', policySetId: 'policy_annalynn' }],
+      policySets: [{ id: 'policy_annalynn', autoSend: { faq: true } }],
+      messages: [],
+    }, { id: 'thread_1', pageId: 'page_annalynn' })
+
+    expect(status.active).toBe(false)
+    expect(status.label).toBe('Draft only')
+    expect(status.detail).toBe('customer send guard is on')
   })
 })
