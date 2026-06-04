@@ -247,6 +247,41 @@ test('EasyStore product preview API is public when Omni access password is enabl
   }
 })
 
+test('EasyStore Meta catalog feed is public CSV when Omni access password is enabled', async () => {
+  const localApp = express()
+  const security = createSecurityMiddleware({ accessPassword: 'test-password' })
+  const calls = []
+  const fakeEasyStore = {
+    getMetaCatalogFeed: async ({ limit }) => {
+      calls.push({ limit })
+      return {
+        ok: true,
+        count: 1,
+        generatedAt: '2026-06-04T00:00:00.000Z',
+        csv: 'id,title,description,availability,condition,price,link,image_link,brand\n16462646,Amanda,Amanda,in stock,new,890 THB,https://omni.oagent.biz/p/easystore/16462646,https://cdn.example/amanda.jpg,Annalynna\n',
+      }
+    },
+  }
+  localApp.use(express.json())
+  security.mountAccessRoutes(localApp)
+  localApp.use(security.requireAccess)
+  mountRoutes(localApp, { broadcast: () => {} }, createState(), { easyStore: fakeEasyStore })
+  const localServer = localApp.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const response = await fetch(`http://localhost:${localPort}/feeds/meta/annalynna.csv`)
+    const text = await response.text()
+
+    assert.equal(response.status, 200)
+    assert.match(response.headers.get('content-type'), /text\/csv/)
+    assert.match(response.headers.get('cache-control'), /max-age=900/)
+    assert.match(text, /^id,title,description,availability,condition,price,link,image_link,brand\n/)
+    assert.deepEqual(calls, [{ limit: 250 }])
+  } finally {
+    localServer.close()
+  }
+})
+
 test('GET /api/omni/connections includes ZORT Social parity options missing from the MVP', async () => {
   const { body, status } = await req('GET', '/api/omni/connections')
   assert.equal(status, 200)

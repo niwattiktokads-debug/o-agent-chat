@@ -14,6 +14,7 @@ import { createMetaSocialRuntime } from '../src/omni/metaSocialRuntime.js'
 import { createAiReplyEngine } from '../src/omni/aiReplyEngine.js'
 import { normalizeMetaWebhookPayload } from '../src/omni/metaWebhook.js'
 import { normalizeEasyStoreWebhookPayload } from '../src/omni/easystoreWebhook.js'
+import { buildMetaCatalogRows, toMetaCatalogCsv } from '../src/omni/easystoreMetaFeed.js'
 import { listTikTokOrders, normalizeTikTokOrders } from '../src/omni/tiktokOrderClient.js'
 import { normalizeTikTokMessagingWebhookPayload } from '../src/omni/tiktokMessagingClient.js'
 import { getOmniSchemaSummary, loadOmniSchemaSql, REQUIRED_OMNI_TABLES } from '../src/omni/db/schema.js'
@@ -228,6 +229,72 @@ test('EasyStore runtime returns a normalized product preview from direct API', a
   assert.equal(result.product.links.storefrontUrl, 'https://annalynna.easy.co/products/amanda-jumpsuit')
   assert.equal(result.tracking.pixelId, '401272399141441')
   assert.equal(calls[0].url, 'https://annalynna.easy.co/api/3.0/products/16462646.json')
+})
+
+test('EasyStore Meta catalog feed maps products to Meta CSV rows', () => {
+  const rows = buildMetaCatalogRows({
+    products: [{
+      id: 16462646,
+      title: 'Amanda Jumpsuit',
+      handle: 'amanda-jumpsuit',
+      currency: 'THB',
+      description: '<p>Amanda&nbsp;Jumpsuit พร้อมส่ง</p>',
+      images: [{ url: 'https://cdn.example/amanda.jpg' }],
+      min_price: '890.0',
+      total_quantity: 155,
+      variants: [{ price: '890.0', inventory_quantity: 11, cost_price: '1.0' }],
+    }],
+    productUrlBase: 'https://omni.oagent.biz',
+  })
+  const csv = toMetaCatalogCsv(rows)
+
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].id, '16462646')
+  assert.equal(rows[0].availability, 'in stock')
+  assert.equal(rows[0].condition, 'new')
+  assert.equal(rows[0].price, '890 THB')
+  assert.equal(rows[0].link, 'https://omni.oagent.biz/p/easystore/16462646')
+  assert.equal(rows[0].image_link, 'https://cdn.example/amanda.jpg')
+  assert.equal(rows[0].brand, 'Annalynna')
+  assert.match(csv, /^id,title,description,availability,condition,price,link,image_link,brand\n/)
+  assert.doesNotMatch(csv, /cost_price/)
+})
+
+test('EasyStore runtime returns an automatic Meta catalog feed from direct API', async () => {
+  const calls = []
+  const runtime = createEasyStoreRuntime({
+    env: {
+      EASY_STORE_SHOP: 'annalynna.easy.co',
+      EASY_STORE_ACCESS_TOKEN: 'access_token_1',
+      EASY_STORE_CLIENT_ID: 'app_1',
+      EASY_STORE_CLIENT_SECRET: 'secret_1',
+      OMNI_PRODUCT_PREVIEW_BASE_URL: 'https://omni.oagent.biz',
+    },
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options })
+      return new Response(JSON.stringify({
+        products: [{
+          id: 16462646,
+          title: 'Amanda Jumpsuit',
+          currency: 'THB',
+          description: 'Amanda พร้อมส่ง',
+          images: [{ url: 'https://cdn.example/amanda.jpg' }],
+          min_price: '890.0',
+          total_quantity: 155,
+          variants: [{ price: '890.0', inventory_quantity: 11 }],
+        }],
+      }), { status: 200 })
+    },
+  })
+
+  const result = await runtime.getMetaCatalogFeed()
+
+  assert.equal(result.ok, true)
+  assert.equal(result.count, 1)
+  assert.equal(result.rows[0].link, 'https://omni.oagent.biz/p/easystore/16462646')
+  assert.equal(result.rows[0].price, '890 THB')
+  assert.match(result.csv, /Amanda Jumpsuit/)
+  assert.equal(calls[0].url, 'https://annalynna.easy.co/api/3.0/products.json?page=1&limit=250')
 })
 
 test('normalizes EasyStore order webhook payload into Omni order thread rows', () => {
