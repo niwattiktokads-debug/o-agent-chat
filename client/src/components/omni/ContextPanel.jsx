@@ -4,9 +4,11 @@ import AiDecisionPanel from './AiDecisionPanel.jsx'
 import OrderDesk from './OrderDesk.jsx'
 import PaymentDesk from './PaymentDesk.jsx'
 import ProfilePanel from './ProfilePanel.jsx'
+import SalesContextPanel from './SalesContextPanel.jsx'
 
 const TABS = [
   { id: 'ai', label: 'AI' },
+  { id: 'sales', label: 'ขาย' },
   { id: 'profiles', label: 'โปรไฟล์' },
   { id: 'orders', label: 'ออเดอร์' },
   { id: 'payment', label: 'ชำระเงิน' },
@@ -80,7 +82,7 @@ export default function ContextPanel({ snapshot, thread, onSnapshot, workspaceId
           </button>
         </div>
         {guardError ? <div className="mt-2 rounded-[var(--radius-sm)] border border-[var(--color-danger)] bg-[var(--color-danger-soft)] px-2 py-1 text-[11px] font-semibold text-[var(--color-danger)]">{guardError}</div> : null}
-        <div className="mt-2 grid grid-cols-4 rounded-[var(--radius-md)] bg-[var(--color-panel-2)] p-1">
+        <div className="mt-2 grid grid-cols-5 rounded-[var(--radius-md)] bg-[var(--color-panel-2)] p-1">
           {TABS.map((item) => (
             <button
               key={item.id}
@@ -93,6 +95,7 @@ export default function ContextPanel({ snapshot, thread, onSnapshot, workspaceId
         </div>
       </div>
       {tab === 'ai' ? <AiDecisionPanel snapshot={snapshot} thread={thread} onDrafted={onSnapshot} onUseDraft={onUseDraft} /> : null}
+      {tab === 'sales' ? <SalesContextPanel thread={thread} onUseDraft={onUseDraft} /> : null}
       {tab === 'profiles' ? <ProfilePanel snapshot={snapshot} /> : null}
       {tab === 'orders' ? <OrderDesk snapshot={snapshot} thread={thread} onSnapshot={onSnapshot} /> : null}
       {tab === 'payment' ? <PaymentDesk snapshot={snapshot} thread={thread} onSnapshot={onSnapshot} onUseDraft={onUseDraft} /> : null}

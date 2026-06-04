@@ -402,6 +402,17 @@ export async function createAiDraft(threadId) {
   return body
 }
 
+export async function fetchSalesContext(threadId, { images = true, productId = '' } = {}) {
+  const params = new URLSearchParams()
+  if (!images) params.set('images', '0')
+  if (productId) params.set('productId', productId)
+  const suffix = params.toString() ? `?${params.toString()}` : ''
+  const response = await apiFetch(`/api/omni/threads/${threadId}/sales-context${suffix}`)
+  const body = await response.json()
+  if (!response.ok || !body.ok) throw new Error(body.error || 'sales_context_failed')
+  return body
+}
+
 export async function saveManualReplyDraft(threadId, draft) {
   const response = await apiFetch(`/api/omni/threads/${threadId}/manual-draft`, {
     method: 'POST',

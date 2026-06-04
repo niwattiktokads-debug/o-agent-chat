@@ -118,8 +118,11 @@ function ManualReplyComposer({ thread, onSnapshot, suggestedDraft, customerSendE
   useEffect(() => {
     if (!suggestedDraft?.text || suggestedDraft.threadId !== thread?.id) return
     setText(suggestedDraft.text)
+    if (Array.isArray(suggestedDraft.attachments)) {
+      setAttachments(suggestedDraft.attachments.slice(0, 5))
+    }
     setError('')
-  }, [suggestedDraft?.id, suggestedDraft?.text, suggestedDraft?.threadId, thread?.id])
+  }, [suggestedDraft?.id, suggestedDraft?.text, suggestedDraft?.threadId, suggestedDraft?.attachments, thread?.id])
 
   async function readFiles(files) {
     const imageFiles = [...files].filter((file) => file.type.startsWith('image/')).slice(0, 5 - attachments.length)

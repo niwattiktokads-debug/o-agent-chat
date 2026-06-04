@@ -116,6 +116,34 @@ vi.mock('../../lib/omniApi.js', () => ({
       connectorHealth: [],
     },
   }),
+  fetchSalesContext: async () => ({
+    ok: true,
+    thread: { id: 'thread_1', pageId: 'page_mankynd', platform: 'facebook', status: 'draft_ready' },
+    customer: {
+      match: { safeToUsePrivateData: true, confidence: 0.98, basis: ['same_customer_id'], linkedOrderCount: 1 },
+      memory: {
+        phoneMasked: '081***5678',
+        phoneLast4: '5678',
+        lastOrderNumber: 'AL-1001',
+        lastSku: 'BLACK-M',
+        lastSize: 'M',
+        lastColor: 'ดำ',
+        lastAddressMasked: '99/x สุข... คลองตัน กรุงเทพมหานคร 10110',
+      },
+    },
+    product: {
+      confidence: 0.9,
+      product: { productId: '16462402', productName: 'เสื้อเชิ้ตโปโลผู้หญิง สีดำ', price: 590, availableTotal: 20 },
+      variants: [{ id: 'stock_black_m', sku: 'BLACK-M', available: 20, price: 590 }],
+      sourceIds: ['stock_black_m'],
+    },
+    imagePicker: {
+      ok: true,
+      source: 'easystore_preview',
+      productId: '16462402',
+      images: [{ id: 'img_black_m', url: 'https://cdn.example/black-m.jpg', alt: 'เสื้อเชิ้ตโปโลผู้หญิง สีดำ M' }],
+    },
+  }),
   saveManualReplyDraft: async (threadId, draft) => ({
     ok: true,
     message: {
@@ -496,6 +524,24 @@ describe('OmniWorkbench', () => {
       expect(draftBox).toHaveValue('เดี๋ยวเช็กสต็อกให้ค่ะ')
     })
     expect(await screen.findByRole('button', { name: 'วางในช่องตอบ' })).toBeInTheDocument()
+  })
+
+  it('shows sales context and places a suggested product image into the draft composer', async () => {
+    render(<OmniWorkbench />)
+    const draftBox = await screen.findByPlaceholderText(/พิมพ์ข้อความตอบลูกค้า/)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'ขาย' }))
+
+    expect(await screen.findByText('ลูกค้าเดิม')).toBeInTheDocument()
+    expect(await screen.findByText('081***5678')).toBeInTheDocument()
+    expect(await screen.findByText('เสื้อเชิ้ตโปโลผู้หญิง สีดำ')).toBeInTheDocument()
+    fireEvent.click(await screen.findByText('ใช้รูปนี้'))
+
+    await waitFor(() => {
+      expect(draftBox).toHaveValue('ส่งภาพ เสื้อเชิ้ตโปโลผู้หญิง สีดำ ให้ดูค่ะ')
+    })
+    expect(screen.getAllByAltText('เสื้อเชิ้ตโปโลผู้หญิง สีดำ M').length).toBeGreaterThan(0)
+    expect(screen.getByText('Draft ยังไม่ส่งออกไปหาลูกค้า ปุ่มส่งลูกค้าจริงใช้ได้เมื่อเปิด “ส่งจริงเปิด”')).toBeInTheDocument()
   })
 
   it('creates an EasyStore product draft from the selected thread without sending', async () => {
