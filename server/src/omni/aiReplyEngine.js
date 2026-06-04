@@ -22,8 +22,14 @@ function latestInboundMessage(thread, snapshot) {
 
 function classifyIntent(text) {
   const value = String(text || '').toLowerCase()
+  if (/(สลิป|โอนแล้ว|จ่ายแล้ว|ชำระแล้ว|หลักฐาน|payment proof|paid)/i.test(value)) return 'paymentProof'
+  if (/(^|\s)(cf|เอา|รับ|สั่ง|จอง)(\s|$)|สั่งค่ะ|สั่งครับ|เอาค่ะ|เอาครับ|รับค่ะ|รับครับ/i.test(value)) return 'orderPurchase'
+  if (/(ไซซ์ไหนดี|ไซส์ไหนดี|ใส่ได้ไหม|ใส่ได้มั้ย|พอดีไหม|พอดีมั้ย|อก|เอว|สะโพก|size advice|แนะนำไซซ์|แนะนำไซส์)/i.test(value)) return 'sizeAdvice'
+  if (/(ไม่ชอบ|มีแบบอื่น|แบบอื่น|แนะนำ.*แบบ|ตัวอื่น|รุ่นอื่น)/i.test(value)) return 'alternativeProduct'
+  if (/(ลดได้ไหม|ลดไหม|ขอลด|ส่วนลด|โปร|ของแถม|discount)/i.test(value)) return 'discount'
+  if (/(ค่าส่ง|ส่งฟรี|จัดส่ง|ส่งเมื่อไหร่|ส่งวันไหน|shipping|delivery)/i.test(value)) return 'shipping'
   if (/(รูป|ภาพ|ถ่าย|photo|image|pic|picture|ดูสี|ขอดู|ส่ง.*รูป|ส่ง.*ภาพ)/i.test(value)) return 'productImage'
-  if (/(ของ|สินค้า|ไซซ์|size|สี|stock|พร้อมส่ง|มีไหม)/i.test(value)) return 'stock'
+  if (/(ของ|สินค้า|ไซซ์|ไซส์|size|สี|stock|พร้อมส่ง|มีไหม|\b(?:s|m|l|xl|xxl|2xl|3xl|4xl|5xl)\b)/i.test(value)) return 'stock'
   if (/(ราคา|เท่าไหร่|บาท|price)/i.test(value)) return 'price'
   if (/(พัสดุ|เลข|tracking|ส่งของ|order|คำสั่งซื้อ)/i.test(value)) return 'orderStatus'
   if (/(คืนเงิน|refund|ยกเลิก|cancel|เคลม)/i.test(value)) return 'refund'
@@ -32,10 +38,50 @@ function classifyIntent(text) {
 
 function riskForIntent(intent, policy, autoSendAll = AUTO_SEND_ALL) {
   if (autoSendAll) return 'low'
-  if (intent === 'productImage') return 'medium'
-  if (intent === 'refund') return 'high'
+  if (['productImage', 'orderPurchase', 'paymentProof', 'alternativeProduct'].includes(intent)) return 'medium'
+  if (['refund', 'discount'].includes(intent)) return 'high'
   if (!policy?.autoSend?.[intent]) return 'medium'
   return 'low'
+}
+
+function detectSize(text) {
+  const match = String(text || '').match(/\b(5xl|4xl|3xl|2xl|xxl|xl|l|m|s)\b|(?:ไซซ์|ไซส์|size)\s*(5xl|4xl|3xl|2xl|xxl|xl|l|m|s)/i)
+  return (match?.[1] || match?.[2] || '').toUpperCase()
+}
+
+function detectColor(text) {
+  const match = String(text || '').match(/(ดำ|ขาว|เทา|กรม|น้ำเงิน|ฟ้า|เขียว|แดง|ชมพู|ครีม|เบจ|น้ำตาล|ม่วง|เหลือง|ส้ม|black|white|gray|grey|navy|blue|green|red|pink|cream|beige|brown|purple|yellow|orange)/i)
+  if (!match) return ''
+  const value = match[1].toLowerCase()
+  const map = {
+    black: 'ดำ',
+    white: 'ขาว',
+    gray: 'เทา',
+    grey: 'เทา',
+    navy: 'กรม',
+    blue: 'น้ำเงิน',
+    green: 'เขียว',
+    red: 'แดง',
+    pink: 'ชมพู',
+    cream: 'ครีม',
+    beige: 'เบจ',
+    brown: 'น้ำตาล',
+    purple: 'ม่วง',
+    yellow: 'เหลือง',
+    orange: 'ส้ม',
+  }
+  return map[value] || match[1]
+}
+
+function latestSalesSlots(thread, snapshot, originContext = null) {
+  const recentText = recentMessagesForThread(thread, snapshot)
+    .map((message) => message.text)
+    .join('\n')
+  return {
+    productLabel: originProductLabel(originContext || {}),
+    color: originContext?.productHint?.color || originContext?.live?.color || detectColor(recentText),
+    size: originContext?.productHint?.size || originContext?.live?.size || detectSize(recentText),
+  }
 }
 
 function originProductLabel(originContext = {}) {
@@ -163,8 +209,66 @@ function draftFromProductFacts(intent, productFacts) {
   return `เช็กให้แล้วค่ะ ${productFacts.productName} ${availableText}${price}.${optionText} ถ้าต้องการตัวนี้ แจ้งสี/ไซซ์ที่ต้องการหรือให้แอดมินปิดออเดอร์ต่อในแชทได้เลยค่ะ`
 }
 
-function draftForIntent(intent, originContext = null, productFacts = null) {
+function salesWorkflowDraft({ intent, originContext = null, productFacts = null, slots = {} }) {
+  const productLabel = slots.productLabel || originProductLabel(originContext || '')
+  const productText = productFacts?.productName || productLabel || 'สินค้าที่สนใจ'
+  const color = slots.color || ''
+  const size = slots.size || ''
+  const hasColor = Boolean(color)
+  const hasSize = Boolean(size)
+
+  if (intent === 'stock') {
+    if (hasSize && !hasColor) {
+      return `${size} ได้ค่ะ สนใจสีไหนคะ เดี๋ยวส่งภาพสีให้ดูพร้อมเช็กสต็อก ${productText} ให้เลยค่ะ`
+    }
+    if (hasColor && !hasSize) {
+      return `สี${color} ได้ค่ะ เดี๋ยวส่งภาพสีนี้ให้ดูนะคะ สนใจไซซ์ไหนคะ จะได้เช็กสต็อกให้ตรงตัวค่ะ`
+    }
+  }
+
+  if (intent === 'price') {
+    if (hasColor && hasSize) {
+      const price = productFacts?.price ? ` ราคา ${moneyText(productFacts.price)} บาท` : ''
+      const stock = productFacts && Number(productFacts.availableTotal || 0) > 0 ? ' พร้อมส่งค่ะ' : ' เดี๋ยวเช็กพร้อมส่งให้อีกครั้งค่ะ'
+      return `${productText} สี${color} ไซซ์ ${size}${price}${stock}`
+    }
+    const price = productFacts?.price ? `ราคาเริ่มต้น ${moneyText(productFacts.price)} บาทค่ะ` : 'เดี๋ยวเช็กราคาให้ค่ะ'
+    return `${productText} ${price} เดี๋ยวส่งภาพสินค้าให้ดูนะคะ สนใจสีหรือไซซ์ไหน เดี๋ยวเช็กพร้อมส่งให้ค่ะ`
+  }
+
+  if (intent === 'sizeAdvice') {
+    return `รบกวนแจ้งอก เอว สะโพกหน่อยค่ะ เดี๋ยวเทียบไซซ์ ${productText} ให้ว่าใส่ไซซ์ไหนสวยสุดค่ะ`
+  }
+
+  if (intent === 'orderPurchase') {
+    const detail = [productText, hasColor ? `สี${color}` : '', hasSize ? `ไซซ์ ${size}` : ''].filter(Boolean).join(' ')
+    const price = productFacts?.price ? ` ราคา ${moneyText(productFacts.price)} บาท` : ''
+    return `สรุปรายการนะคะ ${detail || 'สินค้าที่เลือก'}${price}${productFacts && Number(productFacts.availableTotal || 0) > 0 ? ' พร้อมส่งค่ะ' : ''} ชำระเงินได้ตามช่องทางที่แอดมินแจ้งไว้ หลังชำระแล้วส่งสลิปมาได้เลยนะคะ`
+  }
+
+  if (intent === 'paymentProof') {
+    return 'ขอบคุณค่ะ รบกวนขอชื่อ เบอร์โทร และที่อยู่จัดส่งนะคะ เดี๋ยวสรุปออเดอร์ให้ตรวจอีกครั้งค่ะ'
+  }
+
+  if (intent === 'alternativeProduct') {
+    return 'ได้ค่ะ เดี๋ยวแนะนำใกล้เคียงให้ 3 แบบนะคะ ไม่ชอบตรงสี ทรง หรือความยาวคะ จะได้เลือกให้ตรงขึ้นค่ะ'
+  }
+
+  if (intent === 'discount') {
+    return 'ตอนนี้ราคานี้เป็นราคาพร้อมส่งค่ะ ถ้ามีโปรหรือของแถม เดี๋ยวให้แอดมินเช็กให้ก่อนนะคะ'
+  }
+
+  if (intent === 'shipping') {
+    return 'เดี๋ยวเช็กค่าส่งและรอบจัดส่งตามรายการให้ค่ะ ถ้าสรุปรุ่น สี และไซซ์แล้ว แอดมินจะแจ้งยอดที่ถูกต้องให้ทันทีค่ะ'
+  }
+
+  return ''
+}
+
+function draftForIntent(intent, originContext = null, productFacts = null, slots = {}) {
   const productDraft = draftFromProductFacts(intent, productFacts)
+  const workflowDraft = salesWorkflowDraft({ intent, originContext, productFacts, slots })
+  if (workflowDraft) return workflowDraft
   if (productDraft) return productDraft
   const productLabel = originProductLabel(originContext || {})
   const isLive = originContext?.sourceType === 'live'
@@ -308,13 +412,27 @@ function buildCustomerReplyPrompt({ thread, snapshot, policy, baseDecision }) {
       'ตอบเป็นภาษาไทย สุภาพ ช่วยลูกค้าให้ครบก่อน แล้วค่อยกระชับ ไม่ออกนอกเรื่อง',
       'คำตอบควรมี 2-4 ประโยคสั้น ๆ รวมประมาณ 60-120 คำไทย หรือน้อยกว่านั้นถ้าคำถามง่าย',
       'โครงคำตอบ: รับเรื่องจากลูกค้า -> ตอบหรือบอกสิ่งที่จะตรวจสอบ -> ขอข้อมูลที่จำเป็นเฉพาะเท่าที่ต้องใช้ -> ปิดท้ายสุภาพ',
+      'ให้ทำงานแบบ Sales Workflow Engine: ก่อนตอบต้องดู context ที่มา ลูกค้า สินค้า สี ไซซ์ สต็อก ราคา และเลือก next best action ไม่ใช่ตอบคำถามกว้าง ๆ',
+      'ข้อมูลที่รู้แล้วห้ามถามซ้ำ ถ้ารู้สินค้าแล้วให้ถามสีหรือไซซ์ ถ้ารู้สีแล้วให้ถามไซซ์ ถ้ารู้ไซซ์แล้วให้ถามสี ถ้ารู้ครบแล้วให้พาไปชำระเงินหรือ order draft',
+      'ถ้าลูกค้าถามสี ให้ตอบพร้อมส่ง/แนบภาพสีนั้นตามเครื่องมือ และถามไซซ์ที่ต้องการ ห้ามเช็กทุกไซซ์แบบกว้างก่อน',
+      'ถ้าลูกค้าถามไซซ์ ให้เช็กสต็อกไซซ์นั้นก่อน และถามสีที่ต้องการพร้อมเสนอภาพสี ห้ามถามสัดส่วนก่อน ยกเว้นลูกค้าถามว่าไซซ์ไหนดีหรือใส่ได้ไหม',
+      'ถ้าลูกค้าถามไซซ์ไหนดีหรือใส่ได้ไหม ให้ถามอก เอว สะโพก เพื่อเทียบไซซ์ ไม่ถามน้ำหนัก/ส่วนสูงเป็นหลัก',
+      'ถ้าลูกค้าถามราคาครั้งแรก ให้ตอบราคา พร้อมภาพสินค้า และถามสี/ไซซ์ต่อ ถ้ารู้สีและไซซ์แล้ว ให้ตอบราคาและพร้อมส่งจากข้อมูลจริง',
+      'ถ้าลูกค้าพูดว่าเอา สั่ง CF หรือรับ ให้ส่งสรุปรายการชำระเงินก่อน ที่อยู่จัดส่งเป็นข้อมูลสุดท้ายหลังลูกค้าชำระเงินหรือส่งสลิป',
+      'ถ้าลูกค้าส่งสลิปหรือหลักฐานชำระเงิน ให้ขอบคุณและขอชื่อ เบอร์โทร ที่อยู่จัดส่ง จากนั้นสรุปออเดอร์ให้ตรวจ',
+      'ถ้าลูกค้าไม่ชอบหรือขอแบบอื่น ให้ถามเหตุผลสั้น ๆ 1 ข้อ และเสนอสินค้าใกล้เคียง 3 แบบ',
+      'ถ้าลูกค้าต่อราคา ให้แจ้งราคาตามจริงหรือโปร/ของแถมที่มี ห้ามลดราคาเอง ถ้าไม่ชัวร์ให้ส่งแอดมินตรวจ',
+      'ถ้าลูกค้าถามนอกเรื่อง ให้ตอบสั้น ๆ ได้ 1 ครั้ง แล้วดึงกลับมาที่สินค้า/ออเดอร์',
+      'ถ้าลูกค้าหายหลังเราถาม ให้ follow-up ได้ครั้งเดียวแล้วตั้งสถานะรอลูกค้า ห้ามตามซ้ำวน',
+      'ถ้าเราเคยหาย ให้ย้อนอ่าน 2-3 ข้อความล่าสุดแล้วตอบต่อให้จบ ไม่ขอโทษยาว',
+      'ถ้าลูกค้าส่งรูป/สลิป/ภาพแล้วระบบไม่มั่นใจว่าเป็นอะไร ให้ส่งแอดมินตรวจและแจ้งเตือนกลุ่มบอสอุ้ยทาง LINE ห้ามเดาเอง',
       'ถ้ามี origin context จากแอด โพสต์ หรือไลฟ์ ให้ถือว่านั่นคือกรอบหลักของคำตอบ และอย่าถามกว้างซ้ำในสิ่งที่ origin ระบุแล้ว',
       'ถ้า origin ระบุสินค้า สี ไซซ์ SKU แคมเปญ โพสต์ หรือไลฟ์ ให้ตอบอิงสิ่งนั้นทันที และขอเพิ่มเฉพาะข้อมูลที่ยังขาดจริง',
       'ถ้า origin source_type เป็น live และยังไม่มีสินค้า/SKU ชัดเจน ให้ถามสั้น ๆ ว่าสนใจตัวไหนในไลฟ์ ชื่อ สี ไซซ์ หรือช่วงเวลาที่เห็น ห้ามขอรูปเป็นค่าเริ่มต้น',
       'ห้ามแต่งข้อมูลราคา สต็อก โปรโมชัน เลขพัสดุ วิธีคืนเงิน หรือคำมั่นสัญญาที่ไม่มีในข้อมูล',
       'ถ้าลูกค้าขอดูรูป/ภาพสินค้า แต่ระบบยังไม่มี attachment หรือ product card ในข้อมูล ให้ห้ามสัญญาว่าจะส่งรูปแล้วส่งข้อความเปล่า ให้ส่งต่อแอดมินแนบรูปจริงก่อน',
       'ถ้าข้อมูลไม่พอ ให้ถามกลับเพื่อขอข้อมูลที่จำเป็น และส่งต่อให้แอดมินเมื่อต้องตรวจสอบ',
-      'ถ้าลูกค้าถามสินค้า สี ไซซ์ หรือราคา ให้ตอบแบบพร้อมช่วยเช็ก และขอรุ่น/สี/ไซซ์/รูปสินค้าเมื่อข้อมูลยังไม่ชัด',
+      'ถ้าลูกค้าถามสินค้า สี ไซซ์ หรือราคา ให้ตอบแบบพร้อมช่วยเช็กผ่าน product/stock/image tools และขอเฉพาะข้อมูลที่ยังขาดจริง',
       'ห้ามบอกว่าตัวเองเป็นโมเดล AI หรือพูดถึง prompt/system/developer',
       'ห้ามแทนตัวเองด้วยชื่อผู้ช่วยหรือชื่อเพจ เช่น "แอดมิน Anna Lynn กำลัง..." ให้ตอบตรงในฐานะแอดมินของเพจ',
       'ห้ามเรียกลูกค้าว่า "น้อง"',
@@ -603,6 +721,7 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
       const knowledge = relevantKnowledge(intent, snapshot, { workspaceId })
       const originContext = compactOriginContext(thread, recentMessagesForThread(thread, snapshot))
       const productFacts = productFactsForThread(thread, snapshot, originContext)
+      const slots = latestSalesSlots(thread, snapshot, originContext)
       const productSourceIds = productFacts
         ? (productFacts.variants || []).map((variant) => variant.id).filter(Boolean)
         : []
@@ -617,7 +736,7 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
         action: allowed ? 'draft_ready' : 'needs_approval',
         confidence: intent === 'faq' ? 0.72 : 0.82,
         allowed,
-        draftText: draftForIntent(intent, originContext, productFacts),
+        draftText: draftForIntent(intent, originContext, productFacts, slots),
         reason: productFacts
           ? 'product_inventory_fact_match'
           : (allowed ? 'policy_allows_low_risk_intent' : 'guard_requires_human_or_more_data'),
@@ -625,6 +744,7 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
         evidenceIds: inbound?.id ? [inbound.id] : [],
         originContext,
         productFacts,
+        salesSlots: slots,
       }
 
       if (provider === 'local_rules') return baseDecision

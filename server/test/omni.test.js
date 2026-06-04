@@ -1532,6 +1532,244 @@ test('AI reply engine classifies product image requests as human attachment work
   assert.doesNotMatch(decision.draftText, /เดี๋ยวส่งให้ดู|ยินดีส่งให้ดู/)
 })
 
+test('AI reply engine applies sales workflow for size-only product questions', async () => {
+  const seed = createOmniSeed()
+  seed.customers.push({ id: 'cust_sales_size', displayName: 'Sales Size Customer', matchConfidence: 1 })
+  seed.threads.push({
+    id: 'thread_sales_size',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'cust_sales_size',
+    status: 'open',
+    intent: 'unknown',
+    risk: 'low',
+    unreadCount: 1,
+    messageCount: 1,
+    updatedAt: '2026-06-04T05:20:00.000Z',
+    originContext: {
+      channel: 'facebook',
+      sourceType: 'post',
+      post: { id: 'post_lorra', title: 'Lorra launch post' },
+      productHint: { text: 'Lorra' },
+    },
+  })
+  seed.messages.push({
+    id: 'msg_sales_size',
+    threadId: 'thread_sales_size',
+    direction: 'inbound',
+    authorName: 'Sales Size Customer',
+    text: 'XL',
+    createdAt: '2026-06-04T05:20:00.000Z',
+    providerMessageId: 'mid_sales_size',
+  })
+  const service = createOmniService(seed)
+  const thread = service.getThread('thread_sales_size')
+  const ai = createAiReplyEngine({ provider: 'local_rules', model: 'test' })
+  const decision = await ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
+
+  assert.equal(decision.intent, 'stock')
+  assert.match(decision.draftText, /XL/)
+  assert.match(decision.draftText, /สนใจสีไหน/)
+  assert.match(decision.draftText, /ส่งภาพสี/)
+  assert.doesNotMatch(decision.draftText, /รบกวนแจ้งอก|เอว|สะโพก/)
+})
+
+test('AI reply engine applies sales workflow for color-only product questions', async () => {
+  const seed = createOmniSeed()
+  seed.customers.push({ id: 'cust_sales_color', displayName: 'Sales Color Customer', matchConfidence: 1 })
+  seed.threads.push({
+    id: 'thread_sales_color',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'cust_sales_color',
+    status: 'open',
+    intent: 'unknown',
+    risk: 'low',
+    unreadCount: 1,
+    messageCount: 1,
+    updatedAt: '2026-06-04T05:21:00.000Z',
+    originContext: {
+      channel: 'facebook',
+      sourceType: 'post',
+      post: { id: 'post_lorra', title: 'Lorra launch post' },
+      productHint: { text: 'Lorra' },
+    },
+  })
+  seed.messages.push({
+    id: 'msg_sales_color',
+    threadId: 'thread_sales_color',
+    direction: 'inbound',
+    authorName: 'Sales Color Customer',
+    text: 'มีสีดำไหม',
+    createdAt: '2026-06-04T05:21:00.000Z',
+    providerMessageId: 'mid_sales_color',
+  })
+  const service = createOmniService(seed)
+  const thread = service.getThread('thread_sales_color')
+  const ai = createAiReplyEngine({ provider: 'local_rules', model: 'test' })
+  const decision = await ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
+
+  assert.equal(decision.intent, 'stock')
+  assert.match(decision.draftText, /สีดำ/)
+  assert.match(decision.draftText, /ส่งภาพ/)
+  assert.match(decision.draftText, /สนใจไซซ์ไหน/)
+})
+
+test('AI reply engine closes known color and size price questions with ready-to-buy answer', async () => {
+  const seed = createOmniSeed()
+  seed.customers.push({ id: 'cust_sales_price', displayName: 'Sales Price Customer', matchConfidence: 1 })
+  seed.threads.push({
+    id: 'thread_sales_price',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'cust_sales_price',
+    status: 'open',
+    intent: 'unknown',
+    risk: 'low',
+    unreadCount: 1,
+    messageCount: 1,
+    updatedAt: '2026-06-04T05:22:00.000Z',
+    originContext: {
+      channel: 'facebook',
+      sourceType: 'post',
+      productHint: { text: 'Lorra', color: 'ดำ', size: 'XL' },
+    },
+  })
+  seed.messages.push({
+    id: 'msg_sales_price',
+    threadId: 'thread_sales_price',
+    direction: 'inbound',
+    authorName: 'Sales Price Customer',
+    text: 'ราคาเท่าไหร่',
+    createdAt: '2026-06-04T05:22:00.000Z',
+    providerMessageId: 'mid_sales_price',
+  })
+  seed.inventorySnapshots.push(
+    { id: 'es_stock_lorra_black_xl', sku: 'LORRA-BLK-XL', source: 'easystore', available: 5, checkedAt: '2026-06-04T05:20:00.000Z', productId: 'lorra', variantId: 'xl', productName: 'Lorra', price: 590 },
+  )
+  const service = createOmniService(seed)
+  const thread = service.getThread('thread_sales_price')
+  const ai = createAiReplyEngine({ provider: 'local_rules', model: 'test' })
+  const decision = await ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
+
+  assert.equal(decision.intent, 'price')
+  assert.match(decision.draftText, /สีดำ/)
+  assert.match(decision.draftText, /ไซซ์ XL/)
+  assert.match(decision.draftText, /590/)
+  assert.match(decision.draftText, /พร้อมส่ง/)
+  assert.doesNotMatch(decision.draftText, /สนใจสีหรือไซซ์ไหน/)
+})
+
+test('AI reply engine routes CF to payment before shipping address', async () => {
+  const seed = createOmniSeed()
+  seed.customers.push({ id: 'cust_sales_cf', displayName: 'Sales CF Customer', matchConfidence: 1 })
+  seed.threads.push({
+    id: 'thread_sales_cf',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'cust_sales_cf',
+    status: 'open',
+    intent: 'unknown',
+    risk: 'low',
+    unreadCount: 1,
+    messageCount: 1,
+    updatedAt: '2026-06-04T05:23:00.000Z',
+    originContext: { channel: 'facebook', sourceType: 'post', productHint: { text: 'Lorra', color: 'ดำ', size: 'XL' } },
+  })
+  seed.messages.push({
+    id: 'msg_sales_cf',
+    threadId: 'thread_sales_cf',
+    direction: 'inbound',
+    authorName: 'Sales CF Customer',
+    text: 'CF ค่ะ',
+    createdAt: '2026-06-04T05:23:00.000Z',
+    providerMessageId: 'mid_sales_cf',
+  })
+  const service = createOmniService(seed)
+  const thread = service.getThread('thread_sales_cf')
+  const ai = createAiReplyEngine({ provider: 'local_rules', model: 'test' })
+  const decision = await ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
+
+  assert.equal(decision.intent, 'orderPurchase')
+  assert.equal(decision.allowed, false)
+  assert.match(decision.draftText, /สรุปรายการ/)
+  assert.match(decision.draftText, /ชำระ/)
+  assert.match(decision.draftText, /ส่งสลิป/)
+  assert.doesNotMatch(decision.draftText, /ที่อยู่/)
+})
+
+test('AI reply engine asks shipping details after payment proof', async () => {
+  const seed = createOmniSeed()
+  seed.customers.push({ id: 'cust_sales_slip', displayName: 'Sales Slip Customer', matchConfidence: 1 })
+  seed.threads.push({
+    id: 'thread_sales_slip',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'cust_sales_slip',
+    status: 'open',
+    intent: 'unknown',
+    risk: 'low',
+    unreadCount: 1,
+    messageCount: 1,
+    updatedAt: '2026-06-04T05:24:00.000Z',
+  })
+  seed.messages.push({
+    id: 'msg_sales_slip',
+    threadId: 'thread_sales_slip',
+    direction: 'inbound',
+    authorName: 'Sales Slip Customer',
+    text: 'โอนแล้วค่ะ ส่งสลิปให้แล้ว',
+    createdAt: '2026-06-04T05:24:00.000Z',
+    providerMessageId: 'mid_sales_slip',
+  })
+  const service = createOmniService(seed)
+  const thread = service.getThread('thread_sales_slip')
+  const ai = createAiReplyEngine({ provider: 'local_rules', model: 'test' })
+  const decision = await ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
+
+  assert.equal(decision.intent, 'paymentProof')
+  assert.match(decision.draftText, /ขอบคุณ/)
+  assert.match(decision.draftText, /ชื่อ/)
+  assert.match(decision.draftText, /เบอร์โทร/)
+  assert.match(decision.draftText, /ที่อยู่จัดส่ง/)
+})
+
+test('AI reply engine asks body measurements for size advice', async () => {
+  const seed = createOmniSeed()
+  seed.customers.push({ id: 'cust_sales_size_advice', displayName: 'Sales Size Advice Customer', matchConfidence: 1 })
+  seed.threads.push({
+    id: 'thread_sales_size_advice',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'cust_sales_size_advice',
+    status: 'open',
+    intent: 'unknown',
+    risk: 'low',
+    unreadCount: 1,
+    messageCount: 1,
+    updatedAt: '2026-06-04T05:25:00.000Z',
+    originContext: { channel: 'facebook', sourceType: 'post', productHint: { text: 'Lorra' } },
+  })
+  seed.messages.push({
+    id: 'msg_sales_size_advice',
+    threadId: 'thread_sales_size_advice',
+    direction: 'inbound',
+    authorName: 'Sales Size Advice Customer',
+    text: 'ไซซ์ไหนดี ใส่ได้ไหม',
+    createdAt: '2026-06-04T05:25:00.000Z',
+    providerMessageId: 'mid_sales_size_advice',
+  })
+  const service = createOmniService(seed)
+  const thread = service.getThread('thread_sales_size_advice')
+  const ai = createAiReplyEngine({ provider: 'local_rules', model: 'test' })
+  const decision = await ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
+
+  assert.equal(decision.intent, 'sizeAdvice')
+  assert.match(decision.draftText, /อก/)
+  assert.match(decision.draftText, /เอว/)
+  assert.match(decision.draftText, /สะโพก/)
+})
+
 test('AI reply engine calls Gemini natively for Vercel drafts', async () => {
   const previousKey = process.env.GOOGLE_API_KEY
   process.env.GOOGLE_API_KEY = 'test-gemini-key'
