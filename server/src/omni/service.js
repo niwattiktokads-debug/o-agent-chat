@@ -483,7 +483,8 @@ export function createOmniService(options = createOmniSeed()) {
       const workspaceId = String(options.workspaceId || '').trim()
       const rows = currentData().omniSettings || []
       const row = workspaceId
-        ? rows.find((item) => item.workspaceId === workspaceId || item.id === `workspace:${workspaceId}`)
+        ? rows.find((item) => item.id === `workspace:${workspaceId}`)
+          || rows.find((item) => item.workspaceId === workspaceId)
         : rows.find((item) => item.id === 'default')
       return normalizeSettingsAliases(deepMerge(DEFAULT_OMNI_SETTINGS, normalizeSettingsAliases(row?.settings || {})))
     },
