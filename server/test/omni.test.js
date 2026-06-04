@@ -1412,6 +1412,48 @@ test('AI reply engine asks narrowly when customer came from live without product
   assert.doesNotMatch(decision.draftText, /ส่งรูป/)
 })
 
+test('AI reply engine answers from EasyStore inventory facts instead of promising to check', async () => {
+  const seed = createOmniSeed()
+  seed.customers.push({ id: 'cust_amanda_stock', displayName: 'Amanda Customer', matchConfidence: 1 })
+  seed.threads.push({
+    id: 'thread_amanda_stock',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'cust_amanda_stock',
+    status: 'open',
+    intent: 'unknown',
+    risk: 'low',
+    unreadCount: 1,
+    messageCount: 1,
+    updatedAt: '2026-06-04T05:00:00.000Z',
+  })
+  seed.messages.push({
+    id: 'msg_amanda_stock',
+    threadId: 'thread_amanda_stock',
+    direction: 'inbound',
+    authorName: 'Amanda Customer',
+    text: 'สนใจ Amanda Jumpsuit มีของไหม ราคาเท่าไหร่',
+    createdAt: '2026-06-04T05:00:00.000Z',
+    providerMessageId: 'mid_amanda_stock',
+  })
+  seed.inventorySnapshots.push(
+    { id: 'es_stock_16462646_1', sku: 'AMANDA-BLK-M', source: 'easystore', available: 3, checkedAt: '2026-06-04T04:55:00.000Z', productId: '16462646', variantId: '1', productName: 'Amanda Jumpsuit', price: 1290 },
+    { id: 'es_stock_16462646_2', sku: 'AMANDA-BLK-L', source: 'easystore', available: 0, checkedAt: '2026-06-04T04:55:00.000Z', productId: '16462646', variantId: '2', productName: 'Amanda Jumpsuit', price: 1290 },
+  )
+  const service = createOmniService(seed)
+  const thread = service.getThread('thread_amanda_stock')
+  const ai = createAiReplyEngine({ provider: 'local_rules', model: 'test' })
+  const decision = await ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
+
+  assert.equal(decision.ok, true)
+  assert.equal(decision.intent, 'stock')
+  assert.match(decision.draftText, /เช็กให้แล้ว/)
+  assert.match(decision.draftText, /Amanda Jumpsuit/)
+  assert.match(decision.draftText, /พร้อมส่งรวม 3 ชิ้น/)
+  assert.match(decision.draftText, /1,290/)
+  assert.doesNotMatch(decision.draftText, /เดี๋ยว.*เช็ก/)
+})
+
 test('AI reply engine calls Gemini natively for Vercel drafts', async () => {
   const previousKey = process.env.GOOGLE_API_KEY
   process.env.GOOGLE_API_KEY = 'test-gemini-key'
