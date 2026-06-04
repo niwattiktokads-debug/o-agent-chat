@@ -595,6 +595,35 @@ test('GET /api/omni/connections lists safe connection metadata', async () => {
   }
 })
 
+test('connection metadata treats production env credentials as configured when C Snap is unavailable', async () => {
+  const previousPageToken = process.env.META_PAGE_TOKEN_ANNA_LYNN
+  const previousVerifyToken = process.env.META_VERIFY_TOKEN
+  const previousCSnapAuthFile = process.env.CSNAP_AUTH_FILE
+  process.env.META_PAGE_TOKEN_ANNA_LYNN = 'test-page-token'
+  process.env.META_VERIFY_TOKEN = 'test-verify-token'
+  delete process.env.CSNAP_AUTH_FILE
+  try {
+    const connections = createConnectionRuntime()
+    const body = await connections.list()
+    const meta = body.connections.find((connection) => connection.id === 'meta_anna_lynn')
+    const postSession = body.connections.find((connection) => connection.id === 'facebook_post_cf')
+
+    assert.equal(body.cSnap.ok, false)
+    assert.equal(meta.fields.find((field) => field.id === 'page_token').status, 'configured')
+    assert.equal(meta.fields.find((field) => field.id === 'page_token').source, 'env')
+    assert.equal(meta.fields.find((field) => field.id === 'verify_token').status, 'configured')
+    assert.equal(meta.status, 'ready_to_verify')
+    assert.equal(postSession.fields.find((field) => field.id === 'page_token').status, 'configured')
+  } finally {
+    if (previousPageToken === undefined) delete process.env.META_PAGE_TOKEN_ANNA_LYNN
+    else process.env.META_PAGE_TOKEN_ANNA_LYNN = previousPageToken
+    if (previousVerifyToken === undefined) delete process.env.META_VERIFY_TOKEN
+    else process.env.META_VERIFY_TOKEN = previousVerifyToken
+    if (previousCSnapAuthFile === undefined) delete process.env.CSNAP_AUTH_FILE
+    else process.env.CSNAP_AUTH_FILE = previousCSnapAuthFile
+  }
+})
+
 test('POST /api/omni/connections verifies through injected runtime', async () => {
   const localApp = express()
   localApp.use(express.json())

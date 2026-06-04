@@ -33,9 +33,9 @@ const CONNECTIONS = [
     helper: META_INBOX_HELPER,
     verify: { command: META_INBOX_HELPER, args: ['verify', '--page=anna_lynn'] },
     fields: [
-      { id: 'page_token', label: 'Page access token', credentialName: 'FB Anna Lynn Page Token -OA', secret: true, required: true },
-      { id: 'app_secret', label: 'Meta app secret', credentialName: 'Meta App Secret FB -MP', secret: true, required: false },
-      { id: 'verify_token', label: 'Webhook verify token', credentialName: 'Meta Webhook Verify Token Omni -OA', secret: true, required: true },
+      { id: 'page_token', label: 'Page access token', credentialName: 'FB Anna Lynn Page Token -OA', envNames: ['META_PAGE_TOKEN_ANNA_LYNN', 'META_PAGE_ACCESS_TOKEN'], secret: true, required: true },
+      { id: 'app_secret', label: 'Meta app secret', credentialName: 'Meta App Secret FB -MP', envNames: ['META_APP_SECRET'], secret: true, required: false },
+      { id: 'verify_token', label: 'Webhook verify token', credentialName: 'Meta Webhook Verify Token Omni -OA', envNames: ['META_VERIFY_TOKEN'], secret: true, required: true },
     ],
     docs: '/Users/babycuca/.codex/integrations/meta_inbox_api.json',
     endpoints: [
@@ -58,8 +58,8 @@ const CONNECTIONS = [
     helper: META_INBOX_HELPER,
     verify: { command: META_INBOX_HELPER, args: ['verify', '--page=man_kynd'] },
     fields: [
-      { id: 'page_token', label: 'Page access token', credentialName: 'FB Page Token MAN KYND -MP', secret: true, required: true },
-      { id: 'app_secret', label: 'Meta app secret', credentialName: 'Meta App Secret FB -MP', secret: true, required: false },
+      { id: 'page_token', label: 'Page access token', credentialName: 'FB Page Token MAN KYND -MP', envNames: ['META_PAGE_TOKEN_MAN_KYND', 'META_PAGE_ACCESS_TOKEN'], secret: true, required: true },
+      { id: 'app_secret', label: 'Meta app secret', credentialName: 'Meta App Secret FB -MP', envNames: ['META_APP_SECRET'], secret: true, required: false },
     ],
     docs: '/Users/babycuca/.codex/integrations/meta_inbox_api.json',
     endpoints: [
@@ -202,7 +202,7 @@ const CONNECTIONS = [
     helper: 'runtime gap: extend meta-inbox-api with post selling session comment parser',
     verify: null,
     fields: [
-      { id: 'page_token', label: 'Facebook page token', credentialName: 'FB Anna Lynn Page Token -OA', secret: true, required: true },
+      { id: 'page_token', label: 'Facebook page token', credentialName: 'FB Anna Lynn Page Token -OA', envNames: ['META_PAGE_TOKEN_ANNA_LYNN', 'META_PAGE_ACCESS_TOKEN'], secret: true, required: true },
       { id: 'post_session_rule', label: 'Default post session rule', credentialName: 'FB Post Selling Session Rule -OA', secret: false, required: false },
     ],
     docs: 'https://zortout.com/docs/how-to-create-postsocialchat',
@@ -224,7 +224,7 @@ const CONNECTIONS = [
     helper: 'runtime gap: extend meta-inbox-api with live comment CF stream',
     verify: null,
     fields: [
-      { id: 'page_token', label: 'Facebook page token', credentialName: 'FB Anna Lynn Page Token -OA', secret: true, required: true },
+      { id: 'page_token', label: 'Facebook page token', credentialName: 'FB Anna Lynn Page Token -OA', envNames: ['META_PAGE_TOKEN_ANNA_LYNN', 'META_PAGE_ACCESS_TOKEN'], secret: true, required: true },
       { id: 'live_cf_rule', label: 'Default live CF rule', credentialName: 'FB Live CF Rule -OA', secret: false, required: false },
     ],
     docs: 'https://zortout.com/docs/how-to-create-livesocialchat',
@@ -505,13 +505,14 @@ async function listCredentials() {
 }
 
 function fieldStatus(field, credentials) {
+  const envNames = [field.envName, ...(field.envNames || [])].filter(Boolean)
   if (field.readOnly) {
     const exists = field.id === 'local_oauth' && GEMINI_PROFILE_PATH ? existsSync(GEMINI_PROFILE_PATH) : false
     return {
       id: field.id,
       label: field.label,
       credentialName: field.credentialName,
-      envName: field.envName || null,
+      envName: envNames[0] || null,
       secret: Boolean(field.secret),
       required: Boolean(field.required),
       readOnly: true,
@@ -519,13 +520,13 @@ function fieldStatus(field, credentials) {
       source: exists ? 'local_profile' : 'missing',
     }
   }
-  const envPresent = field.envName ? Boolean(process.env[field.envName]) : false
+  const envPresent = envNames.some((name) => Boolean(process.env[name]))
   const cSnapPresent = credentials.some((credential) => credential.name === field.credentialName)
   return {
     id: field.id,
     label: field.label,
     credentialName: field.credentialName,
-    envName: field.envName || null,
+    envName: envNames[0] || null,
     secret: Boolean(field.secret),
     required: Boolean(field.required),
     readOnly: false,
