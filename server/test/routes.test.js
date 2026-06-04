@@ -1978,6 +1978,83 @@ test('POST /api/omni/threads/:threadId/manual-draft stores text and image attach
   assertBroadcastedOmni(events)
 })
 
+test('POST /api/omni/threads/:threadId/send sends approved Facebook text and records outbound', async () => {
+  const localApp = express()
+  localApp.use(express.json())
+  const localEvents = []
+  const localHub = { broadcast: (event, payload) => localEvents.push({ event, payload }) }
+  const seed = createOmniService().snapshot()
+  seed.customers.push({
+    id: 'fb_customer_send_test',
+    displayName: 'Send Test Customer',
+    platform: 'facebook',
+    providerCustomerId: 'psid_send_test',
+    matchConfidence: 1,
+  })
+  seed.threads.push({
+    id: 'fb_send_test_thread',
+    providerThreadId: 'fb_send_test_thread_provider',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'fb_customer_send_test',
+    status: 'open',
+    intent: 'unknown',
+    risk: 'medium',
+    unreadCount: 1,
+    messageCount: 1,
+    updatedAt: '2026-06-04T00:00:00.000Z',
+  })
+  seed.messages.push({
+    id: 'fb_send_test_msg_1',
+    threadId: 'fb_send_test_thread',
+    direction: 'inbound',
+    authorName: 'Send Test Customer',
+    text: 'สนใจสินค้า',
+    createdAt: '2026-06-04T00:00:00.000Z',
+    providerMessageId: 'mid_send_test_1',
+    sourceRef: 'meta_webhook:122106446570001676',
+  })
+  const sent = []
+  mountRoutes(localApp, localHub, createState(), {
+    omni: createOmniService(seed),
+    sendFacebookReply: async (input) => {
+      sent.push(input)
+      return { ok: true, response: { message_id: 'mid_out_send_test' } }
+    },
+  })
+  const localServer = localApp.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const response = await fetch(`http://localhost:${localPort}/api/omni/threads/fb_send_test_thread/send`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text: 'ขอบคุณค่ะ เดี๋ยวเช็กให้ค่ะ', approved: true, authorName: 'บอส' }),
+    })
+    const body = await response.json()
+    assert.equal(response.status, 200)
+    assert.equal(body.ok, true)
+    assert.equal(body.sent, true)
+    assert.equal(body.message.sourceRef, 'manual_send:anna_lynn')
+    assert.equal(body.message.providerMessageId, 'mid_out_send_test')
+    assert.equal(sent.length, 1)
+    assert.equal(sent[0].pageProfile, 'anna_lynn')
+    assert.equal(sent[0].recipientId, 'psid_send_test')
+    assertBroadcastedOmni(localEvents)
+  } finally {
+    localServer.close()
+  }
+})
+
+test('POST /api/omni/threads/:threadId/send requires approval', async () => {
+  const { body, status } = await req('POST', '/api/omni/threads/thread_1/send', {
+    text: 'ยังไม่อนุมัติ',
+  })
+
+  assert.equal(status, 403)
+  assert.equal(body.ok, false)
+  assert.equal(body.error, 'approval_required')
+})
+
 test('GET /api/omni/payments/providers/meta_pay_kgp/health reports guarded setup status', async () => {
   const { body, status } = await req('GET', '/api/omni/payments/providers/meta_pay_kgp/health')
 

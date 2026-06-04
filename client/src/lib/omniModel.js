@@ -96,6 +96,7 @@ export function sourceLabel(sourceRef = '') {
   if (sourceRef.startsWith('meta_thread:')) return 'Meta'
   if (sourceRef.startsWith('tiktok_business_messaging:')) return 'TikTok'
   if (sourceRef.startsWith('ai_auto_reply')) return 'AI'
+  if (sourceRef.startsWith('manual_send:')) return 'ส่งจริง'
   if (sourceRef.startsWith('manual_draft')) return 'Draft'
   if (sourceRef.startsWith('easystore_product_draft:')) return 'สินค้า'
   return 'Omni'

@@ -386,6 +386,17 @@ export async function saveManualReplyDraft(threadId, draft) {
   return body
 }
 
+export async function sendManualReply(threadId, draft) {
+  const response = await apiFetch(`/api/omni/threads/${threadId}/send`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ ...draft, approved: true }),
+  })
+  const body = await response.json()
+  if (!response.ok || !body.ok) throw new Error(body.error || 'manual_send_failed')
+  return body
+}
+
 export async function createEasyStoreProductDraft(threadId, productId) {
   const response = await apiFetch(`/api/omni/threads/${threadId}/easystore-product-draft`, {
     method: 'POST',
