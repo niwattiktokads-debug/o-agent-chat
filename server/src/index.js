@@ -37,6 +37,7 @@ app.use(express.json({
   strict: true,
   verify: (req, _res, buffer) => {
     if (req.path.startsWith('/webhook/easystore')) req.rawBody = Buffer.from(buffer)
+    if (req.path.startsWith('/webhook/kgp')) req.rawBody = Buffer.from(buffer)
   },
 }))
 app.use(express.urlencoded({ extended: false, limit: '16kb' }))

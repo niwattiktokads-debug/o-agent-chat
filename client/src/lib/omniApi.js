@@ -145,6 +145,10 @@ export async function fetchConnectorHealth() {
   return (await getJson('/api/omni/connectors/health')).health
 }
 
+export async function fetchPaymentProviderHealth(provider = 'meta_pay_kgp') {
+  return (await getJson(`/api/omni/payments/providers/${encodeURIComponent(provider)}/health`)).health
+}
+
 export async function fetchOmniStorageStatus() {
   return (await getJson('/api/omni/storage/status')).storage
 }
@@ -224,6 +228,22 @@ export async function createOrderDraft(input) {
 
 export async function approveOrderDraft(orderId) {
   return postJson(`/api/omni/order-drafts/${encodeURIComponent(orderId)}/approve`, { approved: true, approvedBy: 'boss' })
+}
+
+export async function createPaymentRequest(input) {
+  return postJson('/api/omni/payment-requests', {
+    ...input,
+    approved: true,
+    approvedBy: input?.approvedBy || 'boss',
+  })
+}
+
+export async function createKgpCheckout(paymentRequestId) {
+  return postJson(`/api/omni/payment-requests/${encodeURIComponent(paymentRequestId)}/kgp/checkout`, {
+    approved: true,
+    messageApproved: true,
+    approvedBy: 'boss',
+  })
 }
 
 export async function fetchConnections() {

@@ -12,6 +12,7 @@ import { createOmniService } from '../src/omni/service.js'
 import { createOmniSeed } from '../src/omni/seed.js'
 import { createSecurityMiddleware } from '../src/security.js'
 import { createConnectionRuntime } from '../src/omni/connections.js'
+import { createKgpPaymentRuntime } from '../src/omni/kgpPaymentRuntime.js'
 
 const app = express()
 app.use(express.json())
@@ -2062,8 +2063,10 @@ test('GET /api/omni/payments/providers/meta_pay_kgp/health reports guarded setup
   assert.equal(body.ok, true)
   assert.equal(body.provider, 'meta_pay_kgp')
   assert.equal(body.health.status, 'disabled')
-  assert.equal(body.health.mode, 'guarded_setup')
+  assert.equal(body.health.mode, 'credentials_pending')
   assert.equal(body.health.liveReady, false)
+  assert.equal(body.health.credentialsReady, false)
+  assert.equal(body.health.checkoutEndpointReady, false)
 })
 
 test('POST /api/omni/payment-requests requires approval for customer-facing payment links', async () => {
@@ -2098,6 +2101,106 @@ test('POST /api/omni/payment-requests creates guarded KGP draft after approval',
   assert.equal(body.event.source, 'meta_pay_kgp')
   assert.equal(body.audit.action, 'payment_request_created')
   assert.equal(body.audit.afterJson.paymentRequestId, body.payment.id)
+})
+
+test('POST /api/omni/payment-requests/:id/kgp/checkout stays disabled until KGP is enabled', async () => {
+  const draft = await req('POST', '/api/omni/payment-requests', {
+    threadId: 'thread_1',
+    provider: 'meta_pay_kgp',
+    amount: 729,
+    currency: 'THB',
+    approved: true,
+  })
+
+  const missingMessageApproval = await req('POST', `/api/omni/payment-requests/${draft.body.payment.id}/kgp/checkout`, {
+    approved: true,
+  })
+  assert.equal(missingMessageApproval.status, 403)
+  assert.equal(missingMessageApproval.body.error, 'message_approval_required')
+
+  const checkout = await req('POST', `/api/omni/payment-requests/${draft.body.payment.id}/kgp/checkout`, {
+    approved: true,
+    messageApproved: true,
+  })
+  assert.equal(checkout.status, 409)
+  assert.equal(checkout.body.error, 'kgp_provider_not_enabled')
+  assert.equal(checkout.body.health.liveReady, false)
+})
+
+test('POST /webhook/kgp/meta-pay verifies signature and updates payment status', async () => {
+  const localApp = express()
+  localApp.use(express.json({
+    verify: (req, _res, buffer) => {
+      if (req.path.startsWith('/webhook/kgp')) req.rawBody = Buffer.from(buffer)
+    },
+  }))
+  const localOmni = createOmniService()
+  const localEvents = []
+  const webhookSecret = 'kgp-webhook-secret-test'
+  mountRoutes(localApp, { broadcast: (event, payload) => localEvents.push({ event, payload }) }, createState(), {
+    omni: localOmni,
+    kgpPayment: createKgpPaymentRuntime({
+      env: {
+        META_PAY_KGP_WEBHOOK_SECRET: webhookSecret,
+      },
+    }),
+  })
+  const localServer = localApp.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const draftResponse = await fetch(`http://localhost:${localPort}/api/omni/payment-requests`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        threadId: 'thread_1',
+        provider: 'meta_pay_kgp',
+        amount: 729,
+        currency: 'THB',
+        approved: true,
+      }),
+    })
+    const draft = await draftResponse.json()
+    assert.equal(draftResponse.status, 200)
+
+    const payload = {
+      eventId: 'kgp_evt_paid_1',
+      paymentRequestId: draft.payment.id,
+      transactionId: 'kgp_tx_1',
+      status: 'paid',
+    }
+    const raw = JSON.stringify(payload)
+    const signature = createHmac('sha256', webhookSecret).update(raw).digest('hex')
+
+    const invalid = await fetch(`http://localhost:${localPort}/webhook/kgp/meta-pay`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-kgp-signature': 'bad-signature' },
+      body: raw,
+    })
+    assert.equal(invalid.status, 401)
+
+    const valid = await fetch(`http://localhost:${localPort}/webhook/kgp/meta-pay`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-kgp-signature': signature },
+      body: raw,
+    })
+    const body = await valid.json()
+    assert.equal(valid.status, 200)
+    assert.equal(body.ok, true)
+    assert.equal(body.payment.status, 'paid')
+    assert.equal(body.event.sourceRef, 'kgp_webhook:kgp_evt_paid_1')
+    assertBroadcastedOmni(localEvents)
+
+    const duplicate = await fetch(`http://localhost:${localPort}/webhook/kgp/meta-pay`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-kgp-signature': signature },
+      body: raw,
+    })
+    const duplicateBody = await duplicate.json()
+    assert.equal(duplicate.status, 200)
+    assert.equal(duplicateBody.deduped, true)
+  } finally {
+    localServer.close()
+  }
 })
 
 test('POST /webhook/meta can send guarded auto reply for Anna Lynn only', async () => {

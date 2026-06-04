@@ -39,6 +39,7 @@ export function getOmniSchemaSummary() {
     tableCount: REQUIRED_OMNI_TABLES.length,
     tables: REQUIRED_OMNI_TABLES,
     hasPaymentApprovalGuard: /approval_required\s+INTEGER\s+NOT NULL\s+DEFAULT\s+1/.test(sql),
+    hasKgpCheckoutFields: /checkout_url/.test(sql) && /message_preview/.test(sql) && /provider_response_json/.test(sql),
     hasAuditLog: /CREATE TABLE IF NOT EXISTS action_audits/.test(sql),
     hasSourceRefs: /source_ref/.test(sql),
     hasChatRetention: /CREATE TABLE IF NOT EXISTS retention_policies/.test(sql) && /idx_messages_created/.test(sql),
