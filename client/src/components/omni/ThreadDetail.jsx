@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { autoSendStatus, customerAvatarUrl, customerForThread, formatShortTime, initialsForName, pageForThread, sourceLabel, statusLabel } from '../../lib/omniModel.js'
 import { createEasyStoreProductDraft, saveManualReplyDraft } from '../../lib/omniApi.js'
 
-export default function ThreadDetail({ snapshot, thread, onSnapshot }) {
+export default function ThreadDetail({ snapshot, thread, onSnapshot, suggestedDraft }) {
   const endRef = useRef(null)
   const customer = customerForThread(snapshot?.customers, thread)
   const page = pageForThread(snapshot?.pages, thread)
@@ -46,7 +46,7 @@ export default function ThreadDetail({ snapshot, thread, onSnapshot }) {
         ))}
         <div ref={endRef} />
       </div>
-      <ManualReplyComposer thread={thread} onSnapshot={onSnapshot} />
+      <ManualReplyComposer thread={thread} onSnapshot={onSnapshot} suggestedDraft={suggestedDraft} />
     </>
   )
 }
@@ -94,7 +94,7 @@ function MessageBubble({ message, pageName, customerName }) {
   )
 }
 
-function ManualReplyComposer({ thread, onSnapshot }) {
+function ManualReplyComposer({ thread, onSnapshot, suggestedDraft }) {
   const [text, setText] = useState('')
   const [attachments, setAttachments] = useState([])
   const [busy, setBusy] = useState(false)
@@ -112,6 +112,12 @@ function ManualReplyComposer({ thread, onSnapshot }) {
     setProductStatus('')
     setProductPanelOpen(false)
   }, [thread?.id])
+
+  useEffect(() => {
+    if (!suggestedDraft?.text || suggestedDraft.threadId !== thread?.id) return
+    setText(suggestedDraft.text)
+    setError('')
+  }, [suggestedDraft?.id, suggestedDraft?.text, suggestedDraft?.threadId, thread?.id])
 
   async function readFiles(files) {
     const imageFiles = [...files].filter((file) => file.type.startsWith('image/')).slice(0, 5 - attachments.length)

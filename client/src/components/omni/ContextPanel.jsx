@@ -12,7 +12,7 @@ const TABS = [
   { id: 'payment', label: 'ชำระเงิน' },
 ]
 
-export default function ContextPanel({ snapshot, thread, onSnapshot, workspaceId }) {
+export default function ContextPanel({ snapshot, thread, onSnapshot, workspaceId, onUseDraft }) {
   const [tab, setTab] = useState('ai')
   const [settings, setSettings] = useState(snapshot?.settings || null)
   const [guardBusy, setGuardBusy] = useState(false)
@@ -92,7 +92,7 @@ export default function ContextPanel({ snapshot, thread, onSnapshot, workspaceId
           ))}
         </div>
       </div>
-      {tab === 'ai' ? <AiDecisionPanel snapshot={snapshot} thread={thread} onDrafted={onSnapshot} /> : null}
+      {tab === 'ai' ? <AiDecisionPanel snapshot={snapshot} thread={thread} onDrafted={onSnapshot} onUseDraft={onUseDraft} /> : null}
       {tab === 'profiles' ? <ProfilePanel snapshot={snapshot} /> : null}
       {tab === 'orders' ? <OrderDesk snapshot={snapshot} thread={thread} onSnapshot={onSnapshot} /> : null}
       {tab === 'payment' ? <PaymentDesk snapshot={snapshot} thread={thread} /> : null}

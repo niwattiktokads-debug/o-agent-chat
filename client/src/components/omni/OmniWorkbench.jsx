@@ -26,6 +26,7 @@ export default function OmniWorkbench({
   const [loginBusy, setLoginBusy] = useState(false)
   const [pageId, setPageId] = useState('all')
   const [threadId, setThreadId] = useState(null)
+  const [composerDraft, setComposerDraft] = useState(null)
   const [localOperationMode, setLocalOperationMode] = useState('chat')
   const operationMode = controlledOperationMode || localOperationMode
   const gridClass = operationMode === 'chat'
@@ -144,10 +145,16 @@ export default function OmniWorkbench({
             </div>
           </div>
         </header>
-        <ThreadDetail snapshot={snapshot} thread={selectedThread} onSnapshot={setSnapshot} />
+        <ThreadDetail snapshot={snapshot} thread={selectedThread} onSnapshot={setSnapshot} suggestedDraft={composerDraft} />
       </main>
       <div className="order-3 max-h-[50dvh] min-h-[320px] shrink-0 overflow-hidden lg:hidden xl:order-none xl:block xl:max-h-none xl:min-h-0">
-        <ContextPanel snapshot={snapshot} thread={selectedThread} onSnapshot={setSnapshot} workspaceId={workspaceId} />
+        <ContextPanel
+          snapshot={snapshot}
+          thread={selectedThread}
+          onSnapshot={setSnapshot}
+          workspaceId={workspaceId}
+          onUseDraft={(draft) => setComposerDraft(draft)}
+        />
       </div>
         </>
       ) : (
