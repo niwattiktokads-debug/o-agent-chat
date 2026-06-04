@@ -593,6 +593,61 @@ export function createOmniService(options = createOmniSeed()) {
         snapshot: this.snapshot(),
       }
     },
+    updatePageProviderProfile({ pageId, provider = 'instagram', providerAccountId, username, name, avatarUrl, updatedBy = 'system' } = {}) {
+      const id = String(pageId || '').trim()
+      const snapshot = currentData()
+      const page = snapshot.pages.find((item) => item.id === id)
+      if (!page) return { ok: false, error: 'page_not_found' }
+
+      const cleanAvatarUrl = String(avatarUrl || '').trim()
+      const cleanProviderAccountId = String(providerAccountId || '').trim()
+      const cleanUsername = String(username || '').trim()
+      const cleanProvider = String(provider || 'instagram').trim() || 'instagram'
+      const now = new Date().toISOString()
+      const before = structuredClone(page)
+      const nextPage = {
+        ...page,
+        ...(name ? { providerDisplayName: String(name) } : {}),
+        ...(cleanUsername ? { providerUsername: cleanUsername } : {}),
+        ...(cleanAvatarUrl ? { avatarUrl: cleanAvatarUrl, profilePictureUrl: cleanAvatarUrl } : {}),
+        updatedAt: now,
+      }
+      const pageResult = upsert('pages', [nextPage])
+
+      const existingAccount = (snapshot.platformAccounts || []).find((item) => item.pageId === id && item.platform === cleanProvider)
+      const nextAccount = {
+        ...(existingAccount || {
+          id: `acct_${cleanProvider}_${id.replace(/^page_/, '')}`,
+          pageId: id,
+          platform: cleanProvider,
+          provider: cleanProvider === 'instagram' ? 'instagram_messaging' : cleanProvider,
+          status: 'healthy',
+        }),
+        ...(cleanProviderAccountId ? { providerAccountId: cleanProviderAccountId } : {}),
+        ...(cleanUsername ? { username: cleanUsername } : {}),
+        ...(cleanAvatarUrl ? { avatarUrl: cleanAvatarUrl, profilePictureUrl: cleanAvatarUrl } : {}),
+        updatedAt: now,
+      }
+      const accountResult = upsert('platformAccounts', [nextAccount])
+      const audit = createActionAuditRow({
+        action: 'page_provider_profile_updated',
+        workspaceId: page.workspaceId || null,
+        actorType: 'system',
+        actorId: String(updatedBy || 'system'),
+        before,
+        after: nextPage,
+        sourceRef: `omni_page:${id}:${cleanProvider}:profile`,
+      })
+      const auditResult = upsert('actionAudits', [audit])
+      return {
+        ok: true,
+        result: { pages: pageResult, platformAccounts: accountResult, actionAudits: auditResult },
+        page: structuredClone(nextPage),
+        account: structuredClone(nextAccount),
+        audit: structuredClone(audit),
+        snapshot: this.snapshot(),
+      }
+    },
     listRetentionPolicies() {
       const policies = currentData().retentionPolicies || []
       if (policies.length === 0) return [structuredClone(DEFAULT_CHAT_RETENTION_POLICY)]
