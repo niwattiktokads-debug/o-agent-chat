@@ -78,6 +78,16 @@ function getCustomerSender(senders = [], pageId) {
   return senders.find((sender) => sender.id !== pageId) || senders[0] || null
 }
 
+function profileImageUrl(profile = {}) {
+  return profile.profile_pic
+    || profile.profilePic
+    || profile.picture?.data?.url
+    || profile.picture?.url
+    || profile.avatarUrl
+    || profile.imageUrl
+    || ''
+}
+
 function normalizeMetaThreadMessages({ conversation, customer, pageId, threadResponse }) {
   const threadId = `fb_${conversation.id}`
   const rows = threadResponse?.data || []
@@ -132,6 +142,7 @@ export function normalizeMetaConversations({ pageProfile, response, threadMessag
       displayName: customer?.name || 'Facebook Customer',
       platform: 'facebook',
       providerCustomerId: customer?.id || null,
+      avatarUrl: profileImageUrl(customer),
       matchConfidence: customer?.id ? 1 : 0.2,
     })
 

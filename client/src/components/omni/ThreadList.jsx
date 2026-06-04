@@ -1,5 +1,5 @@
 import React from 'react'
-import { customerForThread, formatShortTime, latestMessageForThread, pageForThread, statusLabel } from '../../lib/omniModel.js'
+import { customerAvatarUrl, customerForThread, formatShortTime, initialsForName, latestMessageForThread, pageForThread, statusLabel } from '../../lib/omniModel.js'
 
 export default function ThreadList({ threads, snapshot, activeThreadId, onSelect }) {
   return (
@@ -28,6 +28,7 @@ function ThreadRow({ thread, snapshot, active, onSelect }) {
   const page = pageForThread(snapshot.pages, thread)
   const latest = latestMessageForThread(snapshot.messages, thread.id)
   const customerName = customer?.displayName || 'Facebook Customer'
+  const avatarUrl = customerAvatarUrl(customer)
   const preview = latest?.text || 'ยังไม่มีข้อความ'
   const time = formatShortTime(latest?.createdAt || thread.updatedAt)
 
@@ -37,14 +38,17 @@ function ThreadRow({ thread, snapshot, active, onSelect }) {
       onClick={onSelect}
     >
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="truncate text-sm font-bold text-[var(--color-ink)]">{customerName}</span>
-            {thread.unreadCount ? <span className="rounded-[var(--radius-pill)] bg-[var(--color-danger)] px-1.5 text-[10px] font-semibold text-white">{thread.unreadCount}</span> : null}
-          </div>
-          <div className="mt-1 flex min-w-0 items-center gap-2 text-[11px] text-[var(--color-muted)]">
-            <span className="truncate">{page?.name || thread.pageId}</span>
-            <span>{thread.platform}</span>
+        <div className="flex min-w-0 items-start gap-3">
+          <CustomerAvatar name={customerName} avatarUrl={avatarUrl} />
+          <div className="min-w-0">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="truncate text-sm font-bold text-[var(--color-ink)]">{customerName}</span>
+              {thread.unreadCount ? <span className="rounded-[var(--radius-pill)] bg-[var(--color-danger)] px-1.5 text-[10px] font-semibold text-white">{thread.unreadCount}</span> : null}
+            </div>
+            <div className="mt-1 flex min-w-0 items-center gap-2 text-[11px] text-[var(--color-muted)]">
+              <span className="truncate">{page?.name || thread.pageId}</span>
+              <span>{thread.platform}</span>
+            </div>
           </div>
         </div>
         <span className="shrink-0 text-[11px] tabular-nums text-[var(--color-muted)]">{time}</span>
@@ -55,5 +59,23 @@ function ThreadRow({ thread, snapshot, active, onSelect }) {
         <span className="text-[11px] text-[var(--color-muted)]">{thread.intent} · {thread.risk}</span>
       </div>
     </button>
+  )
+}
+
+function CustomerAvatar({ name, avatarUrl }) {
+  if (avatarUrl) {
+    return (
+      <img
+        src={avatarUrl}
+        alt={name}
+        className="h-10 w-10 shrink-0 rounded-full border border-[var(--color-rule)] object-cover"
+      />
+    )
+  }
+
+  return (
+    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[var(--color-rule)] bg-[var(--color-panel-2)] text-xs font-black text-[var(--color-ink-2)]">
+      {initialsForName(name)}
+    </span>
   )
 }

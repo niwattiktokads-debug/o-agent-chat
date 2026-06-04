@@ -1586,6 +1586,51 @@ test('POST /webhook/easystore verifies HMAC and syncs order event', async () => 
   }
 })
 
+test('POST /api/omni/threads/:threadId/easystore-product-draft creates draft-only product presentation', async () => {
+  const localApp = express()
+  localApp.use(express.json())
+  const localEvents = []
+  const localOmni = createOmniService()
+  mountRoutes(localApp, { broadcast: (event, payload) => localEvents.push({ event, payload }) }, createState(), {
+    omni: localOmni,
+    easyStore: {
+      getProductPreview: async ({ productId }) => ({
+        ok: true,
+        product: {
+          id: productId,
+          title: 'Amanda Jumpsuit',
+          price: { formatted: '฿1,290', amount: 1290, currency: 'THB' },
+          stock: { totalQuantity: 5, status: 'in_stock' },
+          images: [{ url: 'https://cdn.example/amanda.jpg', alt: 'Amanda Jumpsuit' }],
+          links: { storefrontUrl: 'https://annalynna.easy.co/products/amanda-jumpsuit' },
+        },
+      }),
+    },
+  })
+  const localServer = localApp.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const response = await fetch(`http://localhost:${localPort}/api/omni/threads/thread_1/easystore-product-draft`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ productId: '16462646' }),
+    })
+    const body = await response.json()
+
+    assert.equal(response.status, 200)
+    assert.equal(body.ok, true)
+    assert.equal(body.message.deliveryStatus, 'draft_only')
+    assert.equal(body.message.sourceRef, 'easystore_product_draft:16462646')
+    assert.match(body.message.text, /Amanda Jumpsuit/)
+    assert.match(body.message.text, /https:\/\/omni\.oagent\.biz\/p\/easystore\/16462646\?threadId=thread_1/)
+    assert.match(body.message.text, /https:\/\/annalynna\.easy\.co\/products\/amanda-jumpsuit/)
+    assert.equal(body.message.attachments[0].url, 'https://cdn.example/amanda.jpg')
+    assert.equal(localEvents.some((event) => event.event === 'omni'), true)
+  } finally {
+    localServer.close()
+  }
+})
+
 test('POST /webhook/easystore syncs product events to Meta Catalog runtime', async () => {
   const localApp = express()
   localApp.use(express.json({

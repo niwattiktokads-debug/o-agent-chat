@@ -26,6 +26,19 @@ export function customerForThread(customers = [], thread) {
   return customers.find((customer) => customer.id === thread?.customerId) || null
 }
 
+export function customerAvatarUrl(customer = {}) {
+  const profile = customer || {}
+  return profile.avatarUrl || profile.profilePic || profile.profile_pic || profile.picture?.data?.url || profile.pictureUrl || ''
+}
+
+export function initialsForName(name = '') {
+  const text = String(name || '').trim()
+  if (!text) return '?'
+  const parts = text.split(/\s+/).filter(Boolean)
+  const initials = parts.slice(0, 2).map((part) => part[0]).join('')
+  return initials.toUpperCase()
+}
+
 export function latestMessageForThread(messages = [], threadId) {
   return messages
     .filter((message) => message.threadId === threadId)
@@ -80,6 +93,7 @@ export function sourceLabel(sourceRef = '') {
   if (sourceRef.startsWith('tiktok_business_messaging:')) return 'TikTok'
   if (sourceRef.startsWith('ai_auto_reply')) return 'AI'
   if (sourceRef.startsWith('manual_draft')) return 'Draft'
+  if (sourceRef.startsWith('easystore_product_draft:')) return 'สินค้า'
   return 'Omni'
 }
 

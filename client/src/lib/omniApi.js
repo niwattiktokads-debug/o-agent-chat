@@ -385,3 +385,14 @@ export async function saveManualReplyDraft(threadId, draft) {
   if (!response.ok || !body.ok) throw new Error(body.error || 'manual_draft_failed')
   return body
 }
+
+export async function createEasyStoreProductDraft(threadId, productId) {
+  const response = await apiFetch(`/api/omni/threads/${threadId}/easystore-product-draft`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ productId }),
+  })
+  const body = await response.json()
+  if (!response.ok || !body.ok) throw new Error(body.error || 'easystore_product_draft_failed')
+  return body
+}
