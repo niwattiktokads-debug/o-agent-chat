@@ -1454,6 +1454,47 @@ test('AI reply engine answers from EasyStore inventory facts instead of promisin
   assert.doesNotMatch(decision.draftText, /เดี๋ยว.*เช็ก/)
 })
 
+test('AI reply engine prioritizes exact EasyStore SKU over newer color-only product matches', async () => {
+  const seed = createOmniSeed()
+  seed.customers.push({ id: 'cust_polo_stock', displayName: 'Polo Customer', matchConfidence: 1 })
+  seed.threads.push({
+    id: 'thread_polo_stock',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'cust_polo_stock',
+    status: 'open',
+    intent: 'unknown',
+    risk: 'low',
+    unreadCount: 1,
+    messageCount: 1,
+    updatedAt: '2026-06-04T05:00:00.000Z',
+  })
+  seed.messages.push({
+    id: 'msg_polo_stock',
+    threadId: 'thread_polo_stock',
+    direction: 'inbound',
+    authorName: 'Polo Customer',
+    text: 'สนใจ poloดำM มีของไหม ราคาเท่าไหร่',
+    createdAt: '2026-06-04T05:00:00.000Z',
+    providerMessageId: 'mid_polo_stock',
+  })
+  seed.inventorySnapshots.push(
+    { id: 'es_stock_polo_black_m', sku: 'poloดำM', source: 'easystore', available: 20, checkedAt: '2026-06-04T04:35:16.000Z', productId: '16462402', variantId: '76013354', productName: 'เสื้อเชิ้ตโปโลผู้หญิง', price: 590 },
+    { id: 'es_stock_cropset_black_1', sku: 'cropsetดำ1', source: 'easystore', available: 0, checkedAt: '2026-06-04T04:55:09.000Z', productId: '16462572', variantId: '76014489', productName: 'ชุดเซ็ต โอเวอร์ไซซ์ สีดำ', price: 499 },
+  )
+  const service = createOmniService(seed)
+  const thread = service.getThread('thread_polo_stock')
+  const ai = createAiReplyEngine({ provider: 'local_rules', model: 'test' })
+  const decision = await ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
+
+  assert.equal(decision.ok, true)
+  assert.match(decision.draftText, /เสื้อเชิ้ตโปโลผู้หญิง/)
+  assert.match(decision.draftText, /พร้อมส่งรวม 20 ชิ้น/)
+  assert.match(decision.draftText, /590/)
+  assert.doesNotMatch(decision.draftText, /ชุดเซ็ต/)
+  assert.deepEqual(decision.sourceIds.includes('es_stock_polo_black_m'), true)
+})
+
 test('AI reply engine calls Gemini natively for Vercel drafts', async () => {
   const previousKey = process.env.GOOGLE_API_KEY
   process.env.GOOGLE_API_KEY = 'test-gemini-key'

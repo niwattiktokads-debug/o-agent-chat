@@ -61,6 +61,13 @@ function searchTokens(value) {
     .filter((token) => token.length >= 2)
 }
 
+function searchTerms(value) {
+  return String(value || '')
+    .split(/[^\p{L}\p{N}]+/u)
+    .map((term) => normalizeSearchText(term))
+    .filter((term) => term.length >= 2)
+}
+
 function moneyText(value) {
   const amount = Number(value)
   if (!Number.isFinite(amount) || amount <= 0) return ''
@@ -77,13 +84,23 @@ function productFactsForThread(thread, snapshot, originContext = null) {
     originContext?.live?.sku,
   ].filter(Boolean).join(' ')
   const tokens = searchTokens(query)
-  if (!tokens.length) return null
+  const terms = searchTerms(query)
+  if (!tokens.length && !terms.length) return null
 
   const rows = (snapshot.inventorySnapshots || [])
     .filter((row) => row.source === 'easystore' || row.source === 'easy_store' || String(row.id || '').startsWith('es_stock_'))
     .map((row) => {
-      const haystack = normalizeSearchText([row.productName, row.sku, row.productId].filter(Boolean).join(' '))
-      const score = tokens.reduce((sum, token) => sum + (haystack.includes(token) ? 1 : 0), 0)
+      const sku = normalizeSearchText(row.sku)
+      const productName = normalizeSearchText(row.productName)
+      const productId = normalizeSearchText(row.productId)
+      const haystack = [productName, sku, productId].filter(Boolean).join(' ')
+      let score = tokens.reduce((sum, token) => sum + (haystack.includes(token) ? 1 : 0), 0)
+      for (const term of terms) {
+        if (sku && sku === term) score += 30
+        else if (sku && (sku.includes(term) || term.includes(sku))) score += 20
+        else if (productName && productName.includes(term)) score += 3
+        else if (productId && productId === term) score += 10
+      }
       return { row, score }
     })
     .filter((item) => item.score > 0)
