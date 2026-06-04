@@ -62,14 +62,15 @@ vi.mock('../../lib/omniApi.js', () => ({
     },
   }),
   createAiDraft: async () => ({
-    decision: { action: 'draft_ready', confidence: 0.82, draftText: 'เดี๋ยวเช็กสต็อกให้ค่ะ' },
+    decision: { id: 'decision_ai_new', threadId: 'thread_1', action: 'draft_ready', confidence: 0.82, draftText: 'เดี๋ยวเช็กสต็อกให้ค่ะ' },
     snapshot: {
       pages: [{ id: 'page_mankynd', name: 'MAN KYND', status: 'active' }],
-      threads: [],
-      messages: [],
-      customers: [],
+      platformAccounts: [{ id: 'acct_fb_mankynd', pageId: 'page_mankynd', platform: 'facebook' }],
+      threads: [{ id: 'thread_1', pageId: 'page_mankynd', platform: 'facebook', status: 'draft_ready', intent: 'stock', risk: 'low' }],
+      messages: [{ id: 'msg_1', threadId: 'thread_1', direction: 'inbound', authorName: 'ลูกค้า A', text: 'มีไซซ์ M สีดำไหม' }],
+      customers: [{ id: 'cust_1', displayName: 'ลูกค้า A' }],
       orders: [],
-      aiDecisions: [],
+      aiDecisions: [{ id: 'decision_ai_new', threadId: 'thread_1', action: 'draft_ready', confidence: 0.82, draftText: 'เดี๋ยวเช็กสต็อกให้ค่ะ' }],
       paymentRequests: [],
       connectorHealth: [],
     },
@@ -397,6 +398,18 @@ describe('OmniWorkbench', () => {
       expect(screen.getByText('ตอบจากช่องพิมพ์ใหม่')).toBeInTheDocument()
     })
     expect(screen.getByText('Draft')).toBeInTheDocument()
+  })
+
+  it('places an AI draft into the reply composer for review', async () => {
+    render(<OmniWorkbench />)
+    const draftBox = await screen.findByPlaceholderText(/พิมพ์ข้อความตอบลูกค้า/)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'ให้ AI ร่าง' }))
+
+    await waitFor(() => {
+      expect(draftBox).toHaveValue('เดี๋ยวเช็กสต็อกให้ค่ะ')
+    })
+    expect(await screen.findByRole('button', { name: 'วางในช่องตอบ' })).toBeInTheDocument()
   })
 
   it('creates an EasyStore product draft from the selected thread without sending', async () => {

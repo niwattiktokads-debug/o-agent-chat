@@ -25,7 +25,7 @@ function sortDecisions(decisions = []) {
   return decisions.slice().sort((a, b) => String(b.createdAt || b.id || '').localeCompare(String(a.createdAt || a.id || '')))
 }
 
-export default function AiDecisionPanel({ snapshot, thread, onDrafted }) {
+export default function AiDecisionPanel({ snapshot, thread, onDrafted, onUseDraft }) {
   const [busy, setBusy] = useState(false)
   const [draft, setDraft] = useState(null)
   const [error, setError] = useState('')
@@ -41,6 +41,14 @@ export default function AiDecisionPanel({ snapshot, thread, onDrafted }) {
       const result = await createAiDraft(thread.id)
       setDraft(result.decision)
       onDrafted?.(result.snapshot)
+      if (result.decision?.draftText) {
+        onUseDraft?.({
+          id: result.decision.id || `ai_draft_${thread.id}_${Date.now()}`,
+          threadId: thread.id,
+          text: result.decision.draftText,
+          source: 'ai',
+        })
+      }
     } catch (err) {
       setError(err.message || 'ai_draft_failed')
     } finally {
@@ -76,9 +84,23 @@ export default function AiDecisionPanel({ snapshot, thread, onDrafted }) {
           {latestDecision.risk ? <div className="mt-1 text-xs text-[var(--color-ink-2)]">ความเสี่ยง: {latestDecision.risk}</div> : null}
           {latestDecision.reason ? <div className="mt-2 text-xs text-[var(--color-muted)]">{latestDecision.reason}</div> : null}
           {latestDecision.draftText ? (
-            <div className="mt-3 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] p-3 text-sm leading-6">
-              {latestDecision.draftText}
-            </div>
+            <>
+              <div className="mt-3 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] p-3 text-sm leading-6">
+                {latestDecision.draftText}
+              </div>
+              <button
+                type="button"
+                className="mt-2 rounded-[var(--radius-md)] border border-[var(--color-ai)] bg-[var(--color-panel)] px-3 py-1.5 text-xs font-bold text-[var(--color-ai)] hover:bg-[var(--color-panel-2)]"
+                onClick={() => onUseDraft?.({
+                  id: latestDecision.id || `ai_draft_${thread?.id || 'thread'}_${Date.now()}`,
+                  threadId: thread?.id,
+                  text: latestDecision.draftText,
+                  source: 'ai',
+                })}
+              >
+                วางในช่องตอบ
+              </button>
+            </>
           ) : (
             <div className="mt-3 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] p-3 text-xs text-[var(--color-muted)]">
               ยังไม่มีข้อความร่างในรายการนี้ กด “ให้ AI ร่าง” เพื่อสร้าง draft ใหม่
