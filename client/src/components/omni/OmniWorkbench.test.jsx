@@ -103,6 +103,33 @@ vi.mock('../../lib/omniApi.js', () => ({
       connectorHealth: [],
     },
   }),
+  sendManualReply: async (threadId, draft) => ({
+    ok: true,
+    sent: true,
+    message: {
+      id: 'sent_1',
+      threadId,
+      direction: 'outbound',
+      authorName: draft.authorName,
+      text: draft.text,
+      sourceRef: 'manual_send:man_kynd',
+      createdAt: '2026-05-24T00:01:00.000Z',
+    },
+    snapshot: {
+      pages: [{ id: 'page_mankynd', name: 'MAN KYND', status: 'active' }],
+      platformAccounts: [{ id: 'acct_fb_mankynd', pageId: 'page_mankynd', platform: 'facebook' }],
+      threads: [{ id: 'thread_1', pageId: 'page_mankynd', platform: 'facebook', status: 'auto_sent', intent: 'stock', risk: 'low' }],
+      messages: [
+        { id: 'msg_1', threadId: 'thread_1', direction: 'inbound', authorName: 'ลูกค้า A', text: 'มีไซซ์ M สีดำไหม' },
+        { id: 'sent_1', threadId: 'thread_1', direction: 'outbound', authorName: draft.authorName, text: draft.text, sourceRef: 'manual_send:man_kynd', createdAt: '2026-05-24T00:01:00.000Z' },
+      ],
+      customers: [{ id: 'cust_1', displayName: 'ลูกค้า A' }],
+      orders: [],
+      aiDecisions: [],
+      paymentRequests: [],
+      connectorHealth: [],
+    },
+  }),
   createEasyStoreProductDraft: async (threadId, productId) => ({
     ok: true,
     product: { id: productId, title: 'Amanda Jumpsuit' },
@@ -400,6 +427,21 @@ describe('OmniWorkbench', () => {
     expect(screen.getByText('Draft')).toBeInTheDocument()
   })
 
+  it('requires a second click before sending a manual reply live', async () => {
+    render(<OmniWorkbench />)
+    const draftBox = await screen.findByPlaceholderText(/พิมพ์ข้อความตอบลูกค้า/)
+
+    fireEvent.change(draftBox, { target: { value: 'ส่งจริงจากช่องพิมพ์' } })
+    fireEvent.click(screen.getByRole('button', { name: 'ส่งจริง' }))
+    expect(screen.getByRole('button', { name: 'ยืนยันส่งจริง' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'ยืนยันส่งจริง' }))
+    await waitFor(() => {
+      expect(screen.getByText('ส่งจริงจากช่องพิมพ์')).toBeInTheDocument()
+    })
+    expect(screen.getAllByText('ส่งจริง').length).toBeGreaterThan(0)
+  })
+
   it('places an AI draft into the reply composer for review', async () => {
     render(<OmniWorkbench />)
     const draftBox = await screen.findByPlaceholderText(/พิมพ์ข้อความตอบลูกค้า/)
@@ -422,6 +464,6 @@ describe('OmniWorkbench', () => {
     expect(await screen.findByText(/แนบสินค้าแล้ว: Amanda Jumpsuit/)).toBeInTheDocument()
     expect((await screen.findAllByText(/แนะนำตัวนี้ค่ะ: Amanda Jumpsuit/)).length).toBeGreaterThan(0)
     expect((await screen.findAllByText('สินค้า')).length).toBeGreaterThan(0)
-    expect(screen.getByText('Draft นี้ยังไม่ส่งออกไปหาลูกค้า')).toBeInTheDocument()
+    expect(screen.getByText('Draft ยังไม่ส่งออกไปหาลูกค้า ส่วนส่งจริงต้องกดยืนยันอีกครั้ง')).toBeInTheDocument()
   })
 })

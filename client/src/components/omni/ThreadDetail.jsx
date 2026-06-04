@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { autoSendStatus, customerAvatarUrl, customerForThread, formatShortTime, initialsForName, pageForThread, sourceLabel, statusLabel } from '../../lib/omniModel.js'
-import { createEasyStoreProductDraft, saveManualReplyDraft } from '../../lib/omniApi.js'
+import { createEasyStoreProductDraft, saveManualReplyDraft, sendManualReply } from '../../lib/omniApi.js'
 
 export default function ThreadDetail({ snapshot, thread, onSnapshot, suggestedDraft }) {
   const endRef = useRef(null)
@@ -102,6 +102,7 @@ function ManualReplyComposer({ thread, onSnapshot, suggestedDraft }) {
   const [productPanelOpen, setProductPanelOpen] = useState(false)
   const [productId, setProductId] = useState('')
   const [productStatus, setProductStatus] = useState('')
+  const [sendArmed, setSendArmed] = useState(false)
   const fileInputRef = useRef(null)
 
   useEffect(() => {
@@ -111,6 +112,7 @@ function ManualReplyComposer({ thread, onSnapshot, suggestedDraft }) {
     setProductId('')
     setProductStatus('')
     setProductPanelOpen(false)
+    setSendArmed(false)
   }, [thread?.id])
 
   useEffect(() => {
@@ -154,6 +156,40 @@ function ManualReplyComposer({ thread, onSnapshot, suggestedDraft }) {
       setAttachments([])
     } catch (err) {
       setError(err.message || 'manual_draft_failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function sendLive() {
+    if (!thread || busy) return
+    const cleanText = text.trim()
+    if (!cleanText) return
+    if (attachments.length > 0) {
+      setError('ส่งจริงตอนนี้รองรับข้อความก่อน รูปให้บันทึกเป็น draft')
+      setSendArmed(false)
+      return
+    }
+    if (!sendArmed) {
+      setSendArmed(true)
+      setError('')
+      return
+    }
+    setBusy(true)
+    setError('')
+    try {
+      const result = await sendManualReply(thread.id, {
+        authorName: 'บอส',
+        text: cleanText,
+        attachments,
+      })
+      onSnapshot?.(result.snapshot)
+      setText('')
+      setAttachments([])
+      setSendArmed(false)
+    } catch (err) {
+      setError(err.message || 'manual_send_failed')
+      setSendArmed(false)
     } finally {
       setBusy(false)
     }
@@ -227,7 +263,10 @@ function ManualReplyComposer({ thread, onSnapshot, suggestedDraft }) {
         <textarea
           rows={2}
           value={text}
-          onChange={(event) => setText(event.target.value)}
+          onChange={(event) => {
+            setText(event.target.value)
+            setSendArmed(false)
+          }}
           placeholder="พิมพ์ข้อความตอบลูกค้า... (บันทึกเป็น draft ก่อน)"
           className="min-h-[48px] flex-1 resize-none rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] px-3 py-2 text-sm leading-5 text-[var(--color-ink)] outline-none placeholder:text-[var(--color-muted)] focus:border-[var(--color-accent)]"
         />
@@ -263,10 +302,22 @@ function ManualReplyComposer({ thread, onSnapshot, suggestedDraft }) {
         >
           {busy ? 'บันทึก...' : 'บันทึก draft'}
         </button>
+        <button
+          type="button"
+          disabled={busy || !text.trim()}
+          onClick={sendLive}
+          className={`rounded-[var(--radius-md)] px-4 py-2 text-sm font-semibold shadow-sm disabled:opacity-45 ${
+            sendArmed
+              ? 'bg-rose-600 text-white'
+              : 'border border-rose-200 bg-rose-50 text-rose-700'
+          }`}
+        >
+          {busy ? 'กำลังส่ง...' : sendArmed ? 'ยืนยันส่งจริง' : 'ส่งจริง'}
+        </button>
       </div>
       {error ? <p className="mt-2 text-xs text-rose-600">{error}</p> : null}
       {productStatus ? <p className="mt-2 text-xs text-[var(--color-muted)]">{productStatus}</p> : null}
-      <p className="mt-2 text-[11px] text-[var(--color-muted)]">Draft นี้ยังไม่ส่งออกไปหาลูกค้า</p>
+      <p className="mt-2 text-[11px] text-[var(--color-muted)]">Draft ยังไม่ส่งออกไปหาลูกค้า ส่วนส่งจริงต้องกดยืนยันอีกครั้ง</p>
     </form>
   )
 }

@@ -1,7 +1,7 @@
 import { createAdapterRegistry } from './omni/adapters.js'
 import { createAiReplyEngine } from './omni/aiReplyEngine.js'
 import { getOmniSchemaSummary } from './omni/db/schema.js'
-import { listFacebookConversations } from './omni/metaInboxClient.js'
+import { listFacebookConversations, sendFacebookReply } from './omni/metaInboxClient.js'
 import { createOmniService } from './omni/service.js'
 import { listTikTokOrders } from './omni/tiktokOrderClient.js'
 import { createConnectionRuntime } from './omni/connections.js'
@@ -82,6 +82,11 @@ function buildEasyStoreProductDraft({ product, threadId }) {
   }
 }
 
+function pageProfileForOmniPage(pageId) {
+  const target = String(pageId || '')
+  return Object.values(loadPageRegistry()).find((profile) => profile.omniPageId === target)?.profileKey || null
+}
+
 export function mountRoutes(app, hub, room, options = {}) {
   const omni = options.omni || createOmniService()
   const adapters = createAdapterRegistry()
@@ -91,6 +96,7 @@ export function mountRoutes(app, hub, room, options = {}) {
   const commerce = options.commerce || createZortCommerceRuntime()
   const easyStore = options.easyStore || createEasyStoreRuntime()
   const metaCatalog = options.metaCatalog || createMetaCatalogRuntime()
+  const sendFacebookReplyRuntime = options.sendFacebookReply || sendFacebookReply
   const sudaOagentNotifier = options.sudaOagentNotifier || createLineSudaOagentNotifier()
   const storageStatus = options.storageStatus || {
     driver: 'memory',
@@ -327,6 +333,40 @@ export function mountRoutes(app, hub, room, options = {}) {
     if (!result.ok) return res.status(400).json(result)
     hub.broadcast('omni', result.snapshot)
     res.json(result)
+  })
+
+  app.post('/api/omni/threads/:threadId/send', async (req, res) => {
+    try {
+      if (req.body?.approved !== true) return res.status(403).json({ ok: false, sent: false, error: 'approval_required' })
+      const text = String(req.body?.text || '').trim()
+      if (!text) return res.status(400).json({ ok: false, sent: false, error: 'message_required' })
+      if ((req.body?.attachments || []).length > 0) return res.status(400).json({ ok: false, sent: false, error: 'attachments_send_not_supported' })
+
+      const thread = omni.getThread(req.params.threadId)
+      if (!thread) return res.status(404).json({ ok: false, sent: false, error: 'thread_not_found' })
+      if (thread.platform !== 'facebook') return res.status(400).json({ ok: false, sent: false, error: 'unsupported_thread_platform' })
+
+      const pageProfile = pageProfileForOmniPage(thread.pageId)
+      if (!pageProfile) return res.status(400).json({ ok: false, sent: false, error: 'page_profile_not_found' })
+      const recipientId = thread.customer?.providerCustomerId
+      if (!recipientId) return res.status(400).json({ ok: false, sent: false, error: 'recipient_id_not_found' })
+
+      const sendResult = await sendFacebookReplyRuntime({ pageProfile, recipientId, message: text })
+      if (!sendResult?.ok) return res.status(400).json({ ok: false, sent: false, error: sendResult?.error || 'facebook_send_failed', sendResult })
+
+      const recorded = omni.recordOutboundMessage({
+        threadId: thread.id,
+        authorName: req.body?.authorName || 'บอส',
+        text,
+        providerMessageId: sendResult.response?.message_id || sendResult.response?.id || sendResult.response?.recipient_id || null,
+        sourceRef: `manual_send:${pageProfile}`,
+      })
+      if (!recorded.ok) return res.status(400).json({ ...recorded, sent: false })
+      hub.broadcast('omni', recorded.snapshot)
+      res.json({ ...recorded, sent: true, sendResult: { ok: true, response: sendResult.response || null } })
+    } catch (error) {
+      res.status(400).json({ ok: false, sent: false, error: error.message || 'manual_send_failed' })
+    }
   })
 
   app.post('/api/omni/threads/:threadId/easystore-product-draft', async (req, res) => {
