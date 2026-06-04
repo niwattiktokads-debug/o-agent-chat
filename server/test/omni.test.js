@@ -23,6 +23,7 @@ import { mountRoutes } from '../src/routes.js'
 import { mountWebhook } from '../src/webhook.js'
 import { createState } from '../src/state.js'
 import { createEasyStoreRuntime } from '../src/omni/easystoreRuntime.js'
+import { buildMetaCatalogBatchRequests, createMetaCatalogRuntime } from '../src/omni/metaCatalogRuntime.js'
 import { createZortCommerceRuntime } from '../src/omni/zortCommerceRuntime.js'
 
 test('omni seed starts with configured production page data', () => {
@@ -244,7 +245,7 @@ test('EasyStore Meta catalog feed maps products to Meta CSV rows', () => {
       total_quantity: 155,
       variants: [{ price: '890.0', inventory_quantity: 11, cost_price: '1.0' }],
     }],
-    productUrlBase: 'https://omni.oagent.biz',
+    productUrlBase: 'https://annalynna.easy.co',
   })
   const csv = toMetaCatalogCsv(rows)
 
@@ -253,7 +254,7 @@ test('EasyStore Meta catalog feed maps products to Meta CSV rows', () => {
   assert.equal(rows[0].availability, 'in stock')
   assert.equal(rows[0].condition, 'new')
   assert.equal(rows[0].price, '890 THB')
-  assert.equal(rows[0].link, 'https://omni.oagent.biz/p/easystore/16462646')
+  assert.equal(rows[0].link, 'https://annalynna.easy.co/products/amanda-jumpsuit')
   assert.equal(rows[0].image_link, 'https://cdn.example/amanda.jpg')
   assert.equal(rows[0].brand, 'Annalynna')
   assert.match(csv, /^id,title,description,availability,condition,price,link,image_link,brand\n/)
@@ -276,6 +277,7 @@ test('EasyStore runtime returns an automatic Meta catalog feed from direct API',
         products: [{
           id: 16462646,
           title: 'Amanda Jumpsuit',
+          handle: 'amanda-jumpsuit',
           currency: 'THB',
           description: 'Amanda พร้อมส่ง',
           images: [{ url: 'https://cdn.example/amanda.jpg' }],
@@ -291,10 +293,78 @@ test('EasyStore runtime returns an automatic Meta catalog feed from direct API',
 
   assert.equal(result.ok, true)
   assert.equal(result.count, 1)
-  assert.equal(result.rows[0].link, 'https://omni.oagent.biz/p/easystore/16462646')
+  assert.equal(result.rows[0].link, 'https://annalynna.easy.co/products/amanda-jumpsuit')
   assert.equal(result.rows[0].price, '890 THB')
   assert.match(result.csv, /Amanda Jumpsuit/)
   assert.equal(calls[0].url, 'https://annalynna.easy.co/api/3.0/products.json?page=1&limit=250')
+})
+
+test('Meta Catalog runtime builds real-time batch requests from EasyStore product webhook payloads', () => {
+  const result = buildMetaCatalogBatchRequests({
+    topic: 'product/update',
+    productUrlBase: 'https://annalynna.easy.co',
+    payload: {
+      product: {
+        id: 16462646,
+        title: 'Amanda Jumpsuit',
+        handle: 'amanda-jumpsuit',
+        description: '<p>Amanda&nbsp;พร้อมส่ง</p>',
+        images: [{ url: 'https://cdn.example/amanda.jpg' }],
+        min_price: '890.0',
+        total_quantity: 12,
+      },
+    },
+  })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.requests.length, 1)
+  assert.equal(result.requests[0].method, 'UPDATE')
+  assert.equal(result.requests[0].retailer_id, '16462646')
+  assert.equal(result.requests[0].data.url, 'https://annalynna.easy.co/products/amanda-jumpsuit')
+  assert.equal(result.requests[0].data.image_url, 'https://cdn.example/amanda.jpg')
+  assert.equal(result.requests[0].data.price, '890')
+  assert.equal(result.requests[0].data.currency, 'THB')
+})
+
+test('Meta Catalog runtime posts guarded batch updates only when enabled and credentialed', async () => {
+  const calls = []
+  const runtime = createMetaCatalogRuntime({
+    env: {
+      META_CATALOG_SYNC_ENABLED: '1',
+      META_CATALOG_ACCESS_TOKEN: 'catalog_token_1',
+      META_CATALOG_ID: '1689072115772849',
+      META_CATALOG_PRODUCT_URL_BASE: 'https://annalynna.easy.co',
+      META_GRAPH_VERSION: 'v23.0',
+    },
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options })
+      return new Response(JSON.stringify({ handles: ['h_1'] }), { status: 200 })
+    },
+  })
+
+  const result = await runtime.syncEasyStoreWebhook({
+    topic: 'product/create',
+    shopDomain: 'annalynna.easy.co',
+    payload: {
+      product: {
+        id: 16462646,
+        title: 'Amanda Jumpsuit',
+        handle: 'amanda-jumpsuit',
+        description: 'Amanda พร้อมส่ง',
+        images: [{ url: 'https://cdn.example/amanda.jpg' }],
+        min_price: '890.0',
+        total_quantity: 12,
+      },
+    },
+  })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.endpoint, 'POST /1689072115772849/batch')
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].url, 'https://graph.facebook.com/v23.0/1689072115772849/batch')
+  const body = new URLSearchParams(String(calls[0].options.body))
+  assert.equal(body.get('access_token'), 'catalog_token_1')
+  assert.equal(JSON.parse(body.get('requests'))[0].data.url, 'https://annalynna.easy.co/products/amanda-jumpsuit')
 })
 
 test('normalizes EasyStore order webhook payload into Omni order thread rows', () => {

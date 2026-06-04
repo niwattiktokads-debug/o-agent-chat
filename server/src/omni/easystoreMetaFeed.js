@@ -11,7 +11,7 @@ export const META_CATALOG_COLUMNS = [
 ]
 
 const DEFAULT_BRAND = 'Annalynna'
-const DEFAULT_PRODUCT_URL_BASE = 'https://omni.oagent.biz'
+const DEFAULT_PRODUCT_URL_BASE = 'https://annalynna.easy.co'
 const DEFAULT_CURRENCY = 'THB'
 
 function cleanText(value) {
@@ -35,6 +35,13 @@ function normalizeBaseUrl(value, fallback = DEFAULT_PRODUCT_URL_BASE) {
   if (!raw) return ''
   if (raw.startsWith('http://') || raw.startsWith('https://')) return raw
   return `https://${raw}`
+}
+
+function storefrontProductLink(product = {}, baseUrl = '') {
+  const handle = String(product.handle || '').trim()
+  if (handle && baseUrl) return `${baseUrl}/products/${encodeURIComponent(handle)}`
+  const id = String(product.id || product.product_id || '').trim()
+  return id && baseUrl ? `${baseUrl}/products/${encodeURIComponent(id)}` : ''
 }
 
 function firstImageUrl(product = {}) {
@@ -95,7 +102,7 @@ export function buildMetaCatalogRows({
       const amount = productPrice(product)
       const imageLink = firstImageUrl(product)
       const currency = product.currency || DEFAULT_CURRENCY
-      const link = id && baseUrl ? `${baseUrl}/p/easystore/${encodeURIComponent(id)}` : ''
+      const link = storefrontProductLink(product, baseUrl)
       return {
         id,
         title,

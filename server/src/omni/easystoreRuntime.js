@@ -6,7 +6,6 @@ import { buildMetaCatalogFeed } from './easystoreMetaFeed.js'
 const execFileAsync = promisify(execFile)
 const LOCAL_HELPER = '/Users/babycuca/.codex/bin/easystore-api'
 const DEFAULT_META_PIXEL_ID = '401272399141441'
-const DEFAULT_PRODUCT_PREVIEW_BASE_URL = 'https://omni.oagent.biz'
 
 function buildQuery(params) {
   const search = new URLSearchParams()
@@ -56,8 +55,8 @@ function resolvePixelId(env = process.env) {
   return String(env.OMNI_META_PIXEL_ID || env.META_PIXEL_ID || env.META_DATASET_ID || DEFAULT_META_PIXEL_ID).trim()
 }
 
-function resolveProductPreviewBaseUrl(env = process.env) {
-  return String(env.OMNI_PRODUCT_PREVIEW_BASE_URL || env.OMNI_PUBLIC_URL || env.OMNI_WEB_URL || DEFAULT_PRODUCT_PREVIEW_BASE_URL).trim()
+function resolveCatalogProductUrlBase(shopBase, env = process.env) {
+  return String(env.META_CATALOG_PRODUCT_URL_BASE || env.EASY_STORE_PUBLIC_URL || env.EASY_STORE_SHOP || shopBase || 'https://annalynna.easy.co').trim()
 }
 
 function resolveDirectCredentials(env = process.env) {
@@ -340,7 +339,7 @@ export function createEasyStoreRuntime({
       }
       return normalizeProductPreview(product, { shopBase, pixelId })
     },
-    async getMetaCatalogFeed({ limit = 250, brand = 'Annalynna', productUrlBase = resolveProductPreviewBaseUrl(env) } = {}) {
+    async getMetaCatalogFeed({ limit = 250, brand = 'Annalynna', productUrlBase = resolveCatalogProductUrlBase(shopBase, env) } = {}) {
       const result = await listProducts({ limit })
       return buildMetaCatalogFeed({
         products: result.products,

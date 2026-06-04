@@ -282,6 +282,34 @@ test('EasyStore Meta catalog feed is public CSV when Omni access password is ena
   }
 })
 
+test('GET /api/omni/meta/catalog/status redacts credential state', async () => {
+  const localApp = express()
+  const fakeMetaCatalog = {
+    status: () => ({
+      ok: true,
+      service: 'meta_catalog_api',
+      mode: 'enabled',
+      credentialStatus: { accessToken: { ok: true, value_present: true } },
+    }),
+  }
+  localApp.use(express.json())
+  mountRoutes(localApp, { broadcast: () => {} }, createState(), { metaCatalog: fakeMetaCatalog })
+  const localServer = localApp.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const response = await fetch(`http://localhost:${localPort}/api/omni/meta/catalog/status`)
+    const body = await response.json()
+
+    assert.equal(response.status, 200)
+    assert.equal(body.ok, true)
+    assert.equal(body.service, 'meta_catalog_api')
+    assert.equal(body.credentialStatus.accessToken.value_present, true)
+    assert.equal(body.credentialStatus.accessToken.value, undefined)
+  } finally {
+    localServer.close()
+  }
+})
+
 test('GET /api/omni/connections includes ZORT Social parity options missing from the MVP', async () => {
   const { body, status } = await req('GET', '/api/omni/connections')
   assert.equal(status, 200)
@@ -1553,6 +1581,63 @@ test('POST /webhook/easystore verifies HMAC and syncs order event', async () => 
     assert.equal(localOmni.snapshot().orders.find((order) => order.id === 'es_order_11004').total, 1290)
     assert.equal(localEvents.some((event) => event.event === 'omni'), true)
     assert.equal(localEvents.some((event) => event.event === 'omni:attention'), false)
+  } finally {
+    localServer.close()
+  }
+})
+
+test('POST /webhook/easystore syncs product events to Meta Catalog runtime', async () => {
+  const localApp = express()
+  localApp.use(express.json({
+    verify: (req, _res, buffer) => {
+      req.rawBody = Buffer.from(buffer)
+    },
+  }))
+  const localOmni = createOmniService()
+  const metaCatalogCalls = []
+  const fakeMetaCatalog = {
+    syncEasyStoreWebhook: async (input) => {
+      metaCatalogCalls.push(input)
+      return { ok: true, skipped: false, requestCount: 1 }
+    },
+  }
+  mountWebhook(localApp, { broadcast: () => {} }, createState(), {
+    omni: localOmni,
+    easyStoreClientSecret: 'easy-secret-test',
+    metaCatalog: fakeMetaCatalog,
+  })
+  const localServer = localApp.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const rawBody = JSON.stringify({
+      product: {
+        id: 16462646,
+        title: 'Amanda Jumpsuit',
+        handle: 'amanda-jumpsuit',
+        min_price: '890.0',
+        total_quantity: 12,
+        images: [{ url: 'https://cdn.example/amanda.jpg' }],
+      },
+    })
+    const response = await fetch(`http://localhost:${localPort}/webhook/easystore?topic=product/update`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'EasyStore-Hmac-SHA256': signEasyStorePayload(rawBody),
+        'Easystore-Shop-Domain': 'annalynna.easy.co',
+      },
+      body: rawBody,
+    })
+    const body = await response.json()
+
+    assert.equal(response.status, 200)
+    assert.equal(body.ok, true)
+    assert.equal(body.result.metaCatalog.ok, true)
+    assert.equal(body.result.metaCatalog.requestCount, 1)
+    assert.equal(metaCatalogCalls.length, 1)
+    assert.equal(metaCatalogCalls[0].topic, 'product/update')
+    assert.equal(metaCatalogCalls[0].shopDomain, 'annalynna.easy.co')
+    assert.equal(metaCatalogCalls[0].payload.product.handle, 'amanda-jumpsuit')
   } finally {
     localServer.close()
   }
