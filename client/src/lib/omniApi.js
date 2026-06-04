@@ -162,6 +162,13 @@ export async function saveOmniSettings(settings, options = {}) {
   })
 }
 
+export async function savePolicyAutoSend(policySetId, autoSend, options = {}) {
+  return postJson(`/api/omni/policy-sets/${encodeURIComponent(policySetId)}/auto-send`, {
+    autoSend,
+    updatedBy: options.updatedBy || 'boss',
+  })
+}
+
 export async function fetchMessageVolumeReport({ from = '', to = '', pageId = '' } = {}) {
   const query = new URLSearchParams()
   if (from) query.set('from', from)

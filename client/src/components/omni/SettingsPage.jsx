@@ -3,6 +3,7 @@ import {
   fetchOmniSettings,
   fetchOmniSnapshot,
   fetchOmniStorageStatus,
+  savePolicyAutoSend,
   saveOmniSettings,
 } from '../../lib/omniApi.js'
 import ConnectorHealth from './ConnectorHealth.jsx'
@@ -30,6 +31,15 @@ const LIVE_CF_MODES = [
 const REPORT_TIMEZONES = [
   { value: 'Asia/Bangkok', label: 'Asia/Bangkok' },
   { value: 'UTC', label: 'UTC' },
+]
+
+const AUTO_SEND_INTENTS = [
+  { id: 'faq', label: 'FAQ' },
+  { id: 'stock', label: 'สต็อก' },
+  { id: 'price', label: 'ราคา' },
+  { id: 'product', label: 'สินค้า' },
+  { id: 'orderStatus', label: 'สถานะออเดอร์' },
+  { id: 'refund', label: 'คืนเงิน/เคลม' },
 ]
 
 const SETTINGS_SECTIONS = [
@@ -188,7 +198,7 @@ export default function SettingsPage({
           <ConnectionsPage embedded showPageNav={false} />
         </div>
       ) : section === 'ai-config' ? (
-        <AiConfigPanel snapshot={localSnapshot} onOpenChat={onOpenChat} workspaceId={workspaceId} />
+        <AiConfigPanel snapshot={localSnapshot} onSnapshot={handleSnapshot} onOpenChat={onOpenChat} workspaceId={workspaceId} />
       ) : (
         <>
           <section className="mt-4 grid gap-4 lg:grid-cols-2">
@@ -274,14 +284,45 @@ function StorageStatusPanel({ storage }) {
   )
 }
 
-function AiConfigPanel({ snapshot, onOpenChat, workspaceId }) {
+function AiConfigPanel({ snapshot, onSnapshot, onOpenChat, workspaceId }) {
   const allPages = snapshot?.pages || []
   const pages = workspaceId ? allPages.filter((p) => p.workspaceId === workspaceId) : allPages
   const agentProfiles = snapshot?.agentProfiles || []
-  const policySets = snapshot?.policySets || []
+  const [policySets, setPolicySets] = useState(snapshot?.policySets || [])
+  const [policyStatus, setPolicyStatus] = useState('')
+  const [busyPolicyId, setBusyPolicyId] = useState('')
   const knowledgeSources = snapshot?.knowledgeSources || []
   const platformAccounts = snapshot?.platformAccounts || []
   const pageRuntimeSettings = snapshot?.pageRuntimeSettings || []
+
+  useEffect(() => {
+    setPolicySets(snapshot?.policySets || [])
+  }, [snapshot?.policySets])
+
+  async function updatePolicyIntent(policySetId, intent, enabled) {
+    const policy = policySets.find((item) => item.id === policySetId)
+    if (!policy || busyPolicyId) return
+    const nextAutoSend = {
+      ...(policy.autoSend || {}),
+      [intent]: enabled,
+    }
+    setBusyPolicyId(policySetId)
+    setPolicyStatus(`กำลังบันทึก ${policySetId}`)
+    try {
+      const result = await savePolicyAutoSend(policySetId, nextAutoSend)
+      const nextPolicySets = (result.snapshot?.policySets || policySets).map((item) => (
+        item.id === policySetId ? (result.policySet || { ...item, autoSend: nextAutoSend }) : item
+      ))
+      setPolicySets(nextPolicySets)
+      if (result.snapshot) onSnapshot?.(result.snapshot)
+      setPolicyStatus('บันทึก AI auto-send แล้ว')
+    } catch (error) {
+      setPolicyStatus(error.message || 'policy_auto_send_update_failed')
+    } finally {
+      setBusyPolicyId('')
+    }
+  }
+
   const rows = pages.map((page) => {
     const runtime = pageRuntimeSettings.find((item) => item.pageId === page.id) || {}
     const fallback = PAGE_RUNTIME_FALLBACKS[page.id] || {}
@@ -342,17 +383,23 @@ function AiConfigPanel({ snapshot, onOpenChat, workspaceId }) {
           <Metric label="พร้อมตาม config" value={`${readyCount}/${pages.length || 0}`} />
           <Metric label="Knowledge sources" value={String(sourceCount)} />
         </div>
+        {policyStatus ? <p className="mt-3 text-xs font-semibold text-[var(--color-muted)]">{policyStatus}</p> : null}
       </div>
       <div className="grid gap-4 xl:grid-cols-2">
         {rows.map((row) => (
-          <AiConfigCard key={row.page.id} row={row} />
+          <AiConfigCard
+            key={row.page.id}
+            row={row}
+            busy={busyPolicyId === row.policy?.id}
+            onIntentChange={updatePolicyIntent}
+          />
         ))}
       </div>
     </section>
   )
 }
 
-function AiConfigCard({ row }) {
+function AiConfigCard({ row, busy = false, onIntentChange }) {
   const { page, agent, policy, accounts, knowledge, warnings } = row
   const autoSend = policy?.autoSend || {}
   const autoSendEntries = Object.entries(autoSend).filter(([, enabled]) => enabled)
@@ -375,6 +422,29 @@ function AiConfigCard({ row }) {
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <TagBlock title="ตอบอัตโนมัติได้" empty="ยังไม่มี intent ที่เปิด auto-send" items={autoSendEntries.map(([key]) => key)} />
         <TagBlock title="ต้องให้บอสอนุมัติ" empty="ไม่มี intent ที่ถูกล็อก approval" items={approvalEntries.map(([key]) => key)} />
+      </div>
+      <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h4 className="text-xs font-bold uppercase tracking-[0.08em] text-[var(--color-muted)]">Auto-send intent</h4>
+          <span className="text-[11px] font-semibold text-[var(--color-muted)]">{policy?.id || 'ยังไม่ตั้ง policy'}</span>
+        </div>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          {AUTO_SEND_INTENTS.map((intent) => {
+            const checked = autoSend[intent.id] === true
+            return (
+              <label key={intent.id} className="flex items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm font-semibold text-[var(--color-ink-2)]">
+                <span>{intent.label}</span>
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  disabled={!policy || busy}
+                  onChange={(event) => onIntentChange?.(policy.id, intent.id, event.target.checked)}
+                  className="h-4 w-4 accent-[var(--color-accent)] disabled:opacity-45"
+                />
+              </label>
+            )
+          })}
+        </div>
       </div>
       <div className="mt-4">
         <h4 className="text-xs font-bold uppercase tracking-[0.08em] text-[var(--color-muted)]">Knowledge ที่ AI ใช้</h4>
