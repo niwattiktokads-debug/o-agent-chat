@@ -47,6 +47,10 @@ export function latestMessageForThread(messages = [], threadId) {
 }
 
 export function autoSendStatus(snapshot = {}, thread = null) {
+  const settings = snapshot?.settings || snapshot?.omniSettings?.find?.((item) => item.id === 'default')?.settings || {}
+  if (settings?.ai?.customerSendEnabled !== true) {
+    return { active: false, label: 'Draft only', detail: 'customer send guard is on' }
+  }
   const pages = snapshot?.pages || []
   const policySets = snapshot?.policySets || []
   const messages = snapshot?.messages || []

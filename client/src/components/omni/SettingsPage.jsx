@@ -211,7 +211,6 @@ export default function SettingsPage({
               title="AI / Order"
               rows={[
                 { label: 'AI enabled', checked: settings.ai.enabled, onChange: () => updateSetting(['ai', 'enabled'], (value) => !value) },
-                { label: 'ส่งลูกค้าจริงอัตโนมัติ', checked: settings.ai.customerSendEnabled === true, onChange: () => updateSetting(['ai', 'customerSendEnabled'], (value) => !value) },
                 { label: 'Order draft enabled', checked: settings.orderDraft.enabled, onChange: () => updateSetting(['orderDraft', 'enabled'], (value) => !value) },
                 { label: 'Order approval required', checked: settings.orderDraft.approvalRequired, onChange: () => updateSetting(['orderDraft', 'approvalRequired'], (value) => !value) },
                 { label: 'Create ZORT on approve', checked: settings.orderDraft.createZortOrderOnApprove, onChange: () => updateSetting(['orderDraft', 'createZortOrderOnApprove'], (value) => !value) },
