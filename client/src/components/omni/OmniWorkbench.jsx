@@ -31,8 +31,8 @@ export default function OmniWorkbench({
   const operationMode = controlledOperationMode || localOperationMode
   const gridClass = operationMode === 'chat'
     ? showOperationRail
-      ? 'lg:grid lg:grid-cols-[64px_76px_minmax(300px,370px)_minmax(0,1fr)] xl:grid-cols-[64px_76px_minmax(310px,380px)_minmax(0,1fr)_360px]'
-      : 'lg:grid lg:grid-cols-[76px_minmax(300px,370px)_minmax(0,1fr)] xl:grid-cols-[76px_minmax(310px,380px)_minmax(0,1fr)_360px]'
+      ? 'lg:grid lg:grid-cols-[64px_64px_minmax(300px,370px)_minmax(0,1fr)] xl:grid-cols-[64px_64px_minmax(310px,380px)_minmax(0,1fr)_360px]'
+      : 'lg:grid lg:grid-cols-[64px_minmax(300px,370px)_minmax(0,1fr)] xl:grid-cols-[64px_minmax(310px,380px)_minmax(0,1fr)_360px]'
     : showOperationRail
       ? 'lg:grid lg:grid-cols-[64px_minmax(0,1fr)]'
       : 'lg:grid lg:grid-cols-[minmax(0,1fr)]'
