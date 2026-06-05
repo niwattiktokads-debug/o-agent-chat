@@ -1842,6 +1842,70 @@ test('AI reply engine answers from live EasyStore lookup when inventory snapshot
   assert.equal(decision.productFacts.source, 'easystore_live')
 })
 
+test('AI reply engine scores live EasyStore results instead of trusting the first product', async () => {
+  const seed = createOmniSeed()
+  seed.customers.push({ id: 'cust_lorra_live_score', displayName: 'Lorra Customer', matchConfidence: 1 })
+  seed.threads.push({
+    id: 'thread_lorra_live_score',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'cust_lorra_live_score',
+    status: 'open',
+    intent: 'unknown',
+    risk: 'low',
+    unreadCount: 1,
+    messageCount: 1,
+    updatedAt: '2026-06-05T09:40:00.000Z',
+  })
+  seed.messages.push({
+    id: 'msg_lorra_live_score',
+    threadId: 'thread_lorra_live_score',
+    direction: 'inbound',
+    authorName: 'Lorra Customer',
+    text: 'Lorra ดำ XL มีของไหม ราคาเท่าไหร่',
+    createdAt: '2026-06-05T09:40:00.000Z',
+    providerMessageId: 'mid_lorra_live_score',
+  })
+  const easyStore = {
+    async searchProducts() {
+      return {
+        ok: true,
+        products: [
+          {
+            id: 'es_live_wrong_first',
+            productId: '16460000',
+            variantId: 'wrong',
+            sku: 'AMANDA-BLK-XL',
+            productName: 'Amanda Jumpsuit',
+            sellPrice: 1490,
+            stock: 9,
+          },
+          {
+            id: 'es_live_lorra_black_xl',
+            productId: '16462646',
+            variantId: 'xl',
+            sku: 'LORRA-BLK-XL',
+            productName: 'Lorra เดรสเชิ้ต Polo สีดำ',
+            sellPrice: 1290,
+            stock: 4,
+          },
+        ],
+      }
+    },
+  }
+  const service = createOmniService(seed)
+  const thread = service.getThread('thread_lorra_live_score')
+  const ai = createAiReplyEngine({ provider: 'local_rules', model: 'test', easyStore })
+  const decision = await ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
+
+  assert.equal(decision.reason, 'easystore_live_product_fact_match')
+  assert.match(decision.draftText, /Lorra เดรสเชิ้ต Polo/)
+  assert.match(decision.draftText, /พร้อมส่งรวม 4 ชิ้น/)
+  assert.match(decision.draftText, /1,290/)
+  assert.doesNotMatch(decision.draftText, /Amanda/)
+  assert.equal(decision.productFacts.productId, '16462646')
+})
+
 test('AI reply engine prioritizes exact EasyStore SKU over newer color-only product matches', async () => {
   const seed = createOmniSeed()
   seed.customers.push({ id: 'cust_polo_stock', displayName: 'Polo Customer', matchConfidence: 1 })
@@ -2239,6 +2303,50 @@ test('AI reply engine asks body measurements for size advice', async () => {
   assert.match(decision.draftText, /อก/)
   assert.match(decision.draftText, /เอว/)
   assert.match(decision.draftText, /สะโพก/)
+})
+
+test('AI reply engine requests OpenAI structured JSON output for guarded drafts', async () => {
+  const previousKey = process.env.OPENAI_API_KEY
+  process.env.OPENAI_API_KEY = 'test-openai-key'
+  const calls = []
+  const service = createOmniService()
+  const thread = service.getThread('thread_1')
+  const ai = createAiReplyEngine({
+    provider: 'openai',
+    model: 'gpt-4.1-mini',
+    fetchImpl: async (url, options) => {
+      calls.push({ url, headers: options.headers, body: JSON.parse(options.body) })
+      return {
+        ok: true,
+        json: async () => ({
+          choices: [{
+            message: {
+              content: JSON.stringify({
+                draftText: 'ได้ค่ะ เดี๋ยวช่วยเช็กสีและไซซ์จากสินค้าที่สนใจให้ก่อนนะคะ',
+                confidence: 0.81,
+                reason: 'grounded_reply',
+              }),
+            },
+          }],
+        }),
+      }
+    },
+  })
+
+  try {
+    const decision = await ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
+
+    assert.equal(decision.ok, true)
+    assert.equal(decision.provider, 'openai')
+    assert.equal(calls.length, 1)
+    assert.equal(calls[0].body.response_format.type, 'json_schema')
+    assert.equal(calls[0].body.response_format.json_schema.strict, true)
+    assert.equal(calls[0].body.response_format.json_schema.schema.additionalProperties, false)
+    assert.deepEqual(calls[0].body.response_format.json_schema.schema.required, ['draftText', 'confidence', 'reason'])
+  } finally {
+    if (previousKey === undefined) delete process.env.OPENAI_API_KEY
+    else process.env.OPENAI_API_KEY = previousKey
+  }
 })
 
 test('AI reply engine calls Gemini natively for Vercel drafts', async () => {

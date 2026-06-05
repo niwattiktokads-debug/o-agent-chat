@@ -232,6 +232,7 @@ function normalizeEasyStoreLiveProduct(row = {}) {
   const productId = row.productId || row.product_id || row.id || null
   const variantId = row.variantId || row.variant_id || null
   const id = row.id || row.inventoryId || [productId, variantId].filter(Boolean).join(':') || row.sku || null
+  const name = row.productName || row.title || row.name || row.sku || 'สินค้า'
   return {
     id,
     sku: row.sku || row.variantSku || '',
@@ -240,10 +241,31 @@ function normalizeEasyStoreLiveProduct(row = {}) {
     checkedAt: row.checkedAt || new Date().toISOString(),
     productId,
     variantId,
-    productName: row.productName || row.title || row.name || row.sku || 'สินค้า',
+    productName: name,
+    color: row.color || detectColor([row.sku, name].filter(Boolean).join(' ')),
+    size: String(row.size || detectSize([row.sku, name].filter(Boolean).join(' '))).toUpperCase(),
     price: Number.isFinite(price) && price > 0 ? price : null,
     imageUrl: row.imageUrl || row.image_url || row.image?.url || row.images?.[0]?.url || '',
   }
+}
+
+function scoreEasyStoreLiveProduct(row, { terms = [], color = '', size = '' } = {}) {
+  const sku = normalizeSearchText(row.sku)
+  const productName = normalizeSearchText(row.productName)
+  const productId = normalizeSearchText(row.productId)
+  const haystack = [sku, productName, productId, normalizeSearchText(row.color), normalizeSearchText(row.size)].filter(Boolean).join(' ')
+  let score = 0
+  for (const term of terms) {
+    if (!term) continue
+    if (sku && sku === term) score += 30
+    else if (sku && (sku.includes(term) || term.includes(sku))) score += 18
+    else if (productId && productId === term) score += 12
+    else if (productName && productName.includes(term)) score += 6
+    else if (haystack.includes(term)) score += 2
+  }
+  if (color && normalizeSearchText(row.color) === normalizeSearchText(color)) score += 4
+  if (size && normalizeSearchText(row.size) === normalizeSearchText(size)) score += 4
+  return score
 }
 
 async function productFactsFromEasyStoreLive({ easyStore, thread, snapshot, originContext, intent }) {
@@ -263,8 +285,27 @@ async function productFactsFromEasyStoreLive({ easyStore, thread, snapshot, orig
     .slice(0, 10)
   if (!variants.length) return null
 
-  const bestProductId = variants[0].productId || variants[0].productName || variants[0].sku
-  const matched = variants
+  const latestInbound = latestInboundMessage(thread, snapshot)
+  const rawQuery = [
+    latestInbound?.text,
+    originProductLabel(originContext || {}),
+    originContext?.productHint?.text,
+    originContext?.live?.productName,
+    originContext?.live?.sku,
+  ].filter(Boolean).join(' ')
+  const scoreContext = {
+    terms: searchTerms(rawQuery),
+    color: detectColor(rawQuery),
+    size: detectSize(rawQuery),
+  }
+  const scored = variants
+    .map((row) => ({ row, score: scoreEasyStoreLiveProduct(row, scoreContext) }))
+    .sort((a, b) => b.score - a.score || Number(b.row.available || 0) - Number(a.row.available || 0))
+  if (!scored.length || scored[0].score <= 0) return null
+
+  const bestProductId = scored[0].row.productId || scored[0].row.productName || scored[0].row.sku
+  const matched = scored
+    .map((item) => item.row)
     .filter((row) => (row.productId || row.productName || row.sku) === bestProductId)
     .sort((a, b) => Number(b.available || 0) - Number(a.available || 0))
   const productName = matched.find((row) => row.productName)?.productName || matched[0]?.sku || 'สินค้า'
@@ -613,6 +654,26 @@ function guardedDraftText(text, fallback, { trustedContext = '' } = {}) {
   return draft.slice(0, MAX_DRAFT_CHARS)
 }
 
+function openAiReplyResponseFormat() {
+  return {
+    type: 'json_schema',
+    json_schema: {
+      name: 'omni_guarded_reply',
+      strict: true,
+      schema: {
+        type: 'object',
+        properties: {
+          draftText: { type: 'string' },
+          confidence: { type: 'number', minimum: 0, maximum: 1 },
+          reason: { type: 'string' },
+        },
+        required: ['draftText', 'confidence', 'reason'],
+        additionalProperties: false,
+      },
+    },
+  }
+}
+
 export function canUseEasyStoreLiveLookup(env = process.env) {
   if (env.OMNI_AI_EASYSTORE_LIVE_LOOKUP === '0') return false
   if (env.OMNI_AI_EASYSTORE_LIVE_LOOKUP === '1') return true
@@ -701,6 +762,7 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
         model,
         temperature: Number(process.env.OMNI_AI_TEMPERATURE || 0.2),
         max_tokens: Number(process.env.OMNI_AI_MAX_OUTPUT_TOKENS || 1024),
+        response_format: openAiReplyResponseFormat(),
         messages: [
           { role: 'system', content: prompt.system },
           { role: 'user', content: prompt.user },
