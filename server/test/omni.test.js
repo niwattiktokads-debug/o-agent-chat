@@ -1777,6 +1777,71 @@ test('AI reply engine answers from EasyStore inventory facts instead of promisin
   assert.doesNotMatch(decision.draftText, /เดี๋ยว.*เช็ก/)
 })
 
+test('AI reply engine answers from live EasyStore lookup when inventory snapshot is missing', async () => {
+  const seed = createOmniSeed()
+  seed.customers.push({ id: 'cust_molly_live_stock', displayName: 'Molly Customer', matchConfidence: 1 })
+  seed.threads.push({
+    id: 'thread_molly_live_stock',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'cust_molly_live_stock',
+    status: 'open',
+    intent: 'unknown',
+    risk: 'low',
+    unreadCount: 1,
+    messageCount: 1,
+    updatedAt: '2026-06-05T09:20:00.000Z',
+  })
+  seed.messages.push({
+    id: 'msg_molly_live_stock',
+    threadId: 'thread_molly_live_stock',
+    direction: 'inbound',
+    authorName: 'Molly Customer',
+    text: 'Molly ดำ M มีของไหม ราคาเท่าไหร่',
+    createdAt: '2026-06-05T09:20:00.000Z',
+    providerMessageId: 'mid_molly_live_stock',
+  })
+  const calls = []
+  const easyStore = {
+    async searchProducts({ keyword, limit }) {
+      calls.push({ keyword, limit })
+      return {
+        ok: true,
+        source: 'easystore_live',
+        products: [{
+          id: 'es_live_16469999_76019999',
+          productId: '16469999',
+          variantId: '76019999',
+          sku: 'MOLLY-BLK-M',
+          source: 'easystore_live',
+          productName: 'Molly Dress',
+          name: 'Molly Dress สีดำ ไซซ์ M',
+          color: 'ดำ',
+          size: 'M',
+          sellPrice: 790,
+          stock: 8,
+          imageUrl: 'https://cdn.example/molly.jpg',
+        }],
+      }
+    },
+  }
+  const service = createOmniService(seed)
+  const thread = service.getThread('thread_molly_live_stock')
+  const ai = createAiReplyEngine({ provider: 'local_rules', model: 'test', easyStore })
+  const decision = await ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
+
+  assert.equal(calls.length, 1)
+  assert.match(calls[0].keyword, /molly/i)
+  assert.equal(decision.ok, true)
+  assert.equal(decision.intent, 'stock')
+  assert.equal(decision.reason, 'easystore_live_product_fact_match')
+  assert.match(decision.draftText, /Molly Dress/)
+  assert.match(decision.draftText, /พร้อมส่งรวม 8 ชิ้น/)
+  assert.match(decision.draftText, /790/)
+  assert.deepEqual(decision.sourceIds.includes('es_live_16469999_76019999'), true)
+  assert.equal(decision.productFacts.source, 'easystore_live')
+})
+
 test('AI reply engine prioritizes exact EasyStore SKU over newer color-only product matches', async () => {
   const seed = createOmniSeed()
   seed.customers.push({ id: 'cust_polo_stock', displayName: 'Polo Customer', matchConfidence: 1 })

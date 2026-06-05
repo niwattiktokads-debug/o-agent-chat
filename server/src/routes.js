@@ -1,5 +1,5 @@
 import { createAdapterRegistry } from './omni/adapters.js'
-import { createAiReplyEngine } from './omni/aiReplyEngine.js'
+import { canUseEasyStoreLiveLookup, createAiReplyEngine } from './omni/aiReplyEngine.js'
 import { getOmniSchemaSummary } from './omni/db/schema.js'
 import { fetchInstagramProfile, listFacebookConversations, sendFacebookReply } from './omni/metaInboxClient.js'
 import { createOmniService } from './omni/service.js'
@@ -126,11 +126,12 @@ function pageProfileForOmniPage(pageId) {
 
 export function mountRoutes(app, hub, room, options = {}) {
   const omni = options.omni || createOmniService()
-  const ai = options.ai || createAiReplyEngine()
   const connections = options.connections || createConnectionRuntime()
   const social = options.social || createMetaSocialRuntime()
   const commerce = options.commerce || createZortCommerceRuntime()
   const easyStore = options.easyStore || createEasyStoreRuntime()
+  const aiEasyStore = (options.easyStore || canUseEasyStoreLiveLookup()) ? easyStore : null
+  const ai = options.ai || createAiReplyEngine({ easyStore: aiEasyStore })
   const metaCatalog = options.metaCatalog || createMetaCatalogRuntime()
   const kgpPayment = options.kgpPayment || createKgpPaymentRuntime()
   const adapters = createAdapterRegistry({ kgpPayment })
@@ -929,6 +930,7 @@ export function mountRoutes(app, hub, room, options = {}) {
       const draftEngine = createAiReplyEngine({
         provider: req.body?.provider || process.env.OMNI_CONNECTION_DRAFT_PROVIDER || 'gemini_cli',
         model: req.body?.model || process.env.OMNI_CONNECTION_DRAFT_MODEL || 'gemini-3-flash-preview',
+        easyStore: aiEasyStore,
       })
       const wsId = req.body?.workspaceId || req.query.workspaceId || undefined
       const allKnowledge = omni.listKnowledgeSources?.({ workspaceId: wsId }) || []

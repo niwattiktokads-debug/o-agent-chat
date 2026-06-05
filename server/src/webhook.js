@@ -1,10 +1,11 @@
 import { normalizeMetaWebhookPayload } from './omni/metaWebhook.js'
 import { normalizeEasyStoreWebhookPayload } from './omni/easystoreWebhook.js'
-import { createAiReplyEngine } from './omni/aiReplyEngine.js'
+import { canUseEasyStoreLiveLookup, createAiReplyEngine } from './omni/aiReplyEngine.js'
 import { sendFacebookCommentReply, sendFacebookReply, sendInstagramCommentReply } from './omni/metaInboxClient.js'
 import { getProfileKeyForOmniPage } from './omni/pageRegistry.js'
 import { normalizeTikTokMessagingWebhookPayload } from './omni/tiktokMessagingClient.js'
 import { createMetaCatalogRuntime } from './omni/metaCatalogRuntime.js'
+import { createEasyStoreRuntime } from './omni/easystoreRuntime.js'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { execFile } from 'node:child_process'
@@ -547,7 +548,8 @@ async function runMetaAutoReplies({
 
 export function mountWebhook(app, hub, room, options = {}) {
   const omni = options.omni || null
-  const ai = options.ai || createAiReplyEngine()
+  const easyStore = options.easyStore || (canUseEasyStoreLiveLookup() ? createEasyStoreRuntime() : null)
+  const ai = options.ai || createAiReplyEngine({ easyStore })
   const sendReply = options.sendReply || sendFacebookReply
   const sendCommentReply = options.sendCommentReply || sendFacebookCommentReply
   const sendIgCommentReply = options.sendIgCommentReply || sendInstagramCommentReply

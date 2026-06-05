@@ -201,6 +201,91 @@ function productFactsForThread(thread, snapshot, originContext = null) {
   }
 }
 
+function shouldLookupEasyStoreLive(intent, productFacts) {
+  if (productFacts) return false
+  return ['stock', 'price', 'productImage', 'orderPurchase'].includes(intent)
+}
+
+function easyStoreSearchKeyword(thread, snapshot, originContext = null) {
+  const latestInbound = latestInboundMessage(thread, snapshot)
+  const raw = [
+    latestInbound?.text,
+    originProductLabel(originContext || {}),
+    originContext?.productHint?.text,
+    originContext?.live?.productName,
+    originContext?.live?.sku,
+  ].filter(Boolean).join(' ')
+  const generic = new Set([
+    'มี', 'ไหม', 'มั้ย', 'ของ', 'สินค้า', 'ราคา', 'เท่าไหร่', 'บาท', 'พร้อมส่ง', 'ส่ง', 'รูป', 'ภาพ', 'ขอดู',
+    'สนใจ', 'ตัวนี้', 'รุ่น', 'สี', 'ไซซ์', 'ไซส์', 'size', 'stock', 'price', 'photo', 'image',
+  ])
+  const terms = searchTerms(raw)
+    .filter((term) => !generic.has(term))
+    .filter((term) => !/^(s|m|l|xl|xxl|2xl|3xl|4xl|5xl)$/i.test(term))
+  const keyword = terms.slice(0, 8).join(' ').trim()
+  return keyword || ''
+}
+
+function normalizeEasyStoreLiveProduct(row = {}) {
+  const available = Number(row.available ?? row.availableStock ?? row.stock ?? row.quantity ?? 0)
+  const price = Number(row.price ?? row.sellPrice ?? row.unitPrice ?? row.regularPrice ?? 0)
+  const productId = row.productId || row.product_id || row.id || null
+  const variantId = row.variantId || row.variant_id || null
+  const id = row.id || row.inventoryId || [productId, variantId].filter(Boolean).join(':') || row.sku || null
+  return {
+    id,
+    sku: row.sku || row.variantSku || '',
+    source: row.source || 'easystore_live',
+    available: Number.isFinite(available) ? Math.max(0, available) : 0,
+    checkedAt: row.checkedAt || new Date().toISOString(),
+    productId,
+    variantId,
+    productName: row.productName || row.title || row.name || row.sku || 'สินค้า',
+    price: Number.isFinite(price) && price > 0 ? price : null,
+    imageUrl: row.imageUrl || row.image_url || row.image?.url || row.images?.[0]?.url || '',
+  }
+}
+
+async function productFactsFromEasyStoreLive({ easyStore, thread, snapshot, originContext, intent }) {
+  if (!easyStore || typeof easyStore.searchProducts !== 'function' || !shouldLookupEasyStoreLive(intent, null)) return null
+  const keyword = easyStoreSearchKeyword(thread, snapshot, originContext)
+  if (!keyword) return null
+  let result
+  try {
+    result = await easyStore.searchProducts({ keyword, limit: 10 })
+  } catch (_error) {
+    return null
+  }
+  const products = Array.isArray(result?.products) ? result.products : []
+  const variants = products
+    .map(normalizeEasyStoreLiveProduct)
+    .filter((row) => row.productId || row.sku || row.productName)
+    .slice(0, 10)
+  if (!variants.length) return null
+
+  const bestProductId = variants[0].productId || variants[0].productName || variants[0].sku
+  const matched = variants
+    .filter((row) => (row.productId || row.productName || row.sku) === bestProductId)
+    .sort((a, b) => Number(b.available || 0) - Number(a.available || 0))
+  const productName = matched.find((row) => row.productName)?.productName || matched[0]?.sku || 'สินค้า'
+  const prices = matched.map((row) => Number(row.price || 0)).filter((price) => Number.isFinite(price) && price > 0)
+  return {
+    source: 'easystore_live',
+    productId: matched[0]?.productId || null,
+    productName,
+    availableTotal: matched.reduce((sum, row) => sum + Math.max(0, Number(row.available || 0)), 0),
+    price: prices.length ? Math.min(...prices) : null,
+    checkedAt: matched.map((row) => row.checkedAt).filter(Boolean).sort().at(-1) || null,
+    variants: matched.slice(0, 5).map((row) => ({
+      id: row.id || null,
+      sku: row.sku || '',
+      available: Number(row.available || 0),
+      price: Number(row.price || 0) || null,
+      imageUrl: row.imageUrl || '',
+    })),
+  }
+}
+
 function productFactsText(productFacts) {
   if (!productFacts) return ''
   const variantText = (productFacts.variants || [])
@@ -528,7 +613,18 @@ function guardedDraftText(text, fallback, { trustedContext = '' } = {}) {
   return draft.slice(0, MAX_DRAFT_CHARS)
 }
 
-export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAULT_MODEL, fetchImpl = fetch } = {}) {
+export function canUseEasyStoreLiveLookup(env = process.env) {
+  if (env.OMNI_AI_EASYSTORE_LIVE_LOOKUP === '0') return false
+  if (env.OMNI_AI_EASYSTORE_LIVE_LOOKUP === '1') return true
+  return Boolean(
+    String(env.EASY_STORE_SHOP || '').trim()
+    && String(env.EASY_STORE_ACCESS_TOKEN || '').trim()
+    && String(env.EASY_STORE_CLIENT_ID || '').trim()
+    && String(env.EASY_STORE_CLIENT_SECRET || '').trim(),
+  )
+}
+
+export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAULT_MODEL, fetchImpl = fetch, easyStore = null } = {}) {
   function runHelper(payload) {
     return new Promise((resolve, reject) => {
       const child = spawn(DEFAULT_HELPER, ['draft'], {
@@ -741,7 +837,15 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
       const workspaceId = threadPage?.workspaceId || undefined
       const knowledge = relevantKnowledge(intent, snapshot, { workspaceId })
       const originContext = compactOriginContext(thread, recentMessagesForThread(thread, snapshot))
-      const productFacts = productFactsForThread(thread, snapshot, originContext)
+      let productFacts = productFactsForThread(thread, snapshot, originContext)
+      let productFactsReason = productFacts ? 'product_inventory_fact_match' : ''
+      if (shouldLookupEasyStoreLive(intent, productFacts)) {
+        const liveProductFacts = await productFactsFromEasyStoreLive({ easyStore, thread, snapshot, originContext, intent })
+        if (liveProductFacts) {
+          productFacts = liveProductFacts
+          productFactsReason = 'easystore_live_product_fact_match'
+        }
+      }
       const slots = latestSalesSlots(thread, snapshot, originContext)
       const holdReason = shouldHoldForHumanReview({ intent, inboundText: inbound?.text, productFacts })
       const decisionAllowed = allowed && !holdReason
@@ -761,7 +865,7 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
         allowed: decisionAllowed,
         draftText: draftForIntent(intent, originContext, productFacts, slots),
         reason: productFacts
-          ? 'product_inventory_fact_match'
+          ? productFactsReason
           : (holdReason || (allowed ? 'policy_allows_low_risk_intent' : 'guard_requires_human_or_more_data')),
         sourceIds: [...knowledge.map((source) => source.id), ...productSourceIds],
         evidenceIds: inbound?.id ? [inbound.id] : [],
