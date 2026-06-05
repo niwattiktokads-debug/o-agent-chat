@@ -4,10 +4,8 @@ import { createAiDraft, saveOmniSettings, sendManualReply } from '../../lib/omni
 
 export default function ThreadDetail({ snapshot, thread, onSnapshot, suggestedDraft, workspaceId }) {
   const endRef = useRef(null)
-  const suggestedDraftIdRef = useRef('')
   const [guardBusy, setGuardBusy] = useState(false)
   const [guardError, setGuardError] = useState('')
-  const [messageDraft, setMessageDraft] = useState(null)
   const customer = customerForThread(snapshot?.customers, thread)
   const page = pageForThread(snapshot?.pages, thread)
   const messages = (snapshot?.messages || [])
@@ -16,6 +14,14 @@ export default function ThreadDetail({ snapshot, thread, onSnapshot, suggestedDr
     .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')))
   const settings = snapshot?.settings || snapshot?.omniSettings?.find?.((item) => item.id === 'default')?.settings || {}
   const customerSendEnabled = settings?.ai?.customerSendEnabled === true
+
+  const visibleMessages = messages.filter((message) => !isAiDraftOnlyMessage(message))
+  const latestAiDraftMessage = messages
+    .slice()
+    .reverse()
+    .find((message) => isAiDraftOnlyMessage(message))
+  const aiDraftSuggestion = latestAiDraftMessage ? draftSuggestionFromMessage(latestAiDraftMessage) : null
+  const suggestedComposerDraft = suggestedDraft || aiDraftSuggestion
 
   async function toggleCustomerSend() {
     if (guardBusy) return
@@ -39,30 +45,11 @@ export default function ThreadDetail({ snapshot, thread, onSnapshot, suggestedDr
     }
   }
 
-  function useDraftMessage(message) {
-    setMessageDraft({
-      id: `message_${message.id}_${Date.now()}`,
-      threadId: thread.id,
-      text: message.text || '',
-      attachments: Array.isArray(message.attachments) ? message.attachments : [],
-    })
-  }
-
   useEffect(() => {
     if (typeof endRef.current?.scrollIntoView === 'function') {
       endRef.current.scrollIntoView({ block: 'end' })
     }
-  }, [messages.length, thread?.id])
-
-  useEffect(() => {
-    setMessageDraft(null)
-  }, [thread?.id])
-
-  useEffect(() => {
-    if (!suggestedDraft?.id || suggestedDraft.id === suggestedDraftIdRef.current) return
-    suggestedDraftIdRef.current = suggestedDraft.id
-    setMessageDraft(null)
-  }, [suggestedDraft?.id])
+  }, [visibleMessages.length, thread?.id])
 
   if (!thread) return <div className="p-5 text-[var(--color-muted)]">No thread selected</div>
 
@@ -100,7 +87,7 @@ export default function ThreadDetail({ snapshot, thread, onSnapshot, suggestedDr
         {guardError ? <div className="mt-2 rounded-[var(--radius-sm)] border border-[var(--color-danger)] bg-[var(--color-danger-soft)] px-2 py-1 text-[11px] font-semibold text-[var(--color-danger)]">{guardError}</div> : null}
       </div>
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[var(--color-paper)] p-5">
-        {messages.map((message) => (
+        {visibleMessages.map((message) => (
           <MessageBubble
             key={message.id}
             message={message}
@@ -108,7 +95,6 @@ export default function ThreadDetail({ snapshot, thread, onSnapshot, suggestedDr
             customerName={customer?.displayName}
             customerSendEnabled={customerSendEnabled}
             onToggleCustomerSend={toggleCustomerSend}
-            onUseDraft={useDraftMessage}
             guardBusy={guardBusy}
           />
         ))}
@@ -116,9 +102,9 @@ export default function ThreadDetail({ snapshot, thread, onSnapshot, suggestedDr
       </div>
       <ManualReplyComposer
         thread={thread}
-        messagesSignature={messages.map((message) => `${message.id}:${message.createdAt || ''}:${message.sourceRef || ''}`).join('|')}
+        messagesSignature={visibleMessages.map((message) => `${message.id}:${message.createdAt || ''}:${message.sourceRef || ''}`).join('|')}
         onSnapshot={onSnapshot}
-        suggestedDraft={messageDraft || suggestedDraft}
+        suggestedDraft={suggestedComposerDraft}
         customerSendEnabled={customerSendEnabled}
         onToggleCustomerSend={toggleCustomerSend}
         guardBusy={guardBusy}
@@ -141,7 +127,24 @@ function CustomerAvatar({ name, avatarUrl, size = 'md' }) {
   )
 }
 
-function MessageBubble({ message, pageName, customerName, customerSendEnabled = false, onToggleCustomerSend, onUseDraft, guardBusy = false }) {
+function isAiDraftOnlyMessage(message) {
+  if (message.direction !== 'outbound' || message.deliveryStatus !== 'draft_only') return false
+  const sourceRef = String(message.sourceRef || '')
+  const authorName = String(message.authorName || '')
+  return sourceRef.includes('ai_reply') || /\bAI\b/i.test(authorName)
+}
+
+function draftSuggestionFromMessage(message) {
+  return {
+    id: `ai_message_${message.id}`,
+    threadId: message.threadId,
+    text: message.text || '',
+    source: 'ai_draft_message',
+    ...(Array.isArray(message.attachments) ? { attachments: message.attachments } : {}),
+  }
+}
+
+function MessageBubble({ message, pageName, customerName, customerSendEnabled = false, onToggleCustomerSend, guardBusy = false }) {
   const outbound = message.direction === 'outbound'
   const draftOnly = outbound && message.deliveryStatus === 'draft_only'
   const author = outbound ? (message.authorName || pageName || 'Page') : (message.authorName === 'Facebook Customer' ? customerName || message.authorName : message.authorName)
@@ -157,25 +160,16 @@ function MessageBubble({ message, pageName, customerName, customerSendEnabled = 
         {draftOnly ? (
           <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-sm)] border border-[var(--color-warn)] bg-[var(--color-panel)] px-2 py-1 text-[11px] font-bold text-[var(--color-warn)]">
             <span>ยังไม่ส่งลูกค้า</span>
-            <div className="flex flex-wrap items-center gap-2">
+            {!customerSendEnabled ? (
               <button
                 type="button"
-                className="rounded-[var(--radius-sm)] border border-[var(--color-warn)] bg-[var(--color-warn-soft)] px-2 py-1 text-[11px] font-black text-[var(--color-warn)] hover:bg-[var(--color-panel)]"
-                onClick={() => onUseDraft?.(message)}
+                disabled={guardBusy}
+                className="rounded-[var(--radius-sm)] border border-[var(--color-live)] bg-[var(--color-live-soft)] px-2 py-1 text-[11px] font-black text-[var(--color-live)] hover:bg-[var(--color-panel)] disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={onToggleCustomerSend}
               >
-                ใช้ร่างนี้
+                เปิดส่งจริง
               </button>
-              {!customerSendEnabled ? (
-                <button
-                  type="button"
-                  disabled={guardBusy}
-                  className="rounded-[var(--radius-sm)] border border-[var(--color-live)] bg-[var(--color-live-soft)] px-2 py-1 text-[11px] font-black text-[var(--color-live)] hover:bg-[var(--color-panel)] disabled:cursor-not-allowed disabled:opacity-50"
-                  onClick={onToggleCustomerSend}
-                >
-                  เปิดส่งจริง
-                </button>
-              ) : null}
-            </div>
+            ) : null}
           </div>
         ) : null}
         {Array.isArray(message.attachments) && message.attachments.length > 0 ? (
@@ -204,6 +198,11 @@ function ManualReplyComposer({ thread, messagesSignature = '', onSnapshot, sugge
   const [status, setStatus] = useState('')
   const fileInputRef = useRef(null)
   const messageSignatureRef = useRef('')
+  const textRef = useRef('')
+
+  useEffect(() => {
+    textRef.current = text
+  }, [text])
 
   useEffect(() => {
     setText('')
@@ -229,13 +228,17 @@ function ManualReplyComposer({ thread, messagesSignature = '', onSnapshot, sugge
 
   useEffect(() => {
     if (!suggestedDraft?.text || suggestedDraft.threadId !== thread?.id) return
+    if (suggestedDraft.source === 'ai_draft_message' && textRef.current.trim()) {
+      setStatus('AI ร่างใหม่มาแล้ว แต่ยังไม่ทับข้อความที่พิมพ์อยู่')
+      return
+    }
     setText(suggestedDraft.text)
     if (Array.isArray(suggestedDraft.attachments)) {
       setAttachments(suggestedDraft.attachments.slice(0, 5))
     }
     setError('')
-    setStatus('วาง draft ในช่องตอบแล้ว')
-  }, [suggestedDraft?.id, suggestedDraft?.text, suggestedDraft?.threadId, suggestedDraft?.attachments, thread?.id])
+    setStatus(suggestedDraft.source === 'ai_draft_message' ? 'AI ร่างให้แล้ว ตรวจในช่องตอบก่อนส่งจริง' : 'วาง draft ในช่องตอบแล้ว')
+  }, [suggestedDraft?.id, suggestedDraft?.text, suggestedDraft?.threadId, suggestedDraft?.attachments, suggestedDraft?.source, thread?.id])
 
   async function readFiles(files) {
     const imageFiles = [...files].filter((file) => file.type.startsWith('image/')).slice(0, 5 - attachments.length)

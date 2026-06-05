@@ -649,7 +649,7 @@ describe('OmniWorkbench', () => {
     expect(await screen.findByText('Draft only: ลูกค้ายังไม่เห็นข้อความจนกว่าจะเปิดส่งจริง')).toBeInTheDocument()
   })
 
-  it('puts visible actions on an AI draft-only bubble before customer send', async () => {
+  it('places an AI draft-only message into the composer instead of showing a draft bubble', async () => {
     render(<OmniWorkbench />)
     const draftBox = await screen.findByPlaceholderText(/พิมพ์ข้อความตอบลูกค้า/)
 
@@ -671,12 +671,44 @@ describe('OmniWorkbench', () => {
       })
     })
 
-    expect(await screen.findByText('ยังไม่ส่งลูกค้า')).toBeInTheDocument()
-    fireEvent.click(await screen.findByRole('button', { name: 'ใช้ร่างนี้' }))
-    expect(draftBox).toHaveValue('ขอบคุณที่สนใจ Amanda Jumpsuit ค่ะ')
+    await waitFor(() => {
+      expect(draftBox).toHaveValue('ขอบคุณที่สนใจ Amanda Jumpsuit ค่ะ')
+    })
+    expect(screen.queryByText('AI draft-only')).not.toBeInTheDocument()
+    expect(screen.queryByText('ยังไม่ส่งลูกค้า')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'ใช้ร่างนี้' })).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'เปิดส่งจริง' })[0])
+    fireEvent.click(screen.getByRole('button', { name: 'เปิดส่งจริง' }))
     expect(await screen.findByRole('switch', { name: /ส่งจริงเปิด/ })).toBeInTheDocument()
+  })
+
+  it('does not overwrite operator text when a new AI draft-only message arrives', async () => {
+    render(<OmniWorkbench />)
+    const draftBox = await screen.findByPlaceholderText(/พิมพ์ข้อความตอบลูกค้า/)
+
+    fireEvent.change(draftBox, { target: { value: 'บอสกำลังพิมพ์เอง' } })
+
+    act(() => {
+      omniMock.subscribers.at(-1)?.({
+        pages: [{ id: 'page_annalynn', name: 'Anna Lynn', status: 'active' }],
+        platformAccounts: [{ id: 'acct_fb_annalynn', pageId: 'page_annalynn', platform: 'facebook' }],
+        threads: [{ id: 'thread_1', customerId: 'cust_1', pageId: 'page_annalynn', platform: 'facebook', status: 'draft_ready', intent: 'productImage', risk: 'medium' }],
+        messages: [
+          { id: 'msg_1', threadId: 'thread_1', direction: 'inbound', authorName: 'Facebook Customer', text: 'สนใจสินค้า' },
+          { id: 'draft_ai_2', threadId: 'thread_1', direction: 'outbound', authorName: 'Anna Lynn AI', text: 'AI ร่างใหม่ค่ะ', sourceRef: 'ai_reply_draft', deliveryStatus: 'draft_only', createdAt: '2026-06-05T12:21:00.000Z' },
+        ],
+        customers: [{ id: 'cust_1', displayName: 'Facebook Customer' }],
+        orders: [],
+        aiDecisions: [],
+        paymentRequests: [],
+        connectorHealth: [],
+        settings: { ai: { customerSendEnabled: false } },
+      })
+    })
+
+    expect(draftBox).toHaveValue('บอสกำลังพิมพ์เอง')
+    expect(await screen.findByText('AI ร่างใหม่มาแล้ว แต่ยังไม่ทับข้อความที่พิมพ์อยู่')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'ใช้ร่างนี้' })).not.toBeInTheDocument()
   })
 
   it('sends a manual reply with one click after customer send is enabled', async () => {
@@ -725,6 +757,7 @@ describe('OmniWorkbench', () => {
     })
     expect(await screen.findByText('AI ร่างให้แล้ว ตรวจในช่องตอบก่อนส่งจริง')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'วางในช่องตอบ' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'ใช้ร่างนี้' })).not.toBeInTheDocument()
   })
 
   it('lets the operator save a rich message campaign brief from the AI context tab', async () => {
