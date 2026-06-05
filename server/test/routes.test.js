@@ -1824,20 +1824,36 @@ test('POST /api/omni/threads/:threadId/easystore-product-draft creates draft-onl
   mountRoutes(localApp, { broadcast: (event, payload) => localEvents.push({ event, payload }) }, createState(), {
     omni: localOmni,
     easyStore: {
-      getProductPreview: async ({ productId }) => ({
-        ok: true,
-        product: {
-          id: productId,
-          title: 'Julai เสื้อ คอวี ระบายข้าง และกางเกงขาบาน เอวยาง คนอวบใส่สวย Lady ผู้หญิง Women Clothing ชุด รับปริญญา',
-          variantTitle: 'Set เขียว, 0=S,M',
-          color: 'Set เขียว',
-          size: '0=S,M',
-          price: { formatted: '฿990', amount: 990, currency: 'THB' },
-          stock: { totalQuantity: 10, status: 'in_stock' },
-          images: [{ url: 'https://cdn.example/julai.jpg', alt: 'Julai Set เขียว' }],
-          links: { storefrontUrl: 'https://annalynna.easy.co/products/julai-set-green' },
-        },
-      }),
+      getProductPreview: async ({ productId }) => {
+        if (productId === '16460004') {
+          return {
+            ok: true,
+            product: {
+              id: productId,
+              title: 'Amanda Jumpsuit',
+              variantTitle: 'สีดำ, XL',
+              size: 'XL',
+              price: { formatted: '฿1,290', amount: 1290, currency: 'THB' },
+              stock: { totalQuantity: 4, status: 'in_stock' },
+              images: [{ url: 'https://cdn.example/amanda.jpg', alt: 'Amanda Jumpsuit' }],
+            },
+          }
+        }
+        return {
+          ok: true,
+          product: {
+            id: productId,
+            title: 'Julai เสื้อ คอวี ระบายข้าง และกางเกงขาบาน เอวยาง คนอวบใส่สวย Lady ผู้หญิง Women Clothing ชุด รับปริญญา',
+            variantTitle: 'Set เขียว, 0=S,M',
+            color: 'Set เขียว',
+            size: '0=S,M',
+            price: { formatted: '฿990', amount: 990, currency: 'THB' },
+            stock: { totalQuantity: 10, status: 'in_stock' },
+            images: [{ url: 'https://cdn.example/julai.jpg', alt: 'Julai Set เขียว' }],
+            links: { storefrontUrl: 'https://annalynna.easy.co/products/julai-set-green' },
+          },
+        }
+      },
     },
   })
   const localServer = localApp.listen(0)
@@ -1855,10 +1871,20 @@ test('POST /api/omni/threads/:threadId/easystore-product-draft creates draft-onl
     assert.equal(body.message.deliveryStatus, 'draft_only')
     assert.equal(body.message.sourceRef, 'easystore_product_draft:16462646')
     assert.match(body.message.text, /มี Julai Set เขียวค่ะ/)
-    assert.match(body.message.text, /ไซซ์ S\/M ราคา 990 บาท พร้อมส่ง 10 ชิ้น/)
-    assert.match(body.message.text, /https:\/\/omni\.oagent\.biz\/p\/easystore\/16462646\?threadId=thread_1/)
-    assert.doesNotMatch(body.message.text, /SKU:|ตัวเลือก:|ลิงก์ร้าน:|ปิดออเดอร์/)
+    assert.match(body.message.text, /ไซซ์ S\/M ราคา 990 บาท พร้อมส่ง/)
+    assert.match(body.message.text, /\n\nดูสินค้า:\nhttps:\/\/omni\.oagent\.biz\/p\/easystore\/16462646$/)
+    assert.doesNotMatch(body.message.text, /10 ชิ้น|threadId=|SKU:|ตัวเลือก:|ลิงก์ร้าน:|ปิดออเดอร์/)
     assert.equal(body.message.attachments[0].url, 'https://cdn.example/julai.jpg')
+
+    const lowStockResponse = await fetch(`http://localhost:${localPort}/api/omni/threads/thread_1/easystore-product-draft`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ productId: '16460004' }),
+    })
+    const lowStockBody = await lowStockResponse.json()
+    assert.equal(lowStockResponse.status, 200)
+    assert.match(lowStockBody.message.text, /ไซซ์ XL ราคา 1,290 บาท เหลือน้อยแล้ว/)
+    assert.doesNotMatch(lowStockBody.message.text, /4 ชิ้น|threadId=/)
     assert.equal(localEvents.some((event) => event.event === 'omni'), true)
   } finally {
     localServer.close()

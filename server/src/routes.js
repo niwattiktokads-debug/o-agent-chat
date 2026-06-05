@@ -54,7 +54,8 @@ function buildEasyStorePreviewUrl({ productId, threadId }, env = process.env) {
 
 function stockLine(stock = {}) {
   const quantity = Number(stock.totalQuantity || 0)
-  if (quantity > 0) return `พร้อมส่ง ${quantity} ชิ้น`
+  if (quantity > 0 && quantity < 5) return 'เหลือน้อยแล้ว'
+  if (quantity > 0) return 'พร้อมส่ง'
   if (stock.status === 'out_of_stock') return 'รอเติมสต็อก'
   return ''
 }
@@ -87,7 +88,7 @@ function compactProductTitle(product = {}) {
 }
 
 function buildEasyStoreProductDraft({ product, threadId }) {
-  const previewUrl = buildEasyStorePreviewUrl({ productId: product.id, threadId })
+  const previewUrl = buildEasyStorePreviewUrl({ productId: product.id })
   const image = product.images?.[0] || null
   const priceLine = product.price?.formatted ? `ราคา ${product.price.formatted.replace(/^฿/, '')} บาท` : ''
   const size = cleanVariantSize(product.size || product.variantSize || '')
@@ -96,8 +97,8 @@ function buildEasyStoreProductDraft({ product, threadId }) {
   const lines = [
     `มี ${compactProductTitle(product)}ค่ะ`,
     detailLine,
-    `ดูสินค้า: ${previewUrl}`,
   ].filter(Boolean)
+  if (previewUrl) lines.push('', 'ดูสินค้า:', previewUrl)
 
   return {
     text: lines.join('\n'),

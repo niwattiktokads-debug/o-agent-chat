@@ -818,7 +818,10 @@ describe('OmniWorkbench', () => {
 
     expect(await screen.findByText(/ใส่สินค้าในกล่องตอบแล้ว: Lorra เดรสเชิ้ต Polo/)).toBeInTheDocument()
     expect(draftBox.value).toContain('มี Lorra สีดำค่ะ')
-    expect(draftBox.value).toContain('ราคา 690 บาท พร้อมส่ง 13 ชิ้น')
+    expect(draftBox.value).toContain('ราคา 690 บาท พร้อมส่ง')
+    expect(draftBox.value).toContain('\n\nดูสินค้า:\nhttp://localhost:3000/p/easystore/16462394')
+    expect(draftBox.value).not.toContain('13 ชิ้น')
+    expect(draftBox.value).not.toContain('threadId=')
     expect(draftBox.value).not.toContain('SKU:')
     expect(draftBox.value).not.toContain('ตัวเลือก:')
     expect(screen.getAllByAltText('Lorra สีดำ XL').length).toBeGreaterThan(0)
@@ -929,7 +932,10 @@ describe('OmniWorkbench', () => {
 
     expect(await screen.findByText(/ใส่สินค้าในกล่องตอบแล้ว: Lorra เดรสเชิ้ต Polo/)).toBeInTheDocument()
     expect(draftBox.value).toContain('มี Lorra สีดำค่ะ')
-    expect(draftBox.value).toContain('ราคา 690 บาท พร้อมส่ง 13 ชิ้น')
+    expect(draftBox.value).toContain('ราคา 690 บาท พร้อมส่ง')
+    expect(draftBox.value).toContain('\n\nดูสินค้า:\nhttp://localhost:3000/p/easystore/16462394')
+    expect(draftBox.value).not.toContain('13 ชิ้น')
+    expect(draftBox.value).not.toContain('threadId=')
     expect(draftBox.value).not.toContain('SKU:')
     expect(draftBox.value).not.toContain('ปิดออเดอร์')
     expect(screen.getAllByAltText('Lorra สีดำ XL').length).toBeGreaterThan(0)

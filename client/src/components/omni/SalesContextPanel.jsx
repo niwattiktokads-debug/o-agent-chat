@@ -70,22 +70,30 @@ function productDraftPrice(product = {}) {
   return `ราคา ${plain} บาท`
 }
 
+function productDraftStock(product = {}) {
+  const quantity = Number(productStock(product) || 0)
+  if (quantity > 0 && quantity < 5) return 'เหลือน้อยแล้ว'
+  if (quantity > 0) return 'พร้อมส่ง'
+  if (product.stock?.status === 'out_of_stock') return 'รอเติมสต็อก'
+  return ''
+}
+
 function buildEasyStoreProductDraft({ product, thread }) {
   const id = product.productId || product.id || product.variantId || product.sku || ''
-  const previewUrl = id && thread?.id
-    ? `${window.location.origin}/p/easystore/${encodeURIComponent(id)}?threadId=${encodeURIComponent(thread.id)}`
+  const previewUrl = id
+    ? `${window.location.origin}/p/easystore/${encodeURIComponent(id)}`
     : ''
   const size = productDraftSize(product)
   const detailLine = [
     size ? `ไซซ์ ${size}` : '',
     productDraftPrice(product),
-    `พร้อมส่ง ${productStock(product)} ชิ้น`,
+    productDraftStock(product),
   ].filter(Boolean).join(' ')
   const lines = [
     `มี ${productDraftName(product)}ค่ะ`,
     detailLine,
-    previewUrl ? `ดูสินค้า: ${previewUrl}` : '',
   ].filter(Boolean)
+  if (previewUrl) lines.push('', 'ดูสินค้า:', previewUrl)
   return {
     text: lines.join('\n'),
     attachments: product.imageUrl ? [{
