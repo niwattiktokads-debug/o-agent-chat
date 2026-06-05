@@ -212,6 +212,36 @@ test('EasyStore product search returns image, sku, color, size, and stock rows',
   assert.equal(result.products[0].availableStock, 13)
 })
 
+test('EasyStore SKU search uses direct skus filter before paged fallback scan', async () => {
+  const calls = []
+  const runtime = createEasyStoreRuntime({
+    env: {
+      EASY_STORE_SHOP: 'annalynna.easy.co',
+      EASY_STORE_ACCESS_TOKEN: 'access_token_1',
+      EASY_STORE_CLIENT_ID: 'app_1',
+      EASY_STORE_CLIENT_SECRET: 'secret_1',
+    },
+    fetchImpl: async (url) => {
+      calls.push(url)
+      return new Response(JSON.stringify({
+        products: [{
+          id: 16462524,
+          title: 'Lillac Pant',
+          variants: [{ id: 76012524, sku: 'llpดำ28', title: 'ดำ / 28', inventory_quantity: 4 }],
+        }],
+      }), { status: 200 })
+    },
+  })
+
+  const result = await runtime.searchProducts({ sku: 'llpดำ28', limit: 6 })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.products[0].sku, 'llpดำ28')
+  assert.equal(calls.length, 1)
+  assert.match(calls[0], /skus=llp/)
+  assert.match(decodeURIComponent(calls[0]), /skus=llpดำ28/)
+})
+
 test('EasyStore SKU search scans beyond the first product page and prioritizes SKU matches', async () => {
   const calls = []
   const runtime = createEasyStoreRuntime({
@@ -223,7 +253,9 @@ test('EasyStore SKU search scans beyond the first product page and prioritizes S
     },
     fetchImpl: async (url) => {
       calls.push(url)
-      const page = new URL(url).searchParams.get('page')
+      const search = new URL(url).searchParams
+      if (search.get('skus')) return new Response(JSON.stringify({ products: [] }), { status: 200 })
+      const page = search.get('page')
       const products = page === '2'
         ? [{
             id: 16469999,
@@ -244,9 +276,10 @@ test('EasyStore SKU search scans beyond the first product page and prioritizes S
   assert.equal(result.ok, true)
   assert.equal(result.products[0].sku, 'amdสีน้ำตาลเข้ม99')
   assert.equal(result.count, 1)
-  assert.equal(calls.length, 2)
-  assert.match(calls[0], /page=1&limit=50/)
-  assert.match(calls[1], /page=2&limit=50/)
+  assert.equal(calls.length, 3)
+  assert.match(decodeURIComponent(calls[0]), /skus=amdสีน้ำตาลเข้ม99/)
+  assert.match(calls[1], /page=1&limit=50/)
+  assert.match(calls[2], /page=2&limit=50/)
 })
 
 test('EasyStore product list helper uses raw JSON endpoint for fallback search', async () => {

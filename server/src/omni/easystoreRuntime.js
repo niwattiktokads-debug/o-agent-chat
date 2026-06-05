@@ -439,14 +439,14 @@ export function createEasyStoreRuntime({
   const effectiveRunner = runner || (!directReady && canUseHelper(helper, env) ? createHelperRunner({ helper, env }) : null)
   const shopBase = normalizeShop(directCredentials.shop || env.EASY_STORE_SHOP || env.EASYSTORE_SHOP || 'https://annalynna.easy.co')
 
-  async function listProducts({ limit = 250, page = 1 } = {}) {
+  async function listProducts({ limit = 250, page = 1, sku = '' } = {}) {
     if (directReady) {
       const payload = await easyStoreApiRequest({
         fetchImpl,
         credentials: directCredentials,
         method: 'GET',
         pathname: '/products.json',
-        query: { page, limit },
+        query: { page, limit, skus: sku },
       })
       return {
         ok: true,
@@ -458,7 +458,7 @@ export function createEasyStoreRuntime({
       }
     }
     if (!effectiveRunner) throw missingCredentialsError({ credentials: directCredentials, helper })
-    const payload = await runHelper(effectiveRunner, ['raw', 'GET', `/products.json${buildQuery({ page, limit })}`])
+    const payload = await runHelper(effectiveRunner, ['raw', 'GET', `/products.json${buildQuery({ page, limit, skus: sku })}`])
     return {
       ok: true,
       mode: 'local_helper_ready',
@@ -488,6 +488,18 @@ export function createEasyStoreRuntime({
       const maxPages = Math.max(1, Number(env.EASY_STORE_PRODUCT_SEARCH_MAX_PAGES || 8))
       const hasSearch = Boolean(cleanKeyword || cleanSku)
       const rows = []
+
+      if (cleanSku) {
+        const skuPayload = await listProducts({ limit: Math.max(Math.min(requestedLimit, 50), 1), page: 1, sku })
+        const ranked = rankProductSearchRows(normalizeProductSearchRows(skuPayload.products, { shopBase }), { keyword, sku })
+        if (ranked.length) {
+          return {
+            ok: true,
+            products: ranked.slice(0, requestedLimit),
+            count: ranked.length,
+          }
+        }
+      }
 
       for (let page = 1; page <= (hasSearch ? maxPages : 1); page += 1) {
         const payload = await listProducts({ limit: pageLimit, page })
