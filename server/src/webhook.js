@@ -398,6 +398,9 @@ function recoverAllowedFallbackDecision(decision) {
 }
 
 function productImageAttachmentsForDecision(decision) {
+  if (Array.isArray(decision?.attachments) && decision.attachments.length) {
+    return normalizeDecisionAttachments(decision.attachments)
+  }
   if (decision?.intent !== 'productImage') return []
   return (decision.productFacts?.variants || [])
     .map((variant) => String(variant.imageUrl || '').trim())
@@ -410,6 +413,68 @@ function productImageAttachmentsForDecision(decision) {
       size: 0,
       url,
     }))
+}
+
+function normalizeDecisionAttachments(input = []) {
+  if (!Array.isArray(input)) return []
+  return input
+    .map((item, index) => {
+      const url = String(item?.url || item?.imageUrl || '').trim()
+      const type = String(item?.type || 'image/jpeg').trim()
+      if (!/^https:\/\//i.test(url) || (!type.startsWith('image/') && type !== 'image')) return null
+      return {
+        id: item.id || `ai_attachment_${index + 1}`,
+        name: String(item.name || item.title || 'AI attachment').slice(0, 120),
+        type: type === 'image' ? 'image/jpeg' : type,
+        size: Number(item.size || 0) || 0,
+        url,
+        source: item.source || 'ai_decision_attachment',
+      }
+    })
+    .filter(Boolean)
+    .filter((item, index, rows) => rows.findIndex((candidate) => candidate.url === item.url) === index)
+    .slice(0, 5)
+}
+
+function normalizeDecisionCarousel(input = []) {
+  if (!Array.isArray(input)) return []
+  return input
+    .map((item) => {
+      const title = String(item?.title || '').trim().slice(0, 80)
+      const subtitle = String(item?.subtitle || '').trim().slice(0, 80)
+      const imageUrl = String(item?.imageUrl || item?.image_url || '').trim()
+      if (!title || !/^https:\/\//i.test(imageUrl)) return null
+      const buttons = Array.isArray(item?.buttons)
+        ? item.buttons.map((button) => {
+          const type = String(button?.type || 'web_url').trim()
+          const buttonTitle = String(button?.title || '').trim().slice(0, 20)
+          const url = String(button?.url || '').trim()
+          if (type !== 'web_url' || !buttonTitle || !/^https:\/\//i.test(url)) return null
+          return { type: 'web_url', title: buttonTitle, url }
+        }).filter(Boolean).slice(0, 3)
+        : []
+      return {
+        title,
+        ...(subtitle ? { subtitle } : {}),
+        imageUrl,
+        ...(buttons.length ? { buttons } : {}),
+      }
+    })
+    .filter(Boolean)
+    .slice(0, 10)
+}
+
+function carouselAttachments(cards = []) {
+  return normalizeDecisionCarousel(cards)
+    .map((card, index) => ({
+      id: `ai_carousel_card_${index + 1}`,
+      name: card.title,
+      type: 'image/jpeg',
+      size: 0,
+      url: card.imageUrl,
+      source: 'ai_carousel_card',
+    }))
+    .filter((item, index, rows) => rows.findIndex((candidate) => candidate.url === item.url) === index)
 }
 
 const DEFAULT_CUSTOMER_SILENCE_FOLLOW_UP_TEXT = 'ยังอยู่ไหมคะ ถ้าสนใจตัวนี้ แอดมินช่วยปิดออเดอร์ต่อให้ได้เลยค่ะ'
@@ -572,14 +637,18 @@ async function draftThreadReply({ omni, ai, threadId, send = false, sendReply = 
   const policy = omni.getPolicyForThread(thread)
   let decision = recoverAllowedFallbackDecision(await ai.draft({ thread, snapshot, policy }))
   if (!decision.ok) return decision
-  const productImageAttachments = productImageAttachmentsForDecision(decision)
-  if (productImageAttachments.length) {
+  const decisionAttachments = productImageAttachmentsForDecision(decision)
+  const decisionCarousel = normalizeDecisionCarousel(decision.carousel || decision.cards || [])
+  const visibleAttachments = [...decisionAttachments, ...carouselAttachments(decisionCarousel)]
+    .filter((item, index, rows) => rows.findIndex((candidate) => candidate.url === item.url) === index)
+    .slice(0, 5)
+  if (decisionAttachments.length || decisionCarousel.length) {
     decision = {
       ...decision,
       allowed: true,
       action: 'draft_ready',
       reason: decision.reason === 'guard_requires_human_or_more_data'
-        ? 'https_product_image_attachment_ready'
+        ? 'https_product_or_carousel_attachment_ready'
         : decision.reason,
     }
   }
@@ -603,6 +672,7 @@ async function draftThreadReply({ omni, ai, threadId, send = false, sendReply = 
       threadId: thread.id,
       authorName: 'Anna Lynn AI',
       text: decision.draftText,
+      attachments: visibleAttachments,
       sourceRef: `ai_auto_reply_draft:${recorded.decision.id}`,
       actorType: 'ai',
       auditAction: 'ai_reply_draft_created',
@@ -621,7 +691,7 @@ async function draftThreadReply({ omni, ai, threadId, send = false, sendReply = 
   if (wsSettings?.ai?.customerSendEnabled !== true) {
     return recordVisibleDraft('customer_send_guard_enabled')
   }
-  if (decision.intent === 'productImage' && !productImageAttachments.length) {
+  if (decision.intent === 'productImage' && !decisionAttachments.length && !decisionCarousel.length) {
     return recordVisibleDraft('image_attachment_required')
   }
 
@@ -629,6 +699,7 @@ async function draftThreadReply({ omni, ai, threadId, send = false, sendReply = 
   if (!pageProfile) return { ...result, sent: false, sendSkipped: 'unsupported_page_for_auto_send' }
   if (!decision.allowed) return { ...result, sent: false, sendSkipped: 'decision_not_allowed' }
   if (isCommentThread(thread)) {
+    if (decisionAttachments.length || decisionCarousel.length) return recordVisibleDraft('comment_assets_require_inbox_or_manual_send')
     const commentId = commentIdForThread(thread)
     if (!commentId) return { ...result, sent: false, sendSkipped: 'missing_comment_id' }
     const isInstagramComment = thread.platform === 'instagram_comment'
@@ -648,14 +719,14 @@ async function draftThreadReply({ omni, ai, threadId, send = false, sendReply = 
   const recipientId = thread.customer?.providerCustomerId
   if (!recipientId) return { ...result, sent: false, sendSkipped: 'missing_recipient_id' }
 
-  const attachments = decision.intent === 'productImage' ? productImageAttachments : []
-  const sendResult = await sendReply({ pageProfile, recipientId, message: decision.draftText, attachments })
+  const attachments = decisionAttachments
+  const sendResult = await sendReply({ pageProfile, recipientId, message: decision.draftText, attachments, carousel: decisionCarousel })
   if (!sendResult?.ok) return { ...result, sent: false, sendSkipped: sendResult?.error || 'send_failed', sendResult }
   const recordedOutbound = omni.recordOutboundMessage({
     threadId: thread.id,
     authorName: 'Anna Lynn AI',
     text: decision.draftText,
-    attachments,
+    attachments: visibleAttachments,
     providerMessageId: sendResult.response?.message_id || sendResult.response?.recipient_id || null,
     sourceRef: `meta_send:${pageProfile}`,
     decisionId: recorded.decision.id,

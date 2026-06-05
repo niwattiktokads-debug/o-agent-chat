@@ -960,6 +960,157 @@ test('AI reply engine adds rich message campaign brief to the first customer rep
   assert.doesNotMatch(secondDecision.draftText, /6\.6 ออกตัวแรงลดยกล้อ/)
 })
 
+test('AI reply engine prepares bill link and product carousel assets for checkout-ready replies', async () => {
+  const seed = createOmniSeed()
+  seed.omniSettings[0].settings.ai.salesAssets = {
+    enabled: true,
+    sizeChartImageUrl: 'https://cdn.example/lorra-size-chart.jpg',
+  }
+  seed.customers.push({ id: 'cust_checkout_assets', displayName: 'Checkout Customer', matchConfidence: 1 })
+  seed.threads.push({
+    id: 'thread_checkout_assets',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'cust_checkout_assets',
+    status: 'open',
+    intent: 'unknown',
+    risk: 'low',
+    unreadCount: 1,
+    messageCount: 1,
+    updatedAt: '2026-06-05T05:05:00.000Z',
+  })
+  seed.messages.push({
+    id: 'msg_checkout_assets',
+    threadId: 'thread_checkout_assets',
+    direction: 'inbound',
+    authorName: 'Checkout Customer',
+    text: 'Lorra ดำ XL เอาค่ะ',
+    createdAt: '2026-06-05T05:05:00.000Z',
+  })
+  seed.inventorySnapshots.push(
+    {
+      id: 'es_stock_lorra_black_xl_checkout',
+      sku: 'LORRA-BLK-XL',
+      source: 'easystore',
+      available: 2,
+      checkedAt: '2026-06-05T05:04:00.000Z',
+      productId: '16462646',
+      variantId: '7601',
+      productName: 'Lorra เดรสเชิ้ต Polo',
+      price: 1290,
+      imageUrl: 'https://cdn.example/lorra-black-xl.jpg',
+    },
+    {
+      id: 'es_stock_lorra_gray_xl_checkout',
+      sku: 'LORRA-GRY-XL',
+      source: 'easystore',
+      available: 1,
+      checkedAt: '2026-06-05T05:04:00.000Z',
+      productId: '16462646',
+      variantId: '7602',
+      productName: 'Lorra เดรสเชิ้ต Polo',
+      price: 1290,
+      imageUrl: 'https://cdn.example/lorra-gray-xl.jpg',
+    },
+  )
+  seed.paymentRequests.push({
+    id: 'pay_checkout_assets',
+    threadId: 'thread_checkout_assets',
+    orderId: null,
+    provider: 'meta_pay_kgp',
+    status: 'pending',
+    amount: 1290,
+    currency: 'THB',
+    approvalRequired: true,
+    checkoutUrl: 'https://pay.example/checkout/lorra-xl',
+    messagePreview: 'ชำระเงิน Lorra XL: https://pay.example/checkout/lorra-xl',
+    createdAt: '2026-06-05T05:04:30.000Z',
+  })
+  const service = createOmniService(seed)
+  const thread = service.getThread('thread_checkout_assets')
+  const snapshot = service.snapshot()
+  snapshot.settings = service.getSettingsForThread(thread.id)
+  const ai = createAiReplyEngine({ provider: 'local_rules', model: 'test' })
+
+  const decision = await ai.draft({ thread, snapshot, policy: service.getPolicyForThread(thread) })
+
+  assert.equal(decision.ok, true)
+  assert.match(decision.draftText, /https:\/\/pay\.example\/checkout\/lorra-xl/)
+  assert.equal(decision.attachments.some((item) => item.url === 'https://cdn.example/lorra-black-xl.jpg'), true)
+  assert.equal(decision.attachments.some((item) => item.url === 'https://cdn.example/lorra-size-chart.jpg'), true)
+  assert.equal(decision.carousel.some((card) => card.imageUrl === 'https://cdn.example/lorra-gray-xl.jpg'), true)
+})
+
+test('Meta auto reply records AI carousel assets as visible guarded draft attachments', async () => {
+  const service = createOmniService()
+  const app = express()
+  app.use(express.json())
+  const hub = { broadcast() {} }
+  const room = { addMessage: (message) => ({ id: 'room_msg_1', ...message }), snapshot: () => ({}) }
+  const ai = {
+    draft: async ({ thread }) => ({
+      ok: true,
+      provider: 'local_rules',
+      model: 'test',
+      threadId: thread.id,
+      intent: 'productImage',
+      risk: 'low',
+      action: 'draft_ready',
+      confidence: 0.9,
+      allowed: true,
+      draftText: 'ส่งภาพสินค้าและตารางไซซ์ให้ดูค่ะ ชำระเงินได้ที่ https://pay.example/order-1',
+      reason: 'test_assets_ready',
+      sourceIds: [],
+      evidenceIds: [],
+      attachments: [
+        { id: 'ai_product_image_1', name: 'ภาพสีดำ', type: 'image/jpeg', size: 0, url: 'https://cdn.example/black.jpg' },
+        { id: 'ai_size_chart_1', name: 'ตารางไซซ์', type: 'image/jpeg', size: 0, url: 'https://cdn.example/size-chart.jpg' },
+      ],
+      carousel: [
+        { title: 'ภาพสีดำ', imageUrl: 'https://cdn.example/black.jpg' },
+        { title: 'ตารางไซซ์', imageUrl: 'https://cdn.example/size-chart.jpg' },
+      ],
+    }),
+  }
+  mountWebhook(app, hub, room, {
+    omni: service,
+    ai,
+    awaitAutoReplies: true,
+    metaAutoReplyDefault: true,
+    metaAutoSendDefault: false,
+    followUpEnabled: false,
+  })
+  const server = app.listen(0)
+  try {
+    const baseUrl = `http://127.0.0.1:${server.address().port}`
+    const response = await fetch(`${baseUrl}/webhook/meta?autoReply=1&send=0`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        object: 'page',
+        entry: [{
+          id: '122106446570001676',
+          messaging: [{
+            sender: { id: 'customer_assets_1' },
+            recipient: { id: '122106446570001676' },
+            timestamp: 1779470000000,
+            message: { mid: 'mid_assets_1', text: 'ขอดูรูปและบิลค่ะ' },
+          }],
+        }],
+      }),
+    })
+    const payload = await response.json()
+    const draft = payload.result.autoReplies[0].draft
+
+    assert.equal(response.status, 200)
+    assert.equal(payload.result.autoReplies[0].sendSkipped, 'draft_only')
+    assert.equal(draft.attachments.length, 2)
+    assert.equal(draft.attachments.some((item) => item.url === 'https://cdn.example/size-chart.jpg'), true)
+  } finally {
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
 test('retention route dry-runs chat cleanup by default', async () => {
   const seed = createOmniSeed()
   seed.messages = [

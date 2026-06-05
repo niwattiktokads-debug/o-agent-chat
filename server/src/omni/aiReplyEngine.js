@@ -568,6 +568,112 @@ function applyRichMessageToDraft(draftText, richMessage) {
   return `${richMessage.text} ${draft}`.trim().slice(0, MAX_DRAFT_CHARS)
 }
 
+function normalizeSalesAssets(input = {}) {
+  const salesAssets = input?.ai?.salesAssets || input?.salesAssets || {}
+  return {
+    enabled: salesAssets.enabled !== false,
+    sizeChartImageUrl: String(salesAssets.sizeChartImageUrl || salesAssets.size_chart_image_url || '').trim(),
+  }
+}
+
+function latestPaymentLinkForThread(thread, snapshot) {
+  const threadOrderIds = new Set((snapshot.orderLinks || [])
+    .filter((link) => link.threadId === thread.id)
+    .map((link) => link.orderId)
+    .filter(Boolean))
+  const payments = (snapshot.paymentRequests || [])
+    .filter((payment) => (
+      payment.threadId === thread.id ||
+      (payment.orderId && threadOrderIds.has(payment.orderId))
+    ))
+    .filter((payment) => !['paid', 'failed', 'expired', 'cancelled'].includes(String(payment.status || '').toLowerCase()))
+    .filter((payment) => String(payment.checkoutUrl || payment.messagePreview || '').includes('http'))
+    .sort((a, b) => String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')))
+  const payment = payments[0] || null
+  if (!payment) return null
+  const preview = String(payment.messagePreview || '').trim()
+  const checkoutUrl = String(payment.checkoutUrl || '').trim()
+  const url = checkoutUrl || (preview.match(/https?:\/\/\S+/i)?.[0] || '')
+  if (!url) return null
+  return {
+    id: payment.id,
+    amount: Number(payment.amount || 0),
+    currency: payment.currency || 'THB',
+    url,
+    text: preview && preview.includes(url) ? preview : `ลิงก์ชำระเงิน: ${url}`,
+  }
+}
+
+function appendPaymentLinkToDraft(draftText, paymentLink, intent) {
+  const draft = String(draftText || '').trim()
+  if (!paymentLink?.url || !['orderPurchase', 'paymentProof', 'price', 'stock'].includes(intent)) return draft
+  if (draft.includes(paymentLink.url)) return draft
+  return `${draft}\n${paymentLink.text}`.trim().slice(0, MAX_DRAFT_CHARS)
+}
+
+function safeImageUrl(value) {
+  const url = String(value || '').trim()
+  return /^https:\/\//i.test(url) ? url : ''
+}
+
+function variantLabel(variant = {}, productName = 'สินค้า') {
+  const sku = String(variant.sku || '').trim()
+  const color = detectColor([variant.color, sku].filter(Boolean).join(' '))
+  const size = String(variant.size || detectSize([variant.size, sku].filter(Boolean).join(' '))).toUpperCase()
+  return [productName, color ? `สี${color}` : '', size ? `ไซซ์ ${size}` : '', sku].filter(Boolean).join(' · ')
+}
+
+function buildSalesAttachments({ productFacts, settings }) {
+  const salesAssets = normalizeSalesAssets(settings)
+  if (!salesAssets.enabled) return []
+  const productName = productFacts?.productName || 'สินค้า'
+  const rows = []
+  for (const [index, variant] of (productFacts?.variants || []).entries()) {
+    const url = safeImageUrl(variant.imageUrl)
+    if (!url || rows.some((item) => item.url === url)) continue
+    rows.push({
+      id: `ai_product_asset_${index + 1}`,
+      name: variantLabel(variant, productName).slice(0, 120),
+      type: 'image/jpeg',
+      size: 0,
+      url,
+      source: 'ai_product_carousel',
+    })
+  }
+  const sizeChartUrl = safeImageUrl(salesAssets.sizeChartImageUrl)
+  if (sizeChartUrl && !rows.some((item) => item.url === sizeChartUrl)) {
+    rows.push({
+      id: 'ai_size_chart_1',
+      name: 'ตารางไซซ์',
+      type: 'image/jpeg',
+      size: 0,
+      url: sizeChartUrl,
+      source: 'ai_size_chart',
+    })
+  }
+  return rows.slice(0, 5)
+}
+
+function buildSalesCarousel({ productFacts, attachments, paymentLink }) {
+  const productName = productFacts?.productName || 'สินค้า'
+  return (attachments || []).map((attachment) => {
+    const isSizeChart = attachment.source === 'ai_size_chart'
+    const title = isSizeChart ? 'ตารางไซซ์' : String(attachment.name || productName).slice(0, 80)
+    const subtitle = isSizeChart
+      ? 'เทียบไซซ์ก่อนปิดออเดอร์'
+      : [
+        productFacts?.price ? `ราคา ${moneyText(productFacts.price)} บาท` : '',
+        Number(productFacts?.availableTotal || 0) > 0 ? `พร้อมส่งรวม ${productFacts.availableTotal} ชิ้น` : '',
+      ].filter(Boolean).join(' · ').slice(0, 80)
+    return {
+      title,
+      ...(subtitle ? { subtitle } : {}),
+      imageUrl: attachment.url,
+      ...(paymentLink?.url ? { buttons: [{ type: 'web_url', title: 'ชำระเงิน', url: paymentLink.url }] } : {}),
+    }
+  }).slice(0, 10)
+}
+
 function compactOriginContext(thread, messages = []) {
   const latestWithOrigin = messages
     .slice()
@@ -840,7 +946,11 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
       ...baseDecision,
       provider: payload.provider || provider,
       model: payload.model || model,
-      draftText: applyRichMessageToDraft(String(payload.draftText || baseDecision.draftText || '').trim(), baseDecision.richMessage),
+      draftText: applyRichMessageToDraft(appendPaymentLinkToDraft(
+        String(payload.draftText || baseDecision.draftText || '').trim(),
+        baseDecision.paymentLink,
+        baseDecision.intent,
+      ), baseDecision.richMessage),
       confidence: Number(payload.confidence || baseDecision.confidence || 0.74),
       reason: payload.reason || baseDecision.reason,
     }
@@ -898,10 +1008,10 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
       productFactsText(baseDecision.productFacts),
       ...relevantKnowledge(baseDecision.intent, snapshot, { workspaceId: _oaiWsId }).map((source) => source.content || ''),
     ].join('\n')
-    const draftText = applyRichMessageToDraft(guardedDraftText(parsed?.draftText || text, baseDecision.draftText, {
+    const draftText = applyRichMessageToDraft(appendPaymentLinkToDraft(guardedDraftText(parsed?.draftText || text, baseDecision.draftText, {
       trustedContext,
       productFacts: baseDecision.productFacts,
-    }), baseDecision.richMessage)
+    }), baseDecision.paymentLink, baseDecision.intent), baseDecision.richMessage)
     return {
       ...baseDecision,
       provider: 'openai',
@@ -972,12 +1082,12 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
       productFactsText(baseDecision.productFacts),
       ...relevantKnowledge(baseDecision.intent, snapshot, { workspaceId: _gemWsId }).map((source) => source.content || ''),
     ].join('\n')
-    const draftText = applyRichMessageToDraft(finishedCleanly
+    const draftText = applyRichMessageToDraft(appendPaymentLinkToDraft(finishedCleanly
       ? guardedDraftText(parsed?.draftText || text, baseDecision.draftText, {
         trustedContext,
         productFacts: baseDecision.productFacts,
       })
-      : baseDecision.draftText, baseDecision.richMessage)
+      : baseDecision.draftText, baseDecision.paymentLink, baseDecision.intent), baseDecision.richMessage)
 
     return {
       ...baseDecision,
@@ -1025,6 +1135,9 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
       const draftText = holdReason === 'easystore_live_product_conflict'
         ? 'เดี๋ยวขอให้แอดมินตรวจรุ่นและสต็อกจาก EasyStore ให้ชัดก่อนนะคะ เพื่อไม่ให้แจ้งผิดรุ่นค่ะ'
         : draftForIntent(intent, originContext, productFacts, slots)
+      const paymentLink = latestPaymentLinkForThread(thread, snapshot)
+      const salesAttachments = buildSalesAttachments({ productFacts, settings: snapshot.settings || {} })
+      const salesCarousel = buildSalesCarousel({ productFacts, attachments: salesAttachments, paymentLink })
 
       const baseDecision = {
         ok: true,
@@ -1036,7 +1149,7 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
         action: decisionAllowed ? 'draft_ready' : 'needs_approval',
         confidence: holdReason ? 0.58 : (intent === 'faq' ? 0.72 : 0.82),
         allowed: decisionAllowed,
-        draftText: applyRichMessageToDraft(draftText, richMessage),
+        draftText: applyRichMessageToDraft(appendPaymentLinkToDraft(draftText, paymentLink, intent), richMessage),
         reason: productFacts
           ? productFactsReason
           : (holdReason || (allowed ? 'policy_allows_low_risk_intent' : 'guard_requires_human_or_more_data')),
@@ -1046,6 +1159,9 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
         productFacts,
         salesSlots: slots,
         richMessage: richMessage?.enabled ? richMessage : null,
+        paymentLink,
+        attachments: salesAttachments,
+        carousel: salesCarousel,
       }
 
       if (provider === 'local_rules') return baseDecision

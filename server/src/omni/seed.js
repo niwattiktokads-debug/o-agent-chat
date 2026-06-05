@@ -118,7 +118,12 @@ export function createOmniSeed() {
           liveCf: { enabled: true, mode: 'fallback_post_comment_capture' },
           report: { timezone: 'Asia/Bangkok' },
           orderDraft: { enabled: true, approvalRequired: true, createZortOrderOnApprove: true },
-          ai: { enabled: true, customerSendEnabled: false, richMessage: { enabled: false, text: '' } },
+          ai: {
+            enabled: true,
+            customerSendEnabled: false,
+            richMessage: { enabled: false, text: '' },
+            salesAssets: { enabled: true, sizeChartImageUrl: '' },
+          },
         },
         updatedAt: '2026-05-24T00:00:00.000Z',
         updatedBy: 'seed',
