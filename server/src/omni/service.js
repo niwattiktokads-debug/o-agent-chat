@@ -6,6 +6,14 @@ import { DEFAULT_WORKSPACE_ID, backfillWorkspaceId, filterByWorkspace, normalize
 import { buildKgpPaymentMessage } from './kgpPaymentRuntime.js'
 import { resolveSalesContext } from './salesContextResolver.js'
 
+function envFlag(name) {
+  return process.env[name] === '1'
+}
+
+function omniAiAutoSendAllEnabled() {
+  return envFlag('OMNI_AI_AUTO_SEND_ALL') || envFlag('OMNI_AI_AUTO_SEND_ON_WEBHOOK')
+}
+
 function resolveOptions(input) {
   if (input?.store || input?.seed) return { seed: input.seed || createOmniSeed(), store: input.store || null }
   return { seed: input || createOmniSeed(), store: null }
@@ -1192,7 +1200,7 @@ export function createOmniService(options = createOmniSeed()) {
     evaluateAutoSend({ threadId }) {
       const thread = currentData().threads.find((item) => item.id === threadId)
       if (!thread) return { allowed: false, reason: 'thread_not_found' }
-      if (process.env.OMNI_AI_AUTO_SEND_ALL === '1') return { allowed: true, reason: 'auto_send_all_enabled' }
+      if (omniAiAutoSendAllEnabled()) return { allowed: true, reason: 'auto_send_all_enabled' }
       const policy = getPolicyForThread(thread)
       if (!policy) return { allowed: false, reason: 'missing_policy' }
       if (!policy.autoSend?.[thread.intent]) return { allowed: false, reason: 'intent_requires_approval' }

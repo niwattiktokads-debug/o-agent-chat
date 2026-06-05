@@ -18,6 +18,18 @@ const LINE_GROUP_RULES_FILE = process.env.LINE_SUDA_GROUP_RULES_FILE || '/Users/
 const LINE_HELPER = process.env.LINE_SUDA_OAGENT_HELPER || '/Users/babycuca/.codex/bin/line-suda-oagent'
 const LINE_JOIN_INTAKE_PUSH_DEFAULT = process.env.LINE_SUDA_JOIN_INTAKE_PUSH === '1'
 
+function envFlag(name) {
+  return process.env[name] === '1'
+}
+
+function omniAutoSendOnWebhookEnabled() {
+  return envFlag('OMNI_AI_AUTO_SEND_ON_WEBHOOK')
+}
+
+function omniDirectSendAllEnabled() {
+  return omniAutoSendOnWebhookEnabled() || envFlag('OMNI_AI_AUTO_SEND_ALL')
+}
+
 function appendJsonl(file, row) {
   mkdirSync(dirname(file), { recursive: true })
   appendFileSync(file, `${JSON.stringify(row)}\n`)
@@ -707,7 +719,7 @@ async function draftThreadReply({ omni, ai, threadId, send = false, sendReply = 
   if (wsSettings?.ai?.customerSendEnabled !== true) {
     return recordVisibleDraft('customer_send_guard_enabled')
   }
-  if (decision.intent === 'productImage' && !decisionAttachments.length && !decisionCarousel.length) {
+  if (decision.intent === 'productImage' && !decisionAttachments.length && !decisionCarousel.length && !omniDirectSendAllEnabled()) {
     return recordVisibleDraft('image_attachment_required')
   }
 
@@ -808,8 +820,8 @@ export function mountWebhook(app, hub, room, options = {}) {
   const sendCommentReply = options.sendCommentReply || sendFacebookCommentReply
   const sendIgCommentReply = options.sendIgCommentReply || sendInstagramCommentReply
   const metaVerifyToken = options.metaVerifyToken || process.env.META_VERIFY_TOKEN || ''
-  const metaAutoReplyDefault = options.metaAutoReplyDefault ?? process.env.OMNI_META_WEBHOOK_AUTO_REPLY === '1'
-  const metaAutoSendDefault = options.metaAutoSendDefault ?? process.env.OMNI_META_WEBHOOK_SEND === '1'
+  const metaAutoReplyDefault = options.metaAutoReplyDefault ?? (envFlag('OMNI_META_WEBHOOK_AUTO_REPLY') || omniAutoSendOnWebhookEnabled())
+  const metaAutoSendDefault = options.metaAutoSendDefault ?? (envFlag('OMNI_META_WEBHOOK_SEND') || omniAutoSendOnWebhookEnabled())
   const followUpEnabled = options.followUpEnabled ?? process.env.OMNI_META_FOLLOW_UP_ENABLED === '1'
   const followUpDelayMs = normalizeFollowUpDelayMs(options.followUpDelayMs ?? process.env.OMNI_META_FOLLOW_UP_DELAY_MS)
   const followUpText = options.followUpText || process.env.OMNI_META_FOLLOW_UP_TEXT || DEFAULT_CUSTOMER_SILENCE_FOLLOW_UP_TEXT

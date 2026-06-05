@@ -2150,6 +2150,60 @@ test('POST /webhook/meta can auto draft from realtime default without query flag
   }
 })
 
+test('POST /webhook/meta sends by default when OMNI_AI_AUTO_SEND_ON_WEBHOOK is enabled', async () => {
+  const previousAutoSendOnWebhook = process.env.OMNI_AI_AUTO_SEND_ON_WEBHOOK
+  process.env.OMNI_AI_AUTO_SEND_ON_WEBHOOK = '1'
+  const app = express()
+  app.use(express.json())
+  const sent = []
+  const localEvents = []
+  const localHub = { broadcast: (event, payload) => localEvents.push({ event, payload }) }
+  mountWebhook(app, localHub, createState(), {
+    omni: createOmniServiceWithCustomerSend(),
+    metaVerifyToken: 'verify-token-test',
+    awaitAutoReplies: true,
+    sendReply: async (payload) => {
+      sent.push(payload)
+      return { ok: true, response: { message_id: 'sent_mid_auto_send_on_webhook' } }
+    },
+  })
+  const localServer = app.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const response = await fetch(`http://localhost:${localPort}/webhook/meta`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        object: 'page',
+        entry: [{
+          id: '122106446570001676',
+          messaging: [{
+            sender: { id: 'customer_anna_auto_send_env' },
+            recipient: { id: '122106446570001676' },
+            timestamp: 1779470205000,
+            message: { mid: 'route_mid_anna_auto_send_env', text: 'มีสินค้าไหม' },
+          }],
+        }],
+      }),
+    })
+    const body = await response.json()
+    assert.equal(response.status, 200)
+    assert.equal(body.result.autoReplies.length, 1)
+    assert.equal(body.result.autoReplies[0].sent, true)
+    assert.equal(body.result.autoReplies[0].sendSkipped, undefined)
+    assert.equal(body.result.autoReplies[0].outbound.direction, 'outbound')
+    assert.equal(body.result.autoReplies[0].outbound.sourceRef, 'meta_send:anna_lynn')
+    assert.equal(sent.length, 1)
+    assert.equal(sent[0].pageProfile, 'anna_lynn')
+    assert.equal(sent[0].recipientId, 'customer_anna_auto_send_env')
+    assertBroadcastedOmni(localEvents)
+  } finally {
+    if (previousAutoSendOnWebhook === undefined) delete process.env.OMNI_AI_AUTO_SEND_ON_WEBHOOK
+    else process.env.OMNI_AI_AUTO_SEND_ON_WEBHOOK = previousAutoSendOnWebhook
+    localServer.close()
+  }
+})
+
 test('POST /webhook/meta send=0 overrides live send default for smoke tests', async () => {
   const app = express()
   app.use(express.json())
@@ -3151,6 +3205,57 @@ test('POST /webhook/meta does not auto send text-only loops for product image re
     assert.match(body.result.autoReplies[0].draft.text, /แนบรูปสินค้าจริง|product card/)
     assert.equal(sent.length, 0)
   } finally {
+    localServer.close()
+  }
+})
+
+test('POST /webhook/meta sends text-only product image replies when direct webhook send is enabled', async () => {
+  const previousAutoSendOnWebhook = process.env.OMNI_AI_AUTO_SEND_ON_WEBHOOK
+  process.env.OMNI_AI_AUTO_SEND_ON_WEBHOOK = '1'
+  const app = express()
+  app.use(express.json())
+  const sent = []
+  const localOmni = createOmniService()
+  localOmni.updateSettings({ settings: { ai: { customerSendEnabled: true } }, updatedBy: 'test' })
+  mountWebhook(app, { broadcast: () => {} }, createState(), {
+    omni: localOmni,
+    metaVerifyToken: 'verify-token-test',
+    awaitAutoReplies: true,
+    sendReply: async (payload) => {
+      sent.push(payload)
+      return { ok: true, response: { message_id: 'sent_mid_image_text_direct' } }
+    },
+  })
+  const localServer = app.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const response = await fetch(`http://localhost:${localPort}/webhook/meta`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        object: 'page',
+        entry: [{
+          id: '122106446570001676',
+          messaging: [{
+            sender: { id: 'customer_anna_image_text_direct' },
+            recipient: { id: '122106446570001676' },
+            timestamp: 1779470302500,
+            message: { mid: 'route_mid_anna_image_text_direct', text: 'ขอดูภาพสีเทา 2xl' },
+          }],
+        }],
+      }),
+    })
+    const body = await response.json()
+    assert.equal(response.status, 200)
+    assert.equal(body.result.autoReplies[0].sent, true)
+    assert.equal(body.result.autoReplies[0].recorded.intent, 'productImage')
+    assert.equal(body.result.autoReplies[0].sendSkipped, undefined)
+    assert.equal(sent.length, 1)
+    assert.equal(sent[0].recipientId, 'customer_anna_image_text_direct')
+    assert.equal(sent[0].attachments.length, 0)
+  } finally {
+    if (previousAutoSendOnWebhook === undefined) delete process.env.OMNI_AI_AUTO_SEND_ON_WEBHOOK
+    else process.env.OMNI_AI_AUTO_SEND_ON_WEBHOOK = previousAutoSendOnWebhook
     localServer.close()
   }
 })

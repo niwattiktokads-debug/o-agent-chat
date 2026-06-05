@@ -2,7 +2,6 @@ import { spawn } from 'node:child_process'
 const DEFAULT_PROVIDER = process.env.OMNI_AI_PROVIDER || 'local_rules'
 const DEFAULT_MODEL = process.env.OMNI_AI_MODEL || 'guarded-draft-v1'
 const DEFAULT_HELPER = process.env.OMNI_AI_REPLY_HELPER || '/Users/babycuca/.codex/bin/omni-ai-reply'
-const AUTO_SEND_ALL = process.env.OMNI_AI_AUTO_SEND_ALL === '1'
 const GEMINI_API_BASE = process.env.GEMINI_API_BASE || 'https://generativelanguage.googleapis.com/v1beta'
 const OPENAI_API_BASE = process.env.OPENAI_API_BASE || 'https://api.openai.com/v1'
 const MAX_DRAFT_CHARS = Number(process.env.OMNI_AI_MAX_DRAFT_CHARS || 480)
@@ -18,6 +17,10 @@ const PRODUCT_LOOKUP_GENERIC_TERMS = new Set([
   'สนใจ', 'ตัวนี้', 'รุ่น', 'สี', 'ไซซ์', 'ไซส์', 'size', 'stock', 'price', 'photo', 'image',
 ])
 const DEFAULT_LOW_RISK_AUTOSEND_INTENTS = new Set(['faq', 'stock', 'price', 'orderStatus', 'sizeAdvice', 'shipping'])
+
+function autoSendAllEnabled() {
+  return process.env.OMNI_AI_AUTO_SEND_ALL === '1' || process.env.OMNI_AI_AUTO_SEND_ON_WEBHOOK === '1'
+}
 
 function latestInboundMessage(thread, snapshot) {
   return (snapshot.messages || [])
@@ -63,7 +66,7 @@ function classifyIntent(text) {
   return 'faq'
 }
 
-function riskForIntent(intent, policy, autoSendAll = AUTO_SEND_ALL) {
+function riskForIntent(intent, policy, autoSendAll = autoSendAllEnabled()) {
   if (autoSendAll) return 'low'
   if (intent === 'humanReview') return 'medium'
   if (['productImage', 'orderPurchase', 'paymentProof', 'alternativeProduct'].includes(intent)) return 'medium'
@@ -72,7 +75,7 @@ function riskForIntent(intent, policy, autoSendAll = AUTO_SEND_ALL) {
   return 'low'
 }
 
-function autoSendEnabledForIntent(intent, policy, autoSendAll = AUTO_SEND_ALL) {
+function autoSendEnabledForIntent(intent, policy, autoSendAll = autoSendAllEnabled()) {
   if (autoSendAll) return true
   const autoSend = policy?.autoSend || {}
   if (Object.prototype.hasOwnProperty.call(autoSend, intent)) return autoSend[intent] === true
