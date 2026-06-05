@@ -303,7 +303,20 @@ vi.mock('../../lib/omniApi.js', () => ({
   }),
   searchEasyStoreProducts: async () => ({
     ok: true,
-    products: [{ id: '76013285', productId: '16462394', variantId: '76013285', sku: 'lorสีดำXL', name: 'Lorra สีดำ XL', sellPrice: 690, availableStock: 13 }],
+    products: [{
+      id: '76013285',
+      productId: '16462394',
+      variantId: '76013285',
+      sku: 'lorสีดำXL',
+      name: 'Lorra สีดำ XL',
+      productName: 'Lorra เดรสเชิ้ต Polo',
+      variantTitle: 'ดำ / XL',
+      color: 'ดำ',
+      size: 'XL',
+      imageUrl: 'https://cdn.example/lorra.jpg',
+      sellPrice: 690,
+      availableStock: 13,
+    }],
   }),
   lookupThaiAddressByPostcode: async () => ({
     ok: true,
@@ -507,7 +520,13 @@ describe('OmniWorkbench', () => {
     expect(await screen.findByText('เติมฟอร์มแล้ว และสร้าง draft ให้ลูกค้าตรวจที่อยู่แล้ว')).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('ค้นสินค้า EasyStore'), { target: { value: 'Lorra' } })
     fireEvent.click(screen.getByRole('button', { name: 'ค้น EasyStore' }))
-    expect(await screen.findByText('Lorra สีดำ XL')).toBeInTheDocument()
+    expect(await screen.findByText('Lorra เดรสเชิ้ต Polo')).toBeInTheDocument()
+    expect(await screen.findByText('ดำ / XL')).toBeInTheDocument()
+    expect(await screen.findByText('รหัส lorสีดำXL')).toBeInTheDocument()
+    expect(await screen.findByText('สี ดำ')).toBeInTheDocument()
+    expect(await screen.findByText('ไซซ์ XL')).toBeInTheDocument()
+    expect(await screen.findByText('จำนวน 13')).toBeInTheDocument()
+    expect(screen.getByAltText('Lorra สีดำ XL')).toHaveAttribute('src', 'https://cdn.example/lorra.jpg')
     fireEvent.click(screen.getByRole('button', { name: 'เลือก lorสีดำXL' }))
     expect(await screen.findByText('พบที่อยู่ 1 รายการ · ครอบคลุม 77 จังหวัด')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'บันทึก draft ออเดอร์' }))

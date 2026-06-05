@@ -176,6 +176,59 @@ test('EasyStore runtime uses direct Storefront API when cloud credentials are pr
   assert.equal(calls[0].options.headers['EasyStore-Access-Token'], 'access_token_1')
 })
 
+test('EasyStore product search returns image, sku, color, size, and stock rows', async () => {
+  const runtime = createEasyStoreRuntime({
+    env: {
+      EASY_STORE_SHOP: 'annalynna.easy.co',
+      EASY_STORE_ACCESS_TOKEN: 'access_token_1',
+      EASY_STORE_CLIENT_ID: 'app_1',
+      EASY_STORE_CLIENT_SECRET: 'secret_1',
+    },
+    fetchImpl: async () => new Response(JSON.stringify({
+      products: [{
+        id: 16462394,
+        title: 'Lorra เดรสเชิ้ต Polo',
+        handle: 'lorra-polo',
+        images: [{ id: 11, src: 'https://cdn.example/lorra.jpg' }],
+        variants: [{
+          id: 76013285,
+          sku: 'lorสีดำXL',
+          title: 'ดำ / XL',
+          price: '690.00',
+          inventory_quantity: 13,
+          image_id: 11,
+        }],
+      }],
+    }), { status: 200 }),
+  })
+
+  const result = await runtime.searchProducts({ keyword: 'lor', limit: 3 })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.products[0].imageUrl, 'https://cdn.example/lorra.jpg')
+  assert.equal(result.products[0].sku, 'lorสีดำXL')
+  assert.equal(result.products[0].color, 'ดำ')
+  assert.equal(result.products[0].size, 'XL')
+  assert.equal(result.products[0].availableStock, 13)
+})
+
+test('EasyStore product list helper uses raw JSON endpoint for fallback search', async () => {
+  const calls = []
+  const runtime = createEasyStoreRuntime({
+    env: {},
+    runner: async (args) => {
+      calls.push(args)
+      return { ok: true, response: { products: [{ id: 1, title: 'Lorra', variants: [{ id: 2, sku: 'LOR-XL', title: 'ดำ / XL', quantity: 4 }] }] } }
+    },
+  })
+
+  const result = await runtime.searchProducts({ keyword: 'lor', limit: 8 })
+
+  assert.equal(result.ok, true)
+  assert.deepEqual(calls[0], ['raw', 'GET', '/products.json?page=1&limit=50'])
+  assert.equal(result.products[0].sku, 'LOR-XL')
+})
+
 test('EasyStore runtime reports missing credentials instead of spawning a missing local helper', async () => {
   const runtime = createEasyStoreRuntime({
     env: {},

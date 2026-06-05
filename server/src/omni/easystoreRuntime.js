@@ -200,10 +200,20 @@ function normalizeVariant(variant = {}, imageById = new Map(), currency = 'THB')
   const quantity = variantQuantity(variant)
   const price = variantPrice(variant)
   const linkedImage = imageById.get(String(variant.image_id || variant.imageId || ''))
+  const options = [
+    variant.option1,
+    variant.option2,
+    variant.option3,
+    variant.color,
+    variant.size,
+    ...(Array.isArray(variant.options) ? variant.options : []),
+    ...(Array.isArray(variant.option_values) ? variant.option_values.map((item) => item?.value || item?.name || item) : []),
+  ].map(cleanText).filter(Boolean)
   return {
     id: String(variant.id || variant.variant_id || ''),
     sku: String(variant.sku || ''),
     title: cleanText(variant.title || variant.name || variant.options || ''),
+    options,
     price: {
       amount: price,
       currency,
@@ -214,6 +224,18 @@ function normalizeVariant(variant = {}, imageById = new Map(), currency = 'THB')
     enabled: variant.is_enabled !== false && variant.enabled !== false,
     imageUrl: linkedImage?.url || '',
   }
+}
+
+function variantAttribute(variant = {}, type = '') {
+  const explicit = cleanText(variant[type])
+  if (explicit) return explicit
+  const options = Array.isArray(variant.options) ? variant.options : []
+  if (type === 'color' && options[0]) return cleanText(options[0])
+  if (type === 'size' && options[1]) return cleanText(options[1])
+  const parts = cleanText(variant.title).split(/[\/,|·]/).map((part) => part.trim()).filter(Boolean)
+  if (type === 'color') return parts[0] || ''
+  if (type === 'size') return parts[1] || ''
+  return ''
 }
 
 function normalizeImages(images = []) {
@@ -294,6 +316,10 @@ function normalizeProductSearchRows(products = [], { shopBase } = {}) {
         variantId: variant.id || '',
         sku: variant.sku || String(variant.id || preview.id),
         name: [preview.title, variant.title && variant.title !== preview.title ? variant.title : ''].filter(Boolean).join(' · '),
+        productName: preview.title,
+        variantTitle: variant.title || '',
+        color: variantAttribute(variant, 'color'),
+        size: variantAttribute(variant, 'size'),
         sellPrice: variant.price?.amount ?? preview.price.amount ?? 0,
         unitPrice: variant.price?.amount ?? preview.price.amount ?? 0,
         stock: variant.quantity ?? preview.stock.totalQuantity,
@@ -392,7 +418,7 @@ export function createEasyStoreRuntime({
       }
     }
     if (!effectiveRunner) throw missingCredentialsError({ credentials: directCredentials, helper })
-    const payload = await runHelper(effectiveRunner, ['list-products', '--limit', String(limit)])
+    const payload = await runHelper(effectiveRunner, ['raw', 'GET', `/products.json${buildQuery({ page, limit })}`])
     return {
       ok: true,
       mode: 'local_helper_ready',

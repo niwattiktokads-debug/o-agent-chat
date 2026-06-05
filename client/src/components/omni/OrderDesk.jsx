@@ -46,6 +46,19 @@ function orderSourceConfig(source) {
   return ORDER_SOURCE_OPTIONS.find((item) => item.id === source) || ORDER_SOURCE_OPTIONS[0]
 }
 
+function productStock(product = {}) {
+  return product.availableStock ?? product.stock ?? '-'
+}
+
+function productMeta(product = {}) {
+  return [
+    product.sku ? `รหัส ${product.sku}` : '',
+    product.color ? `สี ${product.color}` : '',
+    product.size ? `ไซซ์ ${product.size}` : '',
+    `จำนวน ${productStock(product)}`,
+  ].filter(Boolean)
+}
+
 function mergeOrderDraftSettings(snapshotSettings = {}, orderDraftPatch = {}) {
   return {
     ...snapshotSettings,
@@ -398,10 +411,22 @@ function OrderDraft({ snapshot, thread, onSnapshot, workspaceId }) {
               {products.length === 0 ? (
                 <div className="px-3 py-4 text-center text-xs text-[var(--color-muted)]">ค้นหาเพื่อดึงสินค้า {sourceConfig.label} จริง</div>
               ) : products.map((product) => (
-                <div key={product.id || product.sku} className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2">
+                <div key={product.id || product.sku} className="grid min-w-0 grid-cols-[44px_minmax(0,1fr)_auto] items-center gap-3 px-3 py-2">
+                  <div className="grid h-11 w-11 place-items-center overflow-hidden rounded-[var(--radius-sm)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] text-[10px] font-bold text-[var(--color-muted)]">
+                    {product.imageUrl ? (
+                      <img src={product.imageUrl} alt={product.name || product.sku || 'product'} className="h-full w-full object-cover" loading="lazy" />
+                    ) : (
+                      <span>ไม่มีรูป</span>
+                    )}
+                  </div>
                   <div className="min-w-0">
-                    <div className="truncate font-semibold text-[var(--color-ink)]">{product.name}</div>
-                    <div className="mt-1 truncate text-[11px] text-[var(--color-muted)]">{product.sku || product.id} · stock {product.availableStock ?? product.stock ?? '-'}</div>
+                    <div className="truncate font-semibold text-[var(--color-ink)]">{product.productName || product.name}</div>
+                    {product.variantTitle && product.variantTitle !== product.productName ? <div className="mt-0.5 truncate text-[11px] font-semibold text-[var(--color-ink-2)]">{product.variantTitle}</div> : null}
+                    <div className="mt-1 flex min-w-0 flex-wrap gap-1">
+                      {productMeta(product).map((item) => (
+                        <span key={item} className="max-w-full truncate rounded-[var(--radius-pill)] bg-[var(--color-panel)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--color-muted)]">{item}</span>
+                      ))}
+                    </div>
                   </div>
                   <button
                     type="button"
