@@ -640,7 +640,7 @@ describe('OmniWorkbench', () => {
     render(<OmniWorkbench />)
     const draftBox = await screen.findByPlaceholderText(/พิมพ์ข้อความตอบลูกค้า/)
 
-    fireEvent.click(await screen.findByRole('button', { name: 'ขาย' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'สินค้า' }))
     fireEvent.click(await screen.findByText('ใช้รูปนี้'))
     await waitFor(() => {
       expect(draftBox).toHaveValue('ส่งภาพ เสื้อเชิ้ตโปโลผู้หญิง สีดำ ให้ดูค่ะ')
@@ -693,7 +693,7 @@ describe('OmniWorkbench', () => {
     render(<OmniWorkbench />)
     const draftBox = await screen.findByPlaceholderText(/พิมพ์ข้อความตอบลูกค้า/)
 
-    fireEvent.click(await screen.findByRole('button', { name: 'ขาย' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'สินค้า' }))
 
     expect(await screen.findByText('ลูกค้าเดิม')).toBeInTheDocument()
     expect(await screen.findByText('081***5678')).toBeInTheDocument()
@@ -707,17 +707,40 @@ describe('OmniWorkbench', () => {
     expect(screen.getByText('ข้อความ รูป ลิงก์ ออเดอร์ และชำระเงินในกล่องนี้คือ draft ที่บอสเห็นก่อนส่งจริง')).toBeInTheDocument()
   })
 
+  it('moves EasyStore product search into the product context tab and removes the composer product button', async () => {
+    render(<OmniWorkbench />)
+    const draftBox = await screen.findByPlaceholderText(/พิมพ์ข้อความตอบลูกค้า/)
+
+    expect(screen.queryByRole('button', { name: 'ขาย' })).not.toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'สินค้า' })).toHaveLength(1)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'สินค้า' }))
+
+    expect(await screen.findByLabelText('ค้นสินค้า EasyStore')).toBeInTheDocument()
+    expect(await screen.findByText('Lorra เดรสเชิ้ต Polo')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('ค้นสินค้า EasyStore'), { target: { value: 'lorra red' } })
+    fireEvent.click(screen.getByRole('button', { name: 'ค้น EasyStore' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'ใช้ตอบ lorสีดำXL' }))
+
+    expect(await screen.findByText(/ใส่สินค้าในกล่องตอบแล้ว: Lorra เดรสเชิ้ต Polo/)).toBeInTheDocument()
+    expect(draftBox.value).toContain('แนะนำตัวนี้ค่ะ: Lorra เดรสเชิ้ต Polo')
+    expect(draftBox.value).toContain('SKU: lorสีดำXL')
+    expect(screen.getAllByAltText('Lorra สีดำ XL').length).toBeGreaterThan(0)
+  })
+
   it('creates an EasyStore product draft from the selected thread without sending', async () => {
     render(<OmniWorkbench />)
     const draftBox = await screen.findByPlaceholderText(/พิมพ์ข้อความตอบลูกค้า/)
 
     fireEvent.click(await screen.findByRole('button', { name: 'สินค้า' }))
-    fireEvent.change(screen.getByLabelText('EasyStore product id'), { target: { value: '16462646' } })
-    fireEvent.click(screen.getByRole('button', { name: 'แนบสินค้า' }))
+    fireEvent.change(await screen.findByLabelText('ค้นสินค้า EasyStore'), { target: { value: 'Lorra' } })
+    fireEvent.click(screen.getByRole('button', { name: 'ค้น EasyStore' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'ใช้ตอบ lorสีดำXL' }))
 
-    expect(await screen.findByText(/แนบสินค้าแล้ว: Amanda Jumpsuit/)).toBeInTheDocument()
-    expect(draftBox.value).toContain('แนะนำตัวนี้ค่ะ: Amanda Jumpsuit')
-    expect(screen.getAllByAltText('Amanda Jumpsuit').length).toBeGreaterThan(0)
+    expect(await screen.findByText(/ใส่สินค้าในกล่องตอบแล้ว: Lorra เดรสเชิ้ต Polo/)).toBeInTheDocument()
+    expect(draftBox.value).toContain('แนะนำตัวนี้ค่ะ: Lorra เดรสเชิ้ต Polo')
+    expect(draftBox.value).toContain('SKU: lorสีดำXL')
+    expect(screen.getAllByAltText('Lorra สีดำ XL').length).toBeGreaterThan(0)
     expect(screen.queryByText('Draft ยังไม่ส่งออกไปหาลูกค้า ปุ่มส่งลูกค้าจริงใช้ได้เมื่อเปิด “ส่งจริงเปิด”')).not.toBeInTheDocument()
   })
 

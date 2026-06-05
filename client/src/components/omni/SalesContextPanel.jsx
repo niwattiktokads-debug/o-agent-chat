@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { fetchSalesContext } from '../../lib/omniApi.js'
+import { fetchSalesContext, searchEasyStoreProducts } from '../../lib/omniApi.js'
 
 function money(value) {
   const amount = Number(value || 0)
@@ -15,10 +15,65 @@ function memoryLine(memory = {}) {
   return parts.join(' · ') || '-'
 }
 
+function productName(product = {}) {
+  return product.productName || product.title || product.name || product.sku || product.productId || product.id || 'สินค้า'
+}
+
+function productPrice(product = {}) {
+  return product.price?.formatted || money(product.sellPrice ?? product.price ?? 0)
+}
+
+function productStock(product = {}) {
+  return product.availableStock ?? product.stock?.totalQuantity ?? product.availableTotal ?? 0
+}
+
+function productMeta(product = {}) {
+  return [
+    product.sku ? `SKU: ${product.sku}` : '',
+    product.color ? `สี${product.color}` : '',
+    product.size ? `ไซซ์ ${product.size}` : '',
+    `พร้อมส่ง ${productStock(product)} ชิ้น`,
+    productPrice(product) !== '-' ? `ราคา ${productPrice(product)}` : '',
+  ].filter(Boolean)
+}
+
+function buildEasyStoreProductDraft({ product, thread }) {
+  const id = product.productId || product.id || product.variantId || product.sku || ''
+  const previewUrl = id && thread?.id
+    ? `${window.location.origin}/p/easystore/${encodeURIComponent(id)}?threadId=${encodeURIComponent(thread.id)}`
+    : ''
+  const lines = [
+    `แนะนำตัวนี้ค่ะ: ${productName(product)}`,
+    product.sku ? `SKU: ${product.sku}` : '',
+    product.variantTitle && product.variantTitle !== productName(product) ? `ตัวเลือก: ${product.variantTitle}` : '',
+    product.color ? `สี: ${product.color}` : '',
+    product.size ? `ไซซ์: ${product.size}` : '',
+    productPrice(product) !== '-' ? `ราคา: ${productPrice(product)}` : '',
+    `สถานะ: พร้อมส่ง ${productStock(product)} ชิ้น`,
+    previewUrl ? `ดูสินค้า: ${previewUrl}` : '',
+    product.links?.storefrontUrl ? `ลิงก์ร้าน: ${product.links.storefrontUrl}` : '',
+    'ถ้าสนใจตัวนี้ แอดมินปิดออเดอร์ต่อในแชทได้เลยค่ะ',
+  ].filter(Boolean)
+  return {
+    text: lines.join('\n'),
+    attachments: product.imageUrl ? [{
+      id: `easystore_product_${id || Date.now()}`,
+      name: product.name || productName(product),
+      type: 'image/jpeg',
+      size: 0,
+      url: product.imageUrl,
+    }] : [],
+  }
+}
+
 export default function SalesContextPanel({ thread, onUseDraft }) {
   const [context, setContext] = useState(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [productQuery, setProductQuery] = useState('')
+  const [products, setProducts] = useState([])
+  const [productBusy, setProductBusy] = useState(false)
+  const [productStatus, setProductStatus] = useState('')
 
   useEffect(() => {
     let ignore = false
@@ -39,6 +94,46 @@ export default function SalesContextPanel({ thread, onUseDraft }) {
     return () => { ignore = true }
   }, [thread?.id])
 
+  useEffect(() => {
+    let ignore = false
+    setProductQuery('')
+    setProducts([])
+    setProductStatus('')
+    if (!thread?.id) return () => { ignore = true }
+    setProductBusy(true)
+    searchEasyStoreProducts('', 8)
+      .then((result) => {
+        if (ignore) return
+        const rows = result.products || []
+        setProducts(rows)
+        setProductStatus(rows.length ? `โหลดสินค้า EasyStore ${rows.length} รายการ` : 'ยังไม่มีสินค้า EasyStore')
+      })
+      .catch((err) => {
+        if (!ignore) setProductStatus(err.message || 'easystore_product_search_failed')
+      })
+      .finally(() => {
+        if (!ignore) setProductBusy(false)
+      })
+    return () => { ignore = true }
+  }, [thread?.id])
+
+  async function searchProducts(event) {
+    event?.preventDefault()
+    if (productBusy) return
+    setProductBusy(true)
+    setProductStatus('กำลังค้นสินค้า EasyStore')
+    try {
+      const result = await searchEasyStoreProducts(productQuery.trim(), 12)
+      const rows = result.products || []
+      setProducts(rows)
+      setProductStatus(rows.length ? `พบสินค้า ${rows.length} รายการ` : 'ไม่พบสินค้า EasyStore')
+    } catch (err) {
+      setProductStatus(err.message || 'easystore_product_search_failed')
+    } finally {
+      setProductBusy(false)
+    }
+  }
+
   function useImage(image) {
     if (!image?.url) return
     const productName = context?.product?.product?.productName || image.alt || 'สินค้า'
@@ -55,6 +150,18 @@ export default function SalesContextPanel({ thread, onUseDraft }) {
     })
   }
 
+  function useProduct(product) {
+    if (!thread?.id) return
+    const draft = buildEasyStoreProductDraft({ product, thread })
+    onUseDraft?.({
+      id: `easystore_product_${thread.id}_${product.id || product.productId || product.sku || Date.now()}`,
+      threadId: thread.id,
+      text: draft.text,
+      attachments: draft.attachments,
+    })
+    setProductStatus(`ใส่สินค้าในกล่องตอบแล้ว: ${productName(product)}`)
+  }
+
   if (!thread) return <div className="p-4 text-xs text-[var(--color-muted)]">เลือกแชทก่อน</div>
   if (busy) return <div className="p-4 text-xs font-semibold text-[var(--color-muted)]">กำลังโหลดบริบทการขาย</div>
   if (error) return <div className="m-4 rounded-[var(--radius-md)] border border-[var(--color-danger)] bg-[var(--color-danger-soft)] p-3 text-xs font-semibold text-[var(--color-danger)]">{error}</div>
@@ -69,6 +176,67 @@ export default function SalesContextPanel({ thread, onUseDraft }) {
 
   return (
     <div className="space-y-3 p-4">
+      <section className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] p-3">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <h2 className="text-sm font-bold text-[var(--color-ink)]">รายการสินค้า</h2>
+            <p className="mt-1 text-xs font-semibold text-[var(--color-muted)]">ค้นสินค้า EasyStore เพื่อใช้ตอบในกล่องแชท</p>
+          </div>
+          <span className="rounded-[var(--radius-pill)] bg-[var(--color-panel-2)] px-2 py-1 text-[10px] font-bold text-[var(--color-muted)]">EasyStore</span>
+        </div>
+        <form onSubmit={searchProducts} className="mt-3 grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+          <label className="min-w-0 text-xs font-semibold text-[var(--color-muted)]" htmlFor="sales-easystore-search">
+            ค้นสินค้า EasyStore
+            <input
+              id="sales-easystore-search"
+              value={productQuery}
+              onChange={(event) => setProductQuery(event.target.value)}
+              placeholder="SKU หรือชื่อสินค้า"
+              className="mt-1 w-full rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] px-3 py-2 text-sm font-semibold text-[var(--color-ink)] outline-none focus:border-[var(--color-accent)]"
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={productBusy}
+            className="self-end rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm font-bold text-[var(--color-ink-2)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)] disabled:opacity-45"
+          >
+            {productBusy ? 'กำลังค้น' : 'ค้น EasyStore'}
+          </button>
+        </form>
+        {productStatus ? <div className="mt-2 text-xs font-semibold text-[var(--color-muted)]">{productStatus}</div> : null}
+        <div className="mt-3 space-y-2">
+          {products.length ? products.map((product) => (
+            <div key={product.id || product.variantId || product.sku} className="grid min-w-0 grid-cols-[48px_minmax(0,1fr)_auto] items-center gap-3 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] p-2">
+              <div className="h-12 w-12 overflow-hidden rounded-[var(--radius-sm)] border border-[var(--color-rule)] bg-[var(--color-panel)]">
+                {product.imageUrl ? (
+                  <img src={product.imageUrl} alt={product.name || productName(product)} className="h-full w-full object-cover" loading="lazy" />
+                ) : (
+                  <div className="grid h-full place-items-center text-[10px] font-bold text-[var(--color-muted)]">สินค้า</div>
+                )}
+              </div>
+              <div className="min-w-0">
+                <div className="truncate text-xs font-bold text-[var(--color-ink)]">{productName(product)}</div>
+                {product.variantTitle && product.variantTitle !== productName(product) ? <div className="mt-0.5 truncate text-[11px] font-semibold text-[var(--color-ink-2)]">{product.variantTitle}</div> : null}
+                <div className="mt-1 flex min-w-0 flex-wrap gap-1">
+                  {productMeta(product).slice(0, 4).map((item) => (
+                    <span key={item} className="rounded-[var(--radius-pill)] bg-[var(--color-panel)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--color-muted)]">{item}</span>
+                  ))}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => useProduct(product)}
+                className="rounded-[var(--radius-sm)] bg-[var(--color-accent)] px-2 py-1.5 text-xs font-bold text-[var(--color-accent-ink)]"
+              >
+                ใช้ตอบ {product.sku || product.productId || product.id}
+              </button>
+            </div>
+          )) : (
+            <div className="rounded-[var(--radius-sm)] border border-dashed border-[var(--color-rule)] px-3 py-6 text-center text-xs text-[var(--color-muted)]">ค้นหาเพื่อดึงสินค้า EasyStore จริง</div>
+          )}
+        </div>
+      </section>
+
       <section className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] p-3">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-sm font-bold text-[var(--color-ink)]">ลูกค้าเดิม</h2>

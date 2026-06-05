@@ -8,7 +8,7 @@ import SalesContextPanel from './SalesContextPanel.jsx'
 
 const TABS = [
   { id: 'ai', label: 'AI' },
-  { id: 'sales', label: 'ขาย' },
+  { id: 'sales', label: 'สินค้า' },
   { id: 'profiles', label: 'โปรไฟล์' },
   { id: 'orders', label: 'ออเดอร์' },
   { id: 'payment', label: 'ชำระเงิน' },

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { autoSendStatus, customerAvatarUrl, customerForThread, formatShortTime, initialsForName, pageForThread, sourceLabel, statusLabel } from '../../lib/omniModel.js'
-import { fetchEasyStoreProductPreview, sendManualReply } from '../../lib/omniApi.js'
+import { sendManualReply } from '../../lib/omniApi.js'
 
 export default function ThreadDetail({ snapshot, thread, onSnapshot, suggestedDraft }) {
   const endRef = useRef(null)
@@ -107,9 +107,6 @@ function ManualReplyComposer({ thread, messagesSignature = '', onSnapshot, sugge
   const [attachments, setAttachments] = useState([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [productPanelOpen, setProductPanelOpen] = useState(false)
-  const [productId, setProductId] = useState('')
-  const [productStatus, setProductStatus] = useState('')
   const fileInputRef = useRef(null)
   const messageSignatureRef = useRef('')
 
@@ -117,9 +114,6 @@ function ManualReplyComposer({ thread, messagesSignature = '', onSnapshot, sugge
     setText('')
     setAttachments([])
     setError('')
-    setProductId('')
-    setProductStatus('')
-    setProductPanelOpen(false)
     messageSignatureRef.current = messagesSignature
   }, [thread?.id])
 
@@ -134,7 +128,6 @@ function ManualReplyComposer({ thread, messagesSignature = '', onSnapshot, sugge
     setText('')
     setAttachments([])
     setError('')
-    setProductStatus('')
   }, [messagesSignature, thread?.id])
 
   useEffect(() => {
@@ -167,30 +160,6 @@ function ManualReplyComposer({ thread, messagesSignature = '', onSnapshot, sugge
     event.preventDefault()
   }
 
-  function buildProductDraft(product = {}) {
-    const previewUrl = `${window.location.origin}/p/easystore/${encodeURIComponent(product.id || product.productId || productId.trim())}?threadId=${encodeURIComponent(thread.id)}`
-    const image = product.images?.[0] || product.image || null
-    const stockQuantity = Number(product.stock?.totalQuantity || product.availableTotal || 0)
-    const lines = [
-      `แนะนำตัวนี้ค่ะ: ${product.title || product.productName || product.name || productId.trim()}`,
-      product.price?.formatted ? `ราคา: ${product.price.formatted}` : '',
-      stockQuantity > 0 ? `สถานะ: พร้อมส่ง ${stockQuantity} ชิ้น` : '',
-      `ดูสินค้า: ${previewUrl}`,
-      product.links?.storefrontUrl ? `ลิงก์ร้าน: ${product.links.storefrontUrl}` : '',
-      'ถ้าสนใจตัวนี้ แอดมินปิดออเดอร์ต่อในแชทได้เลยค่ะ',
-    ].filter(Boolean)
-    return {
-      text: lines.join('\n'),
-      attachments: image?.url ? [{
-        id: `easystore_product_${product.id || productId.trim()}`,
-        name: image.alt || product.title || product.productName || 'EasyStore product',
-        type: 'image/jpeg',
-        size: 0,
-        url: image.url,
-      }] : [],
-    }
-  }
-
   async function sendLive() {
     if (!thread || busy) return
     const cleanText = text.trim()
@@ -221,33 +190,6 @@ function ManualReplyComposer({ thread, messagesSignature = '', onSnapshot, sugge
     }
   }
 
-  async function attachEasyStoreProduct() {
-    if (!thread || busy) return
-    const cleanProductId = productId.trim()
-    if (!cleanProductId) {
-      setProductStatus('ใส่ EasyStore product id ก่อน')
-      return
-    }
-    setBusy(true)
-    setError('')
-    setProductStatus('กำลังดึงสินค้าเข้าในกล่องตอบ')
-    try {
-      const result = await fetchEasyStoreProductPreview(cleanProductId)
-      const product = result.product || {}
-      const draft = buildProductDraft(product)
-      setText(draft.text)
-      setAttachments(draft.attachments)
-      setProductId('')
-      setProductStatus(`แนบสินค้าแล้ว: ${product.title || product.productName || cleanProductId}`)
-      setProductPanelOpen(false)
-    } catch (err) {
-      setProductStatus('')
-      setError(err.message || 'easystore_product_preview_failed')
-    } finally {
-      setBusy(false)
-    }
-  }
-
   return (
     <form onSubmit={submit} className="border-t border-[var(--color-rule)] bg-[var(--color-panel)] px-4 py-3">
       {attachments.length > 0 ? (
@@ -265,27 +207,6 @@ function ManualReplyComposer({ thread, messagesSignature = '', onSnapshot, sugge
               </button>
             </div>
           ))}
-        </div>
-      ) : null}
-      {productPanelOpen ? (
-        <div className="mb-2 flex flex-wrap items-end gap-2 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] p-2">
-          <label className="min-w-48 flex-1 text-xs font-semibold text-[var(--color-muted)]">
-            EasyStore product id
-            <input
-              value={productId}
-              onChange={(event) => setProductId(event.target.value)}
-              placeholder="เช่น 16462646"
-              className="mt-1 w-full rounded-[var(--radius-sm)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-2 py-2 text-sm text-[var(--color-ink)] outline-none focus:border-[var(--color-accent)]"
-            />
-          </label>
-          <button
-            type="button"
-            onClick={attachEasyStoreProduct}
-            disabled={busy}
-            className="rounded-[var(--radius-md)] bg-[var(--color-accent)] px-3 py-2 text-sm font-semibold text-[var(--color-accent-ink)] disabled:opacity-45"
-          >
-            แนบสินค้า
-          </button>
         </div>
       ) : null}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
@@ -319,13 +240,6 @@ function ManualReplyComposer({ thread, messagesSignature = '', onSnapshot, sugge
           </button>
           <button
             type="button"
-            onClick={() => setProductPanelOpen((current) => !current)}
-            className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)]"
-          >
-            สินค้า
-          </button>
-          <button
-            type="button"
             disabled={busy || (!text.trim() && attachments.length === 0)}
             onClick={() => {
               setText('')
@@ -347,7 +261,6 @@ function ManualReplyComposer({ thread, messagesSignature = '', onSnapshot, sugge
         </div>
       </div>
       {error ? <p className="mt-2 text-xs text-rose-600">{error}</p> : null}
-      {productStatus ? <p className="mt-2 text-xs text-[var(--color-muted)]">{productStatus}</p> : null}
       <p className="mt-2 text-[11px] text-[var(--color-muted)]">
         ข้อความ รูป ลิงก์ ออเดอร์ และชำระเงินในกล่องนี้คือ draft ที่บอสเห็นก่อนส่งจริง
       </p>
