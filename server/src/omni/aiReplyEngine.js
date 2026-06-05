@@ -24,6 +24,27 @@ function latestInboundMessage(thread, snapshot) {
     .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))[0] || null
 }
 
+function inboundMessagesForThread(thread, snapshot) {
+  return (snapshot.messages || [])
+    .filter((message) => message.threadId === thread.id && message.direction === 'inbound')
+    .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')))
+}
+
+function isContinuationText(text) {
+  const value = String(text || '').trim().toLowerCase()
+  if (!value) return false
+  if (value.length <= 18 && /(อยู่ไหม|อยู่มั้ย|อยู่ป่าว|ตอบไหม|ตอบมั้ย|มีไหม|มีมั้ย|สนใจ|ใสใจ|ยังอยู่|เฮ้ย|ฮัลโหล)/i.test(value)) return true
+  return /(ยังไม่ได้.*(?:ซื้อ|สั่ง)|มาถาม|ถามรายละเอียด|ถามก่อน|รอคำตอบ)/i.test(value)
+}
+
+function classificationTextForThread(thread, snapshot) {
+  const inbound = inboundMessagesForThread(thread, snapshot)
+  const latest = inbound.at(-1)
+  if (!latest) return ''
+  if (!isContinuationText(latest.text) || inbound.length === 1) return latest.text || ''
+  return inbound.slice(-4).map((message) => message.text || '').join('\n')
+}
+
 function classifyIntent(text) {
   const value = String(text || '').toLowerCase()
   if (isCustomerCorrection(value)) return 'humanReview'
@@ -551,7 +572,7 @@ function shouldApplyRichMessage(thread, snapshot) {
   return !(snapshot.messages || []).some((message) => (
     message.threadId === thread.id &&
     message.direction === 'outbound' &&
-    String(message.sourceRef || '') !== 'ai_follow_up_draft:customer_silence_7s'
+    !String(message.sourceRef || '').startsWith('ai_follow_up_draft:')
   ))
 }
 
@@ -1105,7 +1126,8 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
     async draft({ thread, snapshot, policy }) {
       if (!thread) return { ok: false, error: 'thread_required' }
       const inbound = latestInboundMessage(thread, snapshot)
-      const intent = classifyIntent(inbound?.text || '')
+      const classificationText = classificationTextForThread(thread, snapshot)
+      const intent = classifyIntent(classificationText || inbound?.text || '')
       const risk = riskForIntent(intent, policy)
       const allowed = AUTO_SEND_ALL || (Boolean(policy?.autoSend?.[intent]) && risk === 'low')
       // Derive workspaceId from thread's page for tenant-scoped knowledge
@@ -1126,7 +1148,7 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
         }
       }
       const slots = latestSalesSlots(thread, snapshot, originContext)
-      const holdReason = liveLookupHoldReason || shouldHoldForHumanReview({ intent, inboundText: inbound?.text, productFacts })
+      const holdReason = liveLookupHoldReason || shouldHoldForHumanReview({ intent, inboundText: classificationText || inbound?.text, productFacts })
       const decisionAllowed = allowed && !holdReason
       const productSourceIds = productFacts
         ? (productFacts.variants || []).map((variant) => variant.id).filter(Boolean)

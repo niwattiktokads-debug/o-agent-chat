@@ -2554,6 +2554,62 @@ test('AI reply engine escalates customer corrections instead of looping auto rep
   assert.match(decision.draftText, /แอดมินตรวจคำตอบ/)
 })
 
+test('AI reply engine keeps prior product context when customer sends a short nudge', async () => {
+  const seed = createOmniSeed()
+  seed.customers.push({ id: 'cust_anna_nudge', displayName: 'Anna Nudge Customer', matchConfidence: 1 })
+  seed.threads.push({
+    id: 'thread_anna_nudge',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'cust_anna_nudge',
+    status: 'open',
+    intent: 'unknown',
+    risk: 'low',
+    unreadCount: 3,
+    messageCount: 4,
+    updatedAt: '2026-06-05T07:00:00.000Z',
+  })
+  seed.messages.push(
+    {
+      id: 'msg_anna_nudge_question',
+      threadId: 'thread_anna_nudge',
+      direction: 'inbound',
+      authorName: 'Anna Nudge Customer',
+      text: 'ภาพสีแดง มีไหม',
+      createdAt: '2026-06-05T06:59:12.000Z',
+      providerMessageId: 'mid_anna_nudge_question',
+    },
+    {
+      id: 'msg_anna_nudge_short',
+      threadId: 'thread_anna_nudge',
+      direction: 'inbound',
+      authorName: 'Anna Nudge Customer',
+      text: 'มีไหม',
+      createdAt: '2026-06-05T06:59:37.000Z',
+      providerMessageId: 'mid_anna_nudge_short',
+    },
+    {
+      id: 'msg_anna_nudge_ping',
+      threadId: 'thread_anna_nudge',
+      direction: 'inbound',
+      authorName: 'Anna Nudge Customer',
+      text: 'เฮ้ยยอยู่ไหม',
+      createdAt: '2026-06-05T06:59:49.000Z',
+      providerMessageId: 'mid_anna_nudge_ping',
+    },
+  )
+  const service = createOmniService(seed)
+  const thread = service.getThread('thread_anna_nudge')
+  const ai = createAiReplyEngine({ provider: 'local_rules', model: 'test' })
+  const decision = await ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
+
+  assert.equal(decision.intent, 'productImage')
+  assert.equal(decision.allowed, false)
+  assert.equal(decision.action, 'needs_approval')
+  assert.doesNotMatch(decision.draftText, /รับทราบค่ะ เดี๋ยวช่วยดูรายละเอียดให้ครบ/)
+  assert.match(decision.draftText, /รูปสินค้าจริง|product card|ภาพสินค้า/)
+})
+
 test('AI reply engine applies sales workflow for size-only product questions', async () => {
   const seed = createOmniSeed()
   seed.customers.push({ id: 'cust_sales_size', displayName: 'Sales Size Customer', matchConfidence: 1 })

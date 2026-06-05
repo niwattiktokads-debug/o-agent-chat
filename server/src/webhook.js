@@ -477,12 +477,13 @@ function carouselAttachments(cards = []) {
     .filter((item, index, rows) => rows.findIndex((candidate) => candidate.url === item.url) === index)
 }
 
-const DEFAULT_CUSTOMER_SILENCE_FOLLOW_UP_TEXT = 'ยังอยู่ไหมคะ ถ้าสนใจตัวนี้ แอดมินช่วยปิดออเดอร์ต่อให้ได้เลยค่ะ'
+const DEFAULT_CUSTOMER_SILENCE_FOLLOW_UP_DELAY_MS = 20 * 60 * 1000
+const DEFAULT_CUSTOMER_SILENCE_FOLLOW_UP_TEXT = 'ยังสนใจตัวนี้อยู่ไหมคะ ถ้าต้องการต่อ แอดมินช่วยสรุปรายละเอียดให้ได้ค่ะ'
 
 function normalizeFollowUpDelayMs(value) {
   const parsed = Number(value)
-  if (!Number.isFinite(parsed) || parsed < 0) return 7000
-  return Math.min(parsed, 60_000)
+  if (!Number.isFinite(parsed) || parsed < 0) return DEFAULT_CUSTOMER_SILENCE_FOLLOW_UP_DELAY_MS
+  return Math.min(parsed, 24 * 60 * 60 * 1000)
 }
 
 function threadIdsForCustomer(omni, threadId) {
@@ -557,7 +558,7 @@ async function sendCustomerSilenceFollowUp({
       threadId,
       authorName: 'Anna Lynn AI',
       text,
-      sourceRef: 'ai_follow_up_draft:customer_silence_7s',
+      sourceRef: 'ai_follow_up_draft:customer_silence',
       actorType: 'ai',
       auditAction: 'ai_follow_up_draft_created',
     })
@@ -745,7 +746,7 @@ async function runMetaAutoReplies({
   sendCommentReply,
   sendIgCommentReply,
   followUpEnabled = true,
-  followUpDelayMs = 7000,
+  followUpDelayMs = DEFAULT_CUSTOMER_SILENCE_FOLLOW_UP_DELAY_MS,
   followUpText = DEFAULT_CUSTOMER_SILENCE_FOLLOW_UP_TEXT,
   followUpScheduler = setTimeout,
 }) {
@@ -794,8 +795,8 @@ export function mountWebhook(app, hub, room, options = {}) {
   const metaVerifyToken = options.metaVerifyToken || process.env.META_VERIFY_TOKEN || ''
   const metaAutoReplyDefault = options.metaAutoReplyDefault ?? process.env.OMNI_META_WEBHOOK_AUTO_REPLY === '1'
   const metaAutoSendDefault = options.metaAutoSendDefault ?? process.env.OMNI_META_WEBHOOK_SEND === '1'
-  const followUpEnabled = options.followUpEnabled ?? process.env.OMNI_META_FOLLOW_UP_ENABLED !== '0'
-  const followUpDelayMs = normalizeFollowUpDelayMs(options.followUpDelayMs ?? process.env.OMNI_META_FOLLOW_UP_DELAY_MS ?? 7000)
+  const followUpEnabled = options.followUpEnabled ?? process.env.OMNI_META_FOLLOW_UP_ENABLED === '1'
+  const followUpDelayMs = normalizeFollowUpDelayMs(options.followUpDelayMs ?? process.env.OMNI_META_FOLLOW_UP_DELAY_MS)
   const followUpText = options.followUpText || process.env.OMNI_META_FOLLOW_UP_TEXT || DEFAULT_CUSTOMER_SILENCE_FOLLOW_UP_TEXT
   const followUpScheduler = options.followUpScheduler || setTimeout
   const lineHelperRunner = options.lineHelperRunner || defaultLineHelperRunner

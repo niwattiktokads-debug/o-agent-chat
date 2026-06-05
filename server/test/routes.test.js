@@ -2721,6 +2721,7 @@ test('POST /webhook/meta sends one follow-up when customer is silent past delay'
     omni: localOmni,
     metaVerifyToken: 'verify-token-test',
     awaitAutoReplies: true,
+    followUpEnabled: true,
     followUpDelayMs: 5,
     sendReply: async (payload) => {
       sent.push(payload)
@@ -2759,10 +2760,10 @@ test('POST /webhook/meta sends one follow-up when customer is silent past delay'
     const followUpMessage = sent[1]
     assert.equal(followUpMessage.pageProfile, 'anna_lynn')
     assert.equal(followUpMessage.recipientId, 'customer_anna_follow_up')
-    assert.match(followUpMessage.message, /ยังอยู่ไหม/)
+    assert.match(followUpMessage.message, /ยังสนใจตัวนี้อยู่ไหม|แอดมินช่วยสรุปรายละเอียด/)
     const followUps = localOmni.snapshot().messages.filter((message) => String(message.sourceRef || '').startsWith('ai_follow_up'))
     assert.equal(followUps.length, 1)
-    assert.match(followUps[0].text, /ยังอยู่ไหม/)
+    assert.match(followUps[0].text, /ยังสนใจตัวนี้อยู่ไหม|แอดมินช่วยสรุปรายละเอียด/)
   } finally {
     localServer.close()
   }
@@ -2779,6 +2780,7 @@ test('POST /webhook/meta skips follow-up when customer replies before delay', as
     omni: localOmni,
     metaVerifyToken: 'verify-token-test',
     awaitAutoReplies: true,
+    followUpEnabled: true,
     followUpDelayMs: 25,
     sendReply: async (payload) => {
       sent.push(payload)
@@ -2831,6 +2833,52 @@ test('POST /webhook/meta skips follow-up when customer replies before delay', as
     assert.equal(sent.length, 1)
     const followUpEvent = localEvents.find((event) => event.event === 'omni:auto-follow-up')
     assert.equal(followUpEvent.payload.sendSkipped, 'customer_replied_or_no_outbound')
+  } finally {
+    localServer.close()
+  }
+})
+
+test('POST /webhook/meta does not schedule customer silence follow-up by default', async () => {
+  const app = express()
+  app.use(express.json())
+  const sent = []
+  const localEvents = []
+  const localHub = { broadcast: (event, payload) => localEvents.push({ event, payload }) }
+  const localOmni = createOmniServiceWithCustomerSend()
+  mountWebhook(app, localHub, createState(), {
+    omni: localOmni,
+    metaVerifyToken: 'verify-token-test',
+    awaitAutoReplies: true,
+    followUpDelayMs: 5,
+    sendReply: async (payload) => {
+      sent.push(payload)
+      return { ok: true, response: { message_id: `sent_mid_no_default_follow_${sent.length}` } }
+    },
+  })
+  const localServer = app.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const response = await fetch(`http://localhost:${localPort}/webhook/meta?autoReply=1&send=1`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        object: 'page',
+        entry: [{
+          id: '122106446570001676',
+          messaging: [{
+            sender: { id: 'customer_anna_no_default_follow' },
+            recipient: { id: '122106446570001676' },
+            timestamp: 1779470300900,
+            message: { mid: 'route_mid_anna_no_default_follow', text: 'มีของไหม' },
+          }],
+        }],
+      }),
+    })
+    assert.equal(response.status, 200)
+    assert.equal(sent.length, 1)
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    assert.equal(sent.length, 1)
+    assert.equal(localEvents.some((event) => event.event === 'omni:auto-follow-up'), false)
   } finally {
     localServer.close()
   }
