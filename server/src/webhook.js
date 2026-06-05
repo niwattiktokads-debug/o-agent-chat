@@ -412,6 +412,151 @@ function productImageAttachmentsForDecision(decision) {
     }))
 }
 
+const DEFAULT_CUSTOMER_SILENCE_FOLLOW_UP_TEXT = 'ยังอยู่ไหมคะ ถ้าสนใจตัวนี้ แอดมินช่วยปิดออเดอร์ต่อให้ได้เลยค่ะ'
+
+function normalizeFollowUpDelayMs(value) {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed < 0) return 7000
+  return Math.min(parsed, 60_000)
+}
+
+function threadIdsForCustomer(omni, threadId) {
+  const snapshot = omni.snapshot()
+  const baseThread = (snapshot.threads || []).find((thread) => thread.id === threadId)
+  if (!baseThread) return new Set()
+  return new Set((snapshot.threads || [])
+    .filter((thread) => thread.customerId === baseThread.customerId)
+    .map((thread) => thread.id))
+}
+
+function latestMessageForThread(omni, threadId) {
+  const snapshot = omni.snapshot()
+  const threadIds = threadIdsForCustomer(omni, threadId)
+  if (!threadIds.size) return null
+  return (snapshot.messages || [])
+    .filter((message) => threadIds.has(message.threadId))
+    .slice()
+    .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))[0] || null
+}
+
+function inboundMessageIdsForCustomer(omni, threadId) {
+  const snapshot = omni.snapshot()
+  const threadIds = threadIdsForCustomer(omni, threadId)
+  return new Set((snapshot.messages || [])
+    .filter((message) => threadIds.has(message.threadId) && message.direction === 'inbound')
+    .map((message) => message.id)
+    .filter(Boolean))
+}
+
+function hasNewInboundMessage(omni, threadId, baselineInboundIds = null) {
+  if (!baselineInboundIds) return false
+  const baseline = baselineInboundIds instanceof Set ? baselineInboundIds : new Set(baselineInboundIds)
+  const current = inboundMessageIdsForCustomer(omni, threadId)
+  for (const messageId of current) {
+    if (!baseline.has(messageId)) return true
+  }
+  return false
+}
+
+function hasFollowUpForThread(omni, threadId) {
+  const snapshot = omni.snapshot()
+  const threadIds = threadIdsForCustomer(omni, threadId)
+  if (!threadIds.size) return false
+  return (snapshot.messages || []).some((message) => threadIds.has(message.threadId) && String(message.sourceRef || '').startsWith('ai_follow_up'))
+}
+
+async function sendCustomerSilenceFollowUp({
+  omni,
+  threadId,
+  text = DEFAULT_CUSTOMER_SILENCE_FOLLOW_UP_TEXT,
+  sendReply = sendFacebookReply,
+  sendCommentReply = sendFacebookCommentReply,
+  sendIgCommentReply = sendInstagramCommentReply,
+  baselineInboundIds = null,
+} = {}) {
+  const thread = omni.getThread(threadId)
+  if (!thread) return { ok: false, threadId, sent: false, sendSkipped: 'thread_not_found' }
+  if (hasFollowUpForThread(omni, threadId)) return { ok: true, threadId, sent: false, sendSkipped: 'follow_up_already_sent' }
+  if (hasNewInboundMessage(omni, threadId, baselineInboundIds)) {
+    return { ok: true, threadId, sent: false, sendSkipped: 'customer_replied_or_no_outbound' }
+  }
+
+  const latest = latestMessageForThread(omni, threadId)
+  if (!latest || latest.direction === 'inbound') {
+    return { ok: true, threadId, sent: false, sendSkipped: 'customer_replied_or_no_outbound' }
+  }
+
+  const wsSettings = omni.getSettingsForThread ? omni.getSettingsForThread(threadId) : omni.getSettings()
+  if (wsSettings?.ai?.customerSendEnabled !== true) {
+    const draft = omni.recordManualReplyDraft({
+      threadId,
+      authorName: 'Anna Lynn AI',
+      text,
+      sourceRef: 'ai_follow_up_draft:customer_silence_7s',
+      actorType: 'ai',
+      auditAction: 'ai_follow_up_draft_created',
+    })
+    return { ok: true, threadId, sent: false, sendSkipped: 'customer_send_guard_enabled', draft: draft.message, draftAudit: draft.audit, snapshot: draft.snapshot }
+  }
+
+  const pageProfile = pageProfileForThread(thread)
+  if (!pageProfile) return { ok: true, threadId, sent: false, sendSkipped: 'unsupported_page_for_follow_up' }
+
+  if (isCommentThread(thread)) {
+    const commentId = commentIdForThread(thread)
+    if (!commentId) return { ok: true, threadId, sent: false, sendSkipped: 'missing_comment_id' }
+    const isInstagramComment = thread.platform === 'instagram_comment'
+    const sendResult = await (isInstagramComment ? sendIgCommentReply : sendCommentReply)({ pageProfile, commentId, message: text })
+    if (!sendResult?.ok) return { ok: true, threadId, sent: false, sendSkipped: sendResult?.error || 'send_failed', sendResult }
+    const recorded = omni.recordOutboundMessage({
+      threadId,
+      authorName: 'Anna Lynn AI',
+      text,
+      providerMessageId: sendResult.response?.id || sendResult.response?.comment_id || null,
+      sourceRef: `ai_follow_up_${isInstagramComment ? 'ig_comment' : 'meta_comment'}:${pageProfile}`,
+    })
+    return { ok: true, threadId, sent: true, sendResult, outbound: recorded.message, outboundAudit: recorded.audit, snapshot: recorded.snapshot }
+  }
+
+  const recipientId = thread.customer?.providerCustomerId
+  if (!recipientId) return { ok: true, threadId, sent: false, sendSkipped: 'missing_recipient_id' }
+  const sendResult = await sendReply({ pageProfile, recipientId, message: text })
+  if (!sendResult?.ok) return { ok: true, threadId, sent: false, sendSkipped: sendResult?.error || 'send_failed', sendResult }
+  const recorded = omni.recordOutboundMessage({
+    threadId,
+    authorName: 'Anna Lynn AI',
+    text,
+    providerMessageId: sendResult.response?.message_id || sendResult.response?.recipient_id || null,
+    sourceRef: `ai_follow_up_meta:${pageProfile}`,
+  })
+  return { ok: true, threadId, sent: true, sendResult, outbound: recorded.message, outboundAudit: recorded.audit, snapshot: recorded.snapshot }
+}
+
+function scheduleCustomerSilenceFollowUp({
+  omni,
+  hub,
+  threadId,
+  delayMs,
+  scheduler = setTimeout,
+  text,
+  sendReply,
+  sendCommentReply,
+  sendIgCommentReply,
+}) {
+  const baselineInboundIds = inboundMessageIdsForCustomer(omni, threadId)
+  const timer = scheduler(async () => {
+    try {
+      const result = await sendCustomerSilenceFollowUp({ omni, threadId, text, sendReply, sendCommentReply, sendIgCommentReply, baselineInboundIds })
+      if (result.snapshot) hub.broadcast('omni', result.snapshot)
+      hub.broadcast('omni:auto-follow-up', result)
+    } catch (error) {
+      hub.broadcast('omni:auto-follow-up', { ok: false, threadId, error: error.message || 'auto_follow_up_failed' })
+    }
+  }, delayMs)
+  timer?.unref?.()
+  return timer
+}
+
 async function draftThreadReply({ omni, ai, threadId, send = false, sendReply = sendFacebookReply, sendCommentReply = sendFacebookCommentReply, sendIgCommentReply = sendInstagramCommentReply }) {
   const thread = omni.getThread(threadId)
   if (!thread) return { ok: false, error: 'thread_not_found', threadId }
@@ -450,7 +595,7 @@ async function draftThreadReply({ omni, ai, threadId, send = false, sendReply = 
     sourceIds: decision.sourceIds,
     reason: decision.reason,
   })
-  const result = { ok: true, decision, recorded: recorded.decision, snapshot: recorded.snapshot }
+  const result = { ok: true, threadId: thread.id, decision, recorded: recorded.decision, snapshot: recorded.snapshot }
 
   function recordVisibleDraft(sendSkipped = 'draft_only') {
     if (!String(decision.draftText || '').trim()) return { ...result, sent: false, sendSkipped }
@@ -528,15 +673,37 @@ async function runMetaAutoReplies({
   sendReply,
   sendCommentReply,
   sendIgCommentReply,
+  followUpEnabled = true,
+  followUpDelayMs = 7000,
+  followUpText = DEFAULT_CUSTOMER_SILENCE_FOLLOW_UP_TEXT,
+  followUpScheduler = setTimeout,
 }) {
   try {
     const autoReplies = await Promise.all(threadIds.map((threadId) => (
       draftThreadReply({ omni, ai, threadId, send: shouldSend, sendReply, sendCommentReply, sendIgCommentReply })
     )))
+    const scheduledFollowUps = []
+    if (followUpEnabled) {
+      for (const reply of autoReplies) {
+        if (reply?.sent !== true || !reply.threadId) continue
+        scheduleCustomerSilenceFollowUp({
+          omni,
+          hub,
+          threadId: reply.threadId,
+          delayMs: followUpDelayMs,
+          scheduler: followUpScheduler,
+          text: followUpText,
+          sendReply,
+          sendCommentReply,
+          sendIgCommentReply,
+        })
+        scheduledFollowUps.push({ threadId: reply.threadId, delayMs: followUpDelayMs })
+      }
+    }
     const latestSnapshot = autoReplies.slice().reverse().find((reply) => reply?.snapshot)?.snapshot || omni.snapshot()
     if (threadIds.length) {
       hub.broadcast('omni', latestSnapshot)
-      hub.broadcast('omni:auto-replies', { ok: true, autoReplies })
+      hub.broadcast('omni:auto-replies', { ok: true, autoReplies, scheduledFollowUps })
     }
     return autoReplies
   } catch (error) {
@@ -556,6 +723,10 @@ export function mountWebhook(app, hub, room, options = {}) {
   const metaVerifyToken = options.metaVerifyToken || process.env.META_VERIFY_TOKEN || ''
   const metaAutoReplyDefault = options.metaAutoReplyDefault ?? process.env.OMNI_META_WEBHOOK_AUTO_REPLY === '1'
   const metaAutoSendDefault = options.metaAutoSendDefault ?? process.env.OMNI_META_WEBHOOK_SEND === '1'
+  const followUpEnabled = options.followUpEnabled ?? process.env.OMNI_META_FOLLOW_UP_ENABLED !== '0'
+  const followUpDelayMs = normalizeFollowUpDelayMs(options.followUpDelayMs ?? process.env.OMNI_META_FOLLOW_UP_DELAY_MS ?? 7000)
+  const followUpText = options.followUpText || process.env.OMNI_META_FOLLOW_UP_TEXT || DEFAULT_CUSTOMER_SILENCE_FOLLOW_UP_TEXT
+  const followUpScheduler = options.followUpScheduler || setTimeout
   const lineHelperRunner = options.lineHelperRunner || defaultLineHelperRunner
   const lineCaptureLog = options.lineCaptureLog || LINE_CAPTURE_LOG
   const lineRegistryLog = options.lineRegistryLog || LINE_GROUP_REGISTRY_LOG
@@ -603,7 +774,20 @@ export function mountWebhook(app, hub, room, options = {}) {
       : req.query.send === '1' || req.body?.send === true || metaAutoSendDefault
     const threadIds = shouldAutoReply ? autoReplyThreadIds({ normalized, snapshot: result.snapshot, existingMessageIds }) : []
     const autoReplyJob = threadIds.length
-      ? runMetaAutoReplies({ omni, ai, hub, threadIds, shouldSend, sendReply, sendCommentReply, sendIgCommentReply })
+      ? runMetaAutoReplies({
+        omni,
+        ai,
+        hub,
+        threadIds,
+        shouldSend,
+        sendReply,
+        sendCommentReply,
+        sendIgCommentReply,
+        followUpEnabled,
+        followUpDelayMs,
+        followUpText,
+        followUpScheduler,
+      })
       : Promise.resolve([])
     const autoReplies = awaitAutoReplies ? await autoReplyJob : []
     res.json({

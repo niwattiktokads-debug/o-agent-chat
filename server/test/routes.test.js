@@ -2656,6 +2656,132 @@ test('POST /webhook/meta can send guarded auto reply for Anna Lynn only', async 
   }
 })
 
+test('POST /webhook/meta sends one follow-up when customer is silent past delay', async () => {
+  const app = express()
+  app.use(express.json())
+  const sent = []
+  const localEvents = []
+  const localHub = { broadcast: (event, payload) => localEvents.push({ event, payload }) }
+  const localOmni = createOmniServiceWithCustomerSend()
+  mountWebhook(app, localHub, createState(), {
+    omni: localOmni,
+    metaVerifyToken: 'verify-token-test',
+    awaitAutoReplies: true,
+    followUpDelayMs: 5,
+    sendReply: async (payload) => {
+      sent.push(payload)
+      return { ok: true, response: { message_id: `sent_mid_follow_${sent.length}` } }
+    },
+  })
+  const localServer = app.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const response = await fetch(`http://localhost:${localPort}/webhook/meta?autoReply=1&send=1`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        object: 'page',
+        entry: [{
+          id: '122106446570001676',
+          messaging: [{
+            sender: { id: 'customer_anna_follow_up' },
+            recipient: { id: '122106446570001676' },
+            timestamp: 1779470300500,
+            message: { mid: 'route_mid_anna_follow_up', text: 'มีของไหม' },
+          }],
+        }],
+      }),
+    })
+    const body = await response.json()
+    assert.equal(response.status, 200)
+    assert.equal(body.result.autoReplies[0].sent, true)
+    assert.equal(sent.length, 1)
+
+    await waitForCondition(() => {
+      assert.equal(sent.length, 2)
+      assert.equal(localEvents.some((event) => event.event === 'omni:auto-follow-up' && event.payload.sent === true), true)
+    }, { timeoutMs: 500 })
+
+    const followUpMessage = sent[1]
+    assert.equal(followUpMessage.pageProfile, 'anna_lynn')
+    assert.equal(followUpMessage.recipientId, 'customer_anna_follow_up')
+    assert.match(followUpMessage.message, /ยังอยู่ไหม/)
+    const followUps = localOmni.snapshot().messages.filter((message) => String(message.sourceRef || '').startsWith('ai_follow_up'))
+    assert.equal(followUps.length, 1)
+    assert.match(followUps[0].text, /ยังอยู่ไหม/)
+  } finally {
+    localServer.close()
+  }
+})
+
+test('POST /webhook/meta skips follow-up when customer replies before delay', async () => {
+  const app = express()
+  app.use(express.json())
+  const sent = []
+  const localEvents = []
+  const localHub = { broadcast: (event, payload) => localEvents.push({ event, payload }) }
+  const localOmni = createOmniServiceWithCustomerSend()
+  mountWebhook(app, localHub, createState(), {
+    omni: localOmni,
+    metaVerifyToken: 'verify-token-test',
+    awaitAutoReplies: true,
+    followUpDelayMs: 25,
+    sendReply: async (payload) => {
+      sent.push(payload)
+      return { ok: true, response: { message_id: `sent_mid_skip_follow_${sent.length}` } }
+    },
+  })
+  const localServer = app.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const first = await fetch(`http://localhost:${localPort}/webhook/meta?autoReply=1&send=1`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        object: 'page',
+        entry: [{
+          id: '122106446570001676',
+          messaging: [{
+            sender: { id: 'customer_anna_follow_skip' },
+            recipient: { id: '122106446570001676' },
+            timestamp: 1779470300600,
+            message: { mid: 'route_mid_anna_follow_skip_1', text: 'มีของไหม' },
+          }],
+        }],
+      }),
+    })
+    assert.equal(first.status, 200)
+    assert.equal(sent.length, 1)
+
+    const second = await fetch(`http://localhost:${localPort}/webhook/meta?autoReply=0&send=0`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        object: 'page',
+        entry: [{
+          id: '122106446570001676',
+          messaging: [{
+            sender: { id: 'customer_anna_follow_skip' },
+            recipient: { id: '122106446570001676' },
+            timestamp: 1779470300610,
+            message: { mid: 'route_mid_anna_follow_skip_2', text: 'ตอบแล้วค่ะ' },
+          }],
+        }],
+      }),
+    })
+    assert.equal(second.status, 200)
+
+    await waitForCondition(() => {
+      assert.equal(localEvents.some((event) => event.event === 'omni:auto-follow-up'), true)
+    }, { timeoutMs: 500 })
+    assert.equal(sent.length, 1)
+    const followUpEvent = localEvents.find((event) => event.event === 'omni:auto-follow-up')
+    assert.equal(followUpEvent.payload.sendSkipped, 'customer_replied_or_no_outbound')
+  } finally {
+    localServer.close()
+  }
+})
+
 test('POST /webhook/meta keeps customer send blocked until customerSendEnabled is on', async () => {
   const app = express()
   app.use(express.json())
