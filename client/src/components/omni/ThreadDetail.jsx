@@ -200,7 +200,7 @@ function ManualReplyComposer({ thread, messagesSignature = '', onSnapshot, sugge
       return
     }
     if (attachments.some((item) => !/^https:\/\//i.test(item.url || ''))) {
-      setError('ส่งรูปจริงต้องใช้รูปจากสินค้า/EasyStore ก่อน รูปอัปโหลดในเครื่องให้บันทึกเป็น draft')
+      setError('ส่งรูปจริงต้องใช้รูป https จากสินค้า/EasyStore ก่อน รูปจากเครื่องดูได้ในกล่องตอบแต่ยังส่งจริงไม่ได้')
       return
     }
     setBusy(true)
@@ -230,7 +230,7 @@ function ManualReplyComposer({ thread, messagesSignature = '', onSnapshot, sugge
     }
     setBusy(true)
     setError('')
-      setProductStatus('กำลังดึงสินค้าเข้าในกล่องตอบ')
+    setProductStatus('กำลังดึงสินค้าเข้าในกล่องตอบ')
     try {
       const result = await fetchEasyStoreProductPreview(cleanProductId)
       const product = result.product || {}
