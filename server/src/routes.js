@@ -309,6 +309,17 @@ export function mountRoutes(app, hub, room, options = {}) {
     res.json(safeResult)
   })
 
+  app.post('/api/omni/history/clear', (req, res) => {
+    const result = omni.clearHistory({
+      ...(req.body || {}),
+      sourceRef: req.body?.sourceRef || (req.body?.dryRun === false ? 'omni_history_clear_apply' : 'omni_history_clear_plan'),
+    })
+    if (!result.ok) return res.status(400).json(result)
+    if (!result.dryRun) hub.broadcast('omni', result.snapshot)
+    const { snapshot: _snapshot, ...safeResult } = result
+    res.json(safeResult)
+  })
+
   app.get('/api/omni/knowledge-sources', (req, res) => {
     res.json({
       ok: true,

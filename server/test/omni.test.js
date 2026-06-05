@@ -854,6 +854,62 @@ test('knowledge source routes persist searchable training sources', async () => 
   }
 })
 
+test('AI reply engine prioritizes Boss sales workflow knowledge when it matches product questions', async () => {
+  const seed = createOmniSeed()
+  seed.knowledgeSources.push({
+    id: 'ks_annalynn_sales_workflow_v1',
+    workspaceId: 'ws_oagent',
+    title: 'Anna Lynn sales workflow Q&A - Boss approved v1',
+    type: 'faq',
+    scope: 'page_annalynn',
+    status: 'ready',
+    content: 'ระบบต้องเป็น workflow/funnel ใช้ EasyStore เช็กสินค้า stock price image payment ห้ามถามซ้ำ และต้องจบด้วย action ถัดไป',
+    tags: ['annalynn', 'faq', 'sales', 'product', 'stock', 'price', 'image', 'payment', 'easystore', 'workflow'],
+    updatedAt: '2026-06-05T05:01:55.246Z',
+    createdAt: '2026-06-05T04:57:24.633Z',
+  })
+  seed.customers.push({ id: 'cust_sales_workflow', displayName: 'Sales Customer', matchConfidence: 1 })
+  seed.threads.push({
+    id: 'thread_sales_workflow',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'cust_sales_workflow',
+    status: 'open',
+    intent: 'unknown',
+    risk: 'low',
+    unreadCount: 1,
+    messageCount: 1,
+    updatedAt: '2026-06-05T05:05:00.000Z',
+  })
+  seed.messages.push({
+    id: 'msg_sales_workflow',
+    threadId: 'thread_sales_workflow',
+    direction: 'inbound',
+    authorName: 'Sales Customer',
+    text: 'Lorra ดำ XL มีของไหม ราคาเท่าไหร่ ขอรูปด้วย',
+    createdAt: '2026-06-05T05:05:00.000Z',
+  })
+  seed.inventorySnapshots.push({
+    id: 'es_stock_lorra_black_xl_sales',
+    sku: 'LORRA-BLK-XL',
+    source: 'easystore',
+    available: 2,
+    checkedAt: '2026-06-05T05:04:00.000Z',
+    productId: '16462646',
+    variantId: '7601',
+    productName: 'Lorra เดรสเชิ้ต Polo',
+    price: 1290,
+    imageUrl: 'https://cdn.example/lorra-black-xl.jpg',
+  })
+  const service = createOmniService(seed)
+  const thread = service.getThread('thread_sales_workflow')
+  const ai = createAiReplyEngine({ provider: 'local_rules', model: 'test' })
+  const decision = await ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
+
+  assert.equal(decision.ok, true)
+  assert.equal(decision.sourceIds.includes('ks_annalynn_sales_workflow_v1'), true)
+})
+
 test('retention route dry-runs chat cleanup by default', async () => {
   const seed = createOmniSeed()
   seed.messages = [
@@ -884,6 +940,104 @@ test('retention route dry-runs chat cleanup by default', async () => {
     assert.equal(body.dryRun, true)
     assert.equal(body.counts.messagesDeleted, 1)
     assert.equal(service.getThread('thread_1').messages.length, 2)
+  } finally {
+    server.close()
+  }
+})
+
+test('Omni history clear dry-run reports counts without deleting runtime history', () => {
+  const seed = createOmniSeed()
+  seed.approvalTasks = [{ id: 'approval_1', status: 'pending' }]
+  const service = createOmniService(seed)
+
+  const result = service.clearHistory({ dryRun: true })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.dryRun, true)
+  assert.equal(result.counts.threads, seed.threads.length)
+  assert.equal(result.counts.messages, seed.messages.length)
+  assert.equal(result.counts.customers, seed.customers.length)
+  assert.equal(result.counts.approvalTasks, 1)
+  assert.equal(service.snapshot().threads.length, seed.threads.length)
+  assert.equal(service.snapshot().messages.length, seed.messages.length)
+  assert.equal(service.snapshot().knowledgeSources.length, seed.knowledgeSources.length)
+})
+
+test('Omni history clear requires confirmation and preserves system config', () => {
+  const seed = createOmniSeed()
+  seed.approvalTasks = [{ id: 'approval_1', status: 'pending' }]
+  const service = createOmniService(seed)
+
+  const blocked = service.clearHistory({ dryRun: false })
+  assert.equal(blocked.ok, false)
+  assert.equal(blocked.error, 'confirmation_required')
+  assert.equal(service.snapshot().threads.length, seed.threads.length)
+
+  const cleared = service.clearHistory({
+    dryRun: false,
+    confirmClearHistory: 'CLEAR_OMNI_HISTORY',
+    actorId: 'boss',
+  })
+  const snapshot = service.snapshot()
+
+  assert.equal(cleared.ok, true)
+  assert.equal(cleared.dryRun, false)
+  assert.equal(cleared.counts.threads, seed.threads.length)
+  assert.equal(snapshot.threads.length, 0)
+  assert.equal(snapshot.messages.length, 0)
+  assert.equal(snapshot.customers.length, 0)
+  assert.equal(snapshot.orders.length, 0)
+  assert.equal(snapshot.paymentRequests.length, 0)
+  assert.equal(snapshot.aiDecisions.length, 0)
+  assert.equal(snapshot.approvalTasks.length, 0)
+  assert.equal(snapshot.pages.length, seed.pages.length)
+  assert.equal(snapshot.policySets.length, seed.policySets.length)
+  assert.equal(snapshot.omniSettings.length, seed.omniSettings.length)
+  assert.equal(snapshot.knowledgeSources.length, seed.knowledgeSources.length)
+  assert.equal(snapshot.actionAudits.length, 1)
+  assert.equal(snapshot.actionAudits[0].action, 'omni_history_cleared')
+})
+
+test('Omni history clear route dry-runs by default and applies with confirmation', async () => {
+  const app = express()
+  app.use(express.json())
+  const service = createOmniService()
+  mountRoutes(app, { broadcast() {} }, { snapshot() { return {} } }, { omni: service })
+
+  const server = app.listen(0)
+  try {
+    const baseUrl = `http://127.0.0.1:${server.address().port}`
+    const dryRunResponse = await fetch(`${baseUrl}/api/omni/history/clear`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    const dryRunBody = await dryRunResponse.json()
+    assert.equal(dryRunResponse.status, 200)
+    assert.equal(dryRunBody.ok, true)
+    assert.equal(dryRunBody.dryRun, true)
+    assert.equal(service.snapshot().threads.length > 0, true)
+
+    const blockedResponse = await fetch(`${baseUrl}/api/omni/history/clear`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ dryRun: false }),
+    })
+    const blockedBody = await blockedResponse.json()
+    assert.equal(blockedResponse.status, 400)
+    assert.equal(blockedBody.error, 'confirmation_required')
+
+    const applyResponse = await fetch(`${baseUrl}/api/omni/history/clear`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ dryRun: false, confirmClearHistory: 'CLEAR_OMNI_HISTORY' }),
+    })
+    const applyBody = await applyResponse.json()
+    assert.equal(applyResponse.status, 200)
+    assert.equal(applyBody.ok, true)
+    assert.equal(applyBody.dryRun, false)
+    assert.equal(service.snapshot().threads.length, 0)
+    assert.equal(service.snapshot().messages.length, 0)
   } finally {
     server.close()
   }

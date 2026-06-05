@@ -508,6 +508,16 @@ function relevantKnowledge(intent, snapshot, { workspaceId } = {}) {
       const haystack = [source.title, source.content, ...(source.tags || [])].join(' ').toLowerCase()
       return terms.some((term) => haystack.includes(term.toLowerCase()))
     })
+    .map((source) => {
+      const haystack = [source.title, source.content, ...(source.tags || [])].join(' ').toLowerCase()
+      const score = terms.reduce((total, term) => total + (haystack.includes(term.toLowerCase()) ? 1 : 0), 0)
+      return { source, score }
+    })
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score
+      return String(b.source.updatedAt || '').localeCompare(String(a.source.updatedAt || ''))
+    })
+    .map((item) => item.source)
     .slice(0, 3)
 }
 

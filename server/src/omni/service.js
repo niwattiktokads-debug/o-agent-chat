@@ -17,6 +17,19 @@ const PAYMENT_PROVIDERS = new Set(['meta_pay_kgp', 'promptpay'])
 const PAYMENT_STATUSES = new Set(['draft', 'pending', 'paid', 'failed', 'expired', 'manual_verify', 'cancelled'])
 const MAX_DRAFT_ATTACHMENTS = 5
 const MAX_DRAFT_ATTACHMENT_BYTES = 5 * 1024 * 1024
+const CLEAR_HISTORY_CONFIRMATION = 'CLEAR_OMNI_HISTORY'
+const HISTORY_COLLECTIONS = [
+  'customers',
+  'threads',
+  'messages',
+  'orders',
+  'orderLinks',
+  'paymentRequests',
+  'paymentEvents',
+  'aiDecisions',
+  'approvalTasks',
+  'retentionRuns',
+]
 const DEFAULT_OMNI_SETTINGS = {
   postSession: { enabled: true, autoCreateDrafts: true },
   postCf: { enabled: true, autoCreateDrafts: true },
@@ -130,6 +143,10 @@ function createActionAuditRow({
     sourceRef,
     createdAt: now,
   }
+}
+
+function countCollections(snapshot = {}, collectionNames = HISTORY_COLLECTIONS) {
+  return Object.fromEntries(collectionNames.map((name) => [name, Array.isArray(snapshot[name]) ? snapshot[name].length : 0]))
 }
 
 function normalizeKnowledgeSource(input = {}) {
@@ -717,6 +734,73 @@ export function createOmniService(options = createOmniSeed()) {
 
       const { next: _next, ...safeResult } = planned
       return { ...safeResult, snapshot: this.snapshot() }
+    },
+    clearHistory(input = {}) {
+      const dryRun = input.dryRun !== false
+      const snapshot = currentData()
+      const counts = countCollections(snapshot)
+      const totalDeleted = Object.values(counts).reduce((sum, count) => sum + count, 0)
+      const preserved = {
+        workspaces: snapshot.workspaces?.length || 0,
+        pages: snapshot.pages?.length || 0,
+        platformAccounts: snapshot.platformAccounts?.length || 0,
+        policySets: snapshot.policySets?.length || 0,
+        agentProfiles: snapshot.agentProfiles?.length || 0,
+        inventorySnapshots: snapshot.inventorySnapshots?.length || 0,
+        omniSettings: snapshot.omniSettings?.length || 0,
+        knowledgeSources: snapshot.knowledgeSources?.length || 0,
+        retentionPolicies: snapshot.retentionPolicies?.length || 0,
+      }
+      if (dryRun) {
+        return {
+          ok: true,
+          dryRun: true,
+          mode: 'clear_omni_history',
+          targetCollections: HISTORY_COLLECTIONS,
+          counts,
+          totalDeleted,
+          preserved,
+          snapshot: this.snapshot(),
+        }
+      }
+      if (input.confirmClearHistory !== CLEAR_HISTORY_CONFIRMATION) {
+        return {
+          ok: false,
+          error: 'confirmation_required',
+          reason: `clearHistory requires confirmClearHistory="${CLEAR_HISTORY_CONFIRMATION}"`,
+          dryRun,
+          targetCollections: HISTORY_COLLECTIONS,
+          counts,
+          totalDeleted,
+        }
+      }
+
+      for (const collection of HISTORY_COLLECTIONS) {
+        replace(collection, [])
+      }
+
+      const audit = createActionAuditRow({
+        action: 'omni_history_cleared',
+        workspaceId: input.workspaceId || null,
+        actorType: input.actorType || 'operator',
+        actorId: input.actorId || 'boss',
+        before: { counts, totalDeleted },
+        after: { counts: countCollections(currentData()), totalDeleted: 0 },
+        sourceRef: input.sourceRef || 'omni_history_clear',
+      })
+      const auditResult = upsert('actionAudits', [audit])
+      return {
+        ok: true,
+        dryRun: false,
+        mode: 'clear_omni_history',
+        targetCollections: HISTORY_COLLECTIONS,
+        counts,
+        totalDeleted,
+        preserved,
+        audit: structuredClone(audit),
+        result: { actionAudits: auditResult },
+        snapshot: this.snapshot(),
+      }
     },
     listKnowledgeSources(filters = {}) {
       const query = String(filters.query || '').trim().toLowerCase()
