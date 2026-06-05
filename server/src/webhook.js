@@ -397,6 +397,20 @@ function recoverAllowedFallbackDecision(decision) {
   }
 }
 
+function fallbackVisibleDraftText(decision) {
+  const intent = String(decision?.intent || '').trim()
+  if (intent === 'productImage') {
+    return 'ลูกค้าขอดูภาพสินค้า ควรให้แอดมินแนบรูปสินค้าจริงหรือ product card ก่อนตอบกลับค่ะ'
+  }
+  if (intent === 'humanReview') {
+    return 'ขอหยุดให้แอดมินตรวจคำตอบก่อนนะคะ เพื่อไม่ให้ตอบข้อมูลผิดซ้ำค่ะ'
+  }
+  if (['stock', 'price', 'faq', 'sizeAdvice'].includes(intent)) {
+    return 'รับทราบค่ะ เดี๋ยวแอดมินตรวจข้อมูลสินค้าให้ก่อนนะคะ เพื่อไม่ให้แจ้งไซซ์ สี หรือสต็อกผิดค่ะ'
+  }
+  return 'รับทราบค่ะ เดี๋ยวแอดมินตรวจข้อมูลให้ก่อนนะคะ เพื่อไม่ให้ตอบข้อมูลผิดค่ะ'
+}
+
 function productImageAttachmentsForDecision(decision) {
   if (Array.isArray(decision?.attachments) && decision.attachments.length) {
     return normalizeDecisionAttachments(decision.attachments)
@@ -668,11 +682,12 @@ async function draftThreadReply({ omni, ai, threadId, send = false, sendReply = 
   const result = { ok: true, threadId: thread.id, decision, recorded: recorded.decision, snapshot: recorded.snapshot }
 
   function recordVisibleDraft(sendSkipped = 'draft_only') {
-    if (!String(decision.draftText || '').trim()) return { ...result, sent: false, sendSkipped }
+    const draftText = String(decision.draftText || '').trim() || fallbackVisibleDraftText(decision)
+    if (!draftText) return { ...result, sent: false, sendSkipped }
     const draft = omni.recordManualReplyDraft({
       threadId: thread.id,
       authorName: 'Anna Lynn AI',
-      text: decision.draftText,
+      text: draftText,
       attachments: visibleAttachments,
       sourceRef: `ai_auto_reply_draft:${recorded.decision.id}`,
       actorType: 'ai',
