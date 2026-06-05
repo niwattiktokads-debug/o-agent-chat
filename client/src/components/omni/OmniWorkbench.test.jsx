@@ -453,17 +453,16 @@ describe('OmniWorkbench', () => {
     vi.restoreAllMocks()
   })
 
-  it('renders inbox, AI panel, order desk, and payment desk without system tools in context', async () => {
+  it('renders inbox, clean AI draft button, order desk, and payment desk without system tools in context', async () => {
     render(<OmniWorkbench />)
     expect(await screen.findByText('กล่องรวม')).toBeInTheDocument()
     expect((await screen.findAllByText('MAN KYND')).length).toBeGreaterThan(0)
     expect((await screen.findAllByText('AnnaLynn')).length).toBeGreaterThan(0)
     expect(await screen.findByText('tiktok')).toBeInTheDocument()
     expect((await screen.findAllByText('Viris Zamara')).length).toBeGreaterThan(0)
-    expect(await screen.findByText('AI ทำอะไรอยู่')).toBeInTheDocument()
-    expect(await screen.findByText('ให้ AI ร่าง')).toBeInTheDocument()
-    expect(await screen.findByText('AI ร่างคำตอบแล้ว')).toBeInTheDocument()
-    expect(await screen.findByText('มั่นใจ 94%')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'AI ร่างให้' })).toBeInTheDocument()
+    expect(screen.queryByText('AI ทำอะไรอยู่')).not.toBeInTheDocument()
+    expect(screen.queryByText('AI ร่างคำตอบแล้ว')).not.toBeInTheDocument()
     expect(await screen.findByText('ออเดอร์')).toBeInTheDocument()
     expect(await screen.findByText('ชำระเงิน')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'ชำระเงิน' }))
@@ -627,7 +626,7 @@ describe('OmniWorkbench', () => {
     render(<OmniWorkbench />)
 
     expect(await screen.findByRole('switch', { name: /ส่งลูกค้าจริง Draft only/ })).toBeInTheDocument()
-    expect(await screen.findByText('ตอนนี้ AI ทำได้แค่ draft ลูกค้ายังไม่เห็นข้อความตอบ')).toBeInTheDocument()
+    expect(await screen.findByText('Draft only: ลูกค้ายังไม่เห็นข้อความจนกว่าจะเปิดส่งจริง')).toBeInTheDocument()
   })
 
   it('sends a manual reply with one click after customer send is enabled', async () => {
@@ -669,12 +668,13 @@ describe('OmniWorkbench', () => {
     render(<OmniWorkbench />)
     const draftBox = await screen.findByPlaceholderText(/พิมพ์ข้อความตอบลูกค้า/)
 
-    fireEvent.click(await screen.findByRole('button', { name: 'ให้ AI ร่าง' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'AI ร่างให้' }))
 
     await waitFor(() => {
       expect(draftBox).toHaveValue('เดี๋ยวเช็กสต็อกให้ค่ะ')
     })
-    expect(await screen.findByRole('button', { name: 'วางในช่องตอบ' })).toBeInTheDocument()
+    expect(await screen.findByText('AI ร่างให้แล้ว ตรวจในช่องตอบก่อนส่งจริง')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'วางในช่องตอบ' })).not.toBeInTheDocument()
   })
 
   it('lets the operator save a rich message campaign brief from the AI context tab', async () => {
@@ -715,7 +715,7 @@ describe('OmniWorkbench', () => {
       expect(draftBox).toHaveValue('ส่งภาพ เสื้อเชิ้ตโปโลผู้หญิง สีดำ ให้ดูค่ะ')
     })
     expect(screen.getAllByAltText('เสื้อเชิ้ตโปโลผู้หญิง สีดำ M').length).toBeGreaterThan(0)
-    expect(screen.getByText('ข้อความ รูป ลิงก์ ออเดอร์ และชำระเงินในกล่องนี้คือ draft ที่บอสเห็นก่อนส่งจริง')).toBeInTheDocument()
+    expect(screen.getByText('Draft only: ลูกค้ายังไม่เห็นข้อความจนกว่าจะเปิดส่งจริง')).toBeInTheDocument()
   })
 
   it('moves EasyStore product search into the product context tab and removes the composer product button', async () => {

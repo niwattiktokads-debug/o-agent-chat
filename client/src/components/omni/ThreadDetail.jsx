@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { autoSendStatus, customerAvatarUrl, customerForThread, formatShortTime, initialsForName, pageForThread, sourceLabel, statusLabel } from '../../lib/omniModel.js'
-import { saveOmniSettings, sendManualReply } from '../../lib/omniApi.js'
+import { createAiDraft, saveOmniSettings, sendManualReply } from '../../lib/omniApi.js'
 
 export default function ThreadDetail({ snapshot, thread, onSnapshot, suggestedDraft, workspaceId }) {
   const endRef = useRef(null)
@@ -150,7 +150,9 @@ function ManualReplyComposer({ thread, messagesSignature = '', onSnapshot, sugge
   const [text, setText] = useState('')
   const [attachments, setAttachments] = useState([])
   const [busy, setBusy] = useState(false)
+  const [aiBusy, setAiBusy] = useState(false)
   const [error, setError] = useState('')
+  const [status, setStatus] = useState('')
   const fileInputRef = useRef(null)
   const messageSignatureRef = useRef('')
 
@@ -158,6 +160,7 @@ function ManualReplyComposer({ thread, messagesSignature = '', onSnapshot, sugge
     setText('')
     setAttachments([])
     setError('')
+    setStatus('')
     messageSignatureRef.current = messagesSignature
   }, [thread?.id])
 
@@ -172,6 +175,7 @@ function ManualReplyComposer({ thread, messagesSignature = '', onSnapshot, sugge
     setText('')
     setAttachments([])
     setError('')
+    setStatus('')
   }, [messagesSignature, thread?.id])
 
   useEffect(() => {
@@ -181,6 +185,7 @@ function ManualReplyComposer({ thread, messagesSignature = '', onSnapshot, sugge
       setAttachments(suggestedDraft.attachments.slice(0, 5))
     }
     setError('')
+    setStatus('วาง draft ในช่องตอบแล้ว')
   }, [suggestedDraft?.id, suggestedDraft?.text, suggestedDraft?.threadId, suggestedDraft?.attachments, thread?.id])
 
   async function readFiles(files) {
@@ -198,6 +203,29 @@ function ManualReplyComposer({ thread, messagesSignature = '', onSnapshot, sugge
       reader.readAsDataURL(file)
     })))
     setAttachments((current) => [...current, ...rows].slice(0, 5))
+  }
+
+  async function draftWithAi() {
+    if (!thread || aiBusy) return
+    setAiBusy(true)
+    setError('')
+    setStatus('')
+    try {
+      const result = await createAiDraft(thread.id)
+      if (result.snapshot) onSnapshot?.(result.snapshot)
+      const draftText = result.decision?.draftText || ''
+      if (!draftText.trim()) {
+        setStatus('')
+        setError('AI ยังไม่มีข้อความร่างสำหรับเคสนี้')
+        return
+      }
+      setText(draftText)
+      setStatus('AI ร่างให้แล้ว ตรวจในช่องตอบก่อนส่งจริง')
+    } catch (err) {
+      setError(err.message || 'ai_draft_failed')
+    } finally {
+      setAiBusy(false)
+    }
   }
 
   function submit(event) {
@@ -227,6 +255,7 @@ function ManualReplyComposer({ thread, messagesSignature = '', onSnapshot, sugge
       onSnapshot?.(result.snapshot)
       setText('')
       setAttachments([])
+      setStatus('')
     } catch (err) {
       setError(err.message || 'manual_send_failed')
     } finally {
@@ -253,15 +282,16 @@ function ManualReplyComposer({ thread, messagesSignature = '', onSnapshot, sugge
           ))}
         </div>
       ) : null}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+      <div className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-paper)] shadow-sm focus-within:border-[var(--color-accent)]">
         <textarea
-          rows={2}
+          rows={3}
           value={text}
           onChange={(event) => {
             setText(event.target.value)
+            setStatus('')
           }}
-          placeholder="พิมพ์ข้อความตอบลูกค้า..."
-          className="min-h-[48px] w-full min-w-0 resize-none rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] px-3 py-2 text-sm leading-5 text-[var(--color-ink)] outline-none placeholder:text-[var(--color-muted)] focus:border-[var(--color-accent)] sm:flex-1"
+          placeholder="พิมพ์ข้อความตอบลูกค้า หรือกด AI ร่างให้"
+          className="min-h-[86px] w-full resize-none rounded-t-[var(--radius-md)] bg-transparent px-4 py-3 text-sm leading-6 text-[var(--color-ink)] outline-none placeholder:text-[var(--color-muted)]"
         />
         <input
           ref={fileInputRef}
@@ -274,29 +304,40 @@ function ManualReplyComposer({ thread, messagesSignature = '', onSnapshot, sugge
             event.target.value = ''
           }}
         />
-        <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0 sm:items-center">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--color-rule)] px-3 py-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={!thread || aiBusy}
+              onClick={draftWithAi}
+              className="rounded-[var(--radius-md)] bg-[var(--color-accent)] px-3 py-2 text-sm font-bold text-[var(--color-accent-ink)] shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {aiBusy ? 'กำลังร่าง...' : 'AI ร่างให้'}
+            </button>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)]"
+            >
+              แนบภาพ
+            </button>
+            <button
+              type="button"
+              disabled={busy || (!text.trim() && attachments.length === 0)}
+              onClick={() => {
+                setText('')
+                setAttachments([])
+                setError('')
+                setStatus('')
+              }}
+              className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-4 py-2 text-sm font-semibold text-[var(--color-ink-2)] shadow-sm disabled:opacity-45"
+            >
+              ล้าง
+            </button>
+          </div>
           <button
             type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)]"
-          >
-            แนบภาพ
-          </button>
-          <button
-            type="button"
-            disabled={busy || (!text.trim() && attachments.length === 0)}
-            onClick={() => {
-              setText('')
-              setAttachments([])
-              setError('')
-            }}
-            className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-4 py-2 text-sm font-semibold text-[var(--color-ink-2)] shadow-sm disabled:opacity-45"
-          >
-            ล้าง
-          </button>
-          <button
-            type="button"
-            disabled={busy || (!text.trim() && attachments.length === 0) || !customerSendEnabled}
+            disabled={busy || aiBusy || (!text.trim() && attachments.length === 0) || !customerSendEnabled}
             onClick={sendLive}
             className="rounded-[var(--radius-md)] border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 shadow-sm hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-45"
           >
@@ -305,22 +346,20 @@ function ManualReplyComposer({ thread, messagesSignature = '', onSnapshot, sugge
         </div>
       </div>
       {error ? <p className="mt-2 text-xs text-rose-600">{error}</p> : null}
+      {status ? <p className="mt-2 text-xs font-semibold text-[var(--color-live)]">{status}</p> : null}
       {!customerSendEnabled ? (
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-md)] border border-[var(--color-warn)] bg-[var(--color-warn-soft)] px-3 py-2 text-xs font-semibold text-[var(--color-warn)]">
-          <span>ตอนนี้ AI ทำได้แค่ draft ลูกค้ายังไม่เห็นข้อความตอบ</span>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs font-semibold text-[var(--color-muted)]">
+          <span>Draft only: ลูกค้ายังไม่เห็นข้อความจนกว่าจะเปิดส่งจริง</span>
           <button
             type="button"
             disabled={guardBusy}
             onClick={onToggleCustomerSend}
-            className="rounded-[var(--radius-md)] border border-[var(--color-warn)] bg-[var(--color-panel)] px-3 py-1 text-xs font-bold disabled:opacity-50"
+            className="rounded-[var(--radius-md)] border border-[var(--color-warn)] bg-[var(--color-warn-soft)] px-3 py-1 text-xs font-bold text-[var(--color-warn)] disabled:opacity-50"
           >
             เปิดส่งจริง
           </button>
         </div>
       ) : null}
-      <p className="mt-2 text-[11px] text-[var(--color-muted)]">
-        ข้อความ รูป ลิงก์ ออเดอร์ และชำระเงินในกล่องนี้คือ draft ที่บอสเห็นก่อนส่งจริง
-      </p>
     </form>
   )
 }

@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react'
 import { fetchOmniSettings, saveOmniSettings } from '../../lib/omniApi.js'
-import AiDecisionPanel from './AiDecisionPanel.jsx'
 import OrderDesk from './OrderDesk.jsx'
 import PaymentDesk from './PaymentDesk.jsx'
 import ProfilePanel from './ProfilePanel.jsx'
@@ -218,7 +217,6 @@ export default function ContextPanel({ snapshot, thread, onSnapshot, workspaceId
               </div>
             </div>
           </section>
-          <AiDecisionPanel snapshot={panelSnapshot} thread={thread} onDrafted={handlePanelSnapshot} onUseDraft={onUseDraft} />
         </>
       ) : null}
       {tab === 'sales' ? <SalesContextPanel thread={thread} onUseDraft={onUseDraft} /> : null}
