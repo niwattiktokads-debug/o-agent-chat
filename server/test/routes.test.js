@@ -1828,11 +1828,14 @@ test('POST /api/omni/threads/:threadId/easystore-product-draft creates draft-onl
         ok: true,
         product: {
           id: productId,
-          title: 'Amanda Jumpsuit',
-          price: { formatted: '฿1,290', amount: 1290, currency: 'THB' },
-          stock: { totalQuantity: 5, status: 'in_stock' },
-          images: [{ url: 'https://cdn.example/amanda.jpg', alt: 'Amanda Jumpsuit' }],
-          links: { storefrontUrl: 'https://annalynna.easy.co/products/amanda-jumpsuit' },
+          title: 'Julai เสื้อ คอวี ระบายข้าง และกางเกงขาบาน เอวยาง คนอวบใส่สวย Lady ผู้หญิง Women Clothing ชุด รับปริญญา',
+          variantTitle: 'Set เขียว, 0=S,M',
+          color: 'Set เขียว',
+          size: '0=S,M',
+          price: { formatted: '฿990', amount: 990, currency: 'THB' },
+          stock: { totalQuantity: 10, status: 'in_stock' },
+          images: [{ url: 'https://cdn.example/julai.jpg', alt: 'Julai Set เขียว' }],
+          links: { storefrontUrl: 'https://annalynna.easy.co/products/julai-set-green' },
         },
       }),
     },
@@ -1851,10 +1854,11 @@ test('POST /api/omni/threads/:threadId/easystore-product-draft creates draft-onl
     assert.equal(body.ok, true)
     assert.equal(body.message.deliveryStatus, 'draft_only')
     assert.equal(body.message.sourceRef, 'easystore_product_draft:16462646')
-    assert.match(body.message.text, /Amanda Jumpsuit/)
+    assert.match(body.message.text, /มี Julai Set เขียวค่ะ/)
+    assert.match(body.message.text, /ไซซ์ S\/M ราคา 990 บาท พร้อมส่ง 10 ชิ้น/)
     assert.match(body.message.text, /https:\/\/omni\.oagent\.biz\/p\/easystore\/16462646\?threadId=thread_1/)
-    assert.match(body.message.text, /https:\/\/annalynna\.easy\.co\/products\/amanda-jumpsuit/)
-    assert.equal(body.message.attachments[0].url, 'https://cdn.example/amanda.jpg')
+    assert.doesNotMatch(body.message.text, /SKU:|ตัวเลือก:|ลิงก์ร้าน:|ปิดออเดอร์/)
+    assert.equal(body.message.attachments[0].url, 'https://cdn.example/julai.jpg')
     assert.equal(localEvents.some((event) => event.event === 'omni'), true)
   } finally {
     localServer.close()

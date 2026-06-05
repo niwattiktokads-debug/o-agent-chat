@@ -54,21 +54,49 @@ function buildEasyStorePreviewUrl({ productId, threadId }, env = process.env) {
 
 function stockLine(stock = {}) {
   const quantity = Number(stock.totalQuantity || 0)
-  if (quantity > 0) return `สถานะ: พร้อมส่ง ${quantity} ชิ้น`
-  if (stock.status === 'out_of_stock') return 'สถานะ: รอเติมสต็อก'
+  if (quantity > 0) return `พร้อมส่ง ${quantity} ชิ้น`
+  if (stock.status === 'out_of_stock') return 'รอเติมสต็อก'
   return ''
+}
+
+function compactProductToken(value = '') {
+  return String(value || '').replace(/\s+/g, ' ').trim()
+}
+
+function cleanVariantSize(value = '') {
+  const raw = compactProductToken(value)
+  if (!raw) return ''
+  const readable = raw.includes('=') ? raw.split('=').pop() : raw
+  return readable.replace(/,/g, '/').replace(/\s*\/\s*/g, '/').trim()
+}
+
+function displayProductOption(value = '') {
+  const label = compactProductToken(value)
+  if (!label || /^set\b/i.test(label) || label.startsWith('สี')) return label
+  return `สี${label}`
+}
+
+function compactProductTitle(product = {}) {
+  const title = compactProductToken(product.title || product.name || '')
+  const family = title.split(' ')[0] || 'สินค้า'
+  const color = compactProductToken(product.color || product.variantColor || '')
+  const variantTitle = compactProductToken(product.variantTitle || product.variant || '')
+  const optionColor = variantTitle.split(',')[0]?.trim() || ''
+  const displayColor = displayProductOption(color || optionColor)
+  return [family, displayColor].filter(Boolean).join(' ')
 }
 
 function buildEasyStoreProductDraft({ product, threadId }) {
   const previewUrl = buildEasyStorePreviewUrl({ productId: product.id, threadId })
   const image = product.images?.[0] || null
+  const priceLine = product.price?.formatted ? `ราคา ${product.price.formatted.replace(/^฿/, '')} บาท` : ''
+  const size = cleanVariantSize(product.size || product.variantSize || '')
+  const stock = stockLine(product.stock)
+  const detailLine = [size ? `ไซซ์ ${size}` : '', priceLine, stock].filter(Boolean).join(' ')
   const lines = [
-    `แนะนำตัวนี้ค่ะ: ${product.title}`,
-    product.price?.formatted ? `ราคา: ${product.price.formatted}` : '',
-    stockLine(product.stock),
+    `มี ${compactProductTitle(product)}ค่ะ`,
+    detailLine,
     `ดูสินค้า: ${previewUrl}`,
-    product.links?.storefrontUrl ? `ลิงก์ร้าน: ${product.links.storefrontUrl}` : '',
-    'ถ้าสนใจตัวนี้ แอดมินปิดออเดอร์ต่อในแชทได้เลยค่ะ',
   ].filter(Boolean)
 
   return {

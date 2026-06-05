@@ -31,22 +31,60 @@ function productSku(product = {}) {
   return product.sku || product.productId || product.id || '-'
 }
 
+function compactProductToken(value = '') {
+  return String(value || '').replace(/\s+/g, ' ').trim()
+}
+
+function cleanVariantSize(value = '') {
+  const raw = compactProductToken(value)
+  if (!raw) return ''
+  const readable = raw.includes('=') ? raw.split('=').pop() : raw
+  return readable.replace(/,/g, '/').replace(/\s*\/\s*/g, '/').trim()
+}
+
+function displayProductOption(value = '') {
+  const label = compactProductToken(value)
+  if (!label || /^set\b/i.test(label) || label.startsWith('สี')) return label
+  return `สี${label}`
+}
+
+function productDraftName(product = {}) {
+  const name = compactProductToken(productName(product))
+  const family = name.split(' ')[0] || 'สินค้า'
+  const color = compactProductToken(product.color || product.variantColor || '')
+  const optionColor = compactProductToken(product.variantTitle || product.variant || '').split(',')[0]?.trim() || ''
+  return [family, displayProductOption(color || optionColor)].filter(Boolean).join(' ')
+}
+
+function productDraftSize(product = {}) {
+  const explicit = cleanVariantSize(product.size || product.variantSize)
+  if (explicit) return explicit
+  const variantSize = compactProductToken(product.variantTitle || '').split(',').slice(1).join(',').trim()
+  return cleanVariantSize(variantSize)
+}
+
+function productDraftPrice(product = {}) {
+  const formatted = productPrice(product)
+  if (formatted === '-') return ''
+  const plain = formatted.replace(/^฿/, '').trim()
+  return `ราคา ${plain} บาท`
+}
+
 function buildEasyStoreProductDraft({ product, thread }) {
   const id = product.productId || product.id || product.variantId || product.sku || ''
   const previewUrl = id && thread?.id
     ? `${window.location.origin}/p/easystore/${encodeURIComponent(id)}?threadId=${encodeURIComponent(thread.id)}`
     : ''
+  const size = productDraftSize(product)
+  const detailLine = [
+    size ? `ไซซ์ ${size}` : '',
+    productDraftPrice(product),
+    `พร้อมส่ง ${productStock(product)} ชิ้น`,
+  ].filter(Boolean).join(' ')
   const lines = [
-    `แนะนำตัวนี้ค่ะ: ${productName(product)}`,
-    product.sku ? `SKU: ${product.sku}` : '',
-    product.variantTitle && product.variantTitle !== productName(product) ? `ตัวเลือก: ${product.variantTitle}` : '',
-    product.color ? `สี: ${product.color}` : '',
-    product.size ? `ไซซ์: ${product.size}` : '',
-    productPrice(product) !== '-' ? `ราคา: ${productPrice(product)}` : '',
-    `สถานะ: พร้อมส่ง ${productStock(product)} ชิ้น`,
+    `มี ${productDraftName(product)}ค่ะ`,
+    detailLine,
     previewUrl ? `ดูสินค้า: ${previewUrl}` : '',
-    product.links?.storefrontUrl ? `ลิงก์ร้าน: ${product.links.storefrontUrl}` : '',
-    'ถ้าสนใจตัวนี้ แอดมินปิดออเดอร์ต่อในแชทได้เลยค่ะ',
   ].filter(Boolean)
   return {
     text: lines.join('\n'),

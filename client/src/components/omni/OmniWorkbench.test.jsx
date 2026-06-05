@@ -817,8 +817,10 @@ describe('OmniWorkbench', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'ใช้ตอบ lorสีดำXL' }))
 
     expect(await screen.findByText(/ใส่สินค้าในกล่องตอบแล้ว: Lorra เดรสเชิ้ต Polo/)).toBeInTheDocument()
-    expect(draftBox.value).toContain('แนะนำตัวนี้ค่ะ: Lorra เดรสเชิ้ต Polo')
-    expect(draftBox.value).toContain('SKU: lorสีดำXL')
+    expect(draftBox.value).toContain('มี Lorra สีดำค่ะ')
+    expect(draftBox.value).toContain('ราคา 690 บาท พร้อมส่ง 13 ชิ้น')
+    expect(draftBox.value).not.toContain('SKU:')
+    expect(draftBox.value).not.toContain('ตัวเลือก:')
     expect(screen.getAllByAltText('Lorra สีดำ XL').length).toBeGreaterThan(0)
   })
 
@@ -926,8 +928,10 @@ describe('OmniWorkbench', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'ใช้ตอบ lorสีดำXL' }))
 
     expect(await screen.findByText(/ใส่สินค้าในกล่องตอบแล้ว: Lorra เดรสเชิ้ต Polo/)).toBeInTheDocument()
-    expect(draftBox.value).toContain('แนะนำตัวนี้ค่ะ: Lorra เดรสเชิ้ต Polo')
-    expect(draftBox.value).toContain('SKU: lorสีดำXL')
+    expect(draftBox.value).toContain('มี Lorra สีดำค่ะ')
+    expect(draftBox.value).toContain('ราคา 690 บาท พร้อมส่ง 13 ชิ้น')
+    expect(draftBox.value).not.toContain('SKU:')
+    expect(draftBox.value).not.toContain('ปิดออเดอร์')
     expect(screen.getAllByAltText('Lorra สีดำ XL').length).toBeGreaterThan(0)
     expect(screen.queryByText('Draft ยังไม่ส่งออกไปหาลูกค้า ปุ่มส่งลูกค้าจริงใช้ได้เมื่อเปิด “ส่งจริงเปิด”')).not.toBeInTheDocument()
   })
