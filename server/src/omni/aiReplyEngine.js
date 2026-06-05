@@ -22,6 +22,7 @@ function latestInboundMessage(thread, snapshot) {
 
 function classifyIntent(text) {
   const value = String(text || '').toLowerCase()
+  if (isCustomerCorrection(value)) return 'humanReview'
   if (/(สลิป|โอนแล้ว|จ่ายแล้ว|ชำระแล้ว|หลักฐาน|payment proof|paid)/i.test(value)) return 'paymentProof'
   if (/(^|\s)(cf|เอา|รับ|สั่ง|จอง)(\s|$)|สั่งค่ะ|สั่งครับ|เอาค่ะ|เอาครับ|รับค่ะ|รับครับ/i.test(value)) return 'orderPurchase'
   if (/(ไซซ์ไหนดี|ไซส์ไหนดี|ใส่ได้ไหม|ใส่ได้มั้ย|พอดีไหม|พอดีมั้ย|อก|เอว|สะโพก|size advice|แนะนำไซซ์|แนะนำไซส์)/i.test(value)) return 'sizeAdvice'
@@ -29,7 +30,7 @@ function classifyIntent(text) {
   if (/(ลดได้ไหม|ลดไหม|ขอลด|ส่วนลด|โปร|ของแถม|discount)/i.test(value)) return 'discount'
   if (/(ค่าส่ง|ส่งฟรี|จัดส่ง|ส่งเมื่อไหร่|ส่งวันไหน|shipping|delivery)/i.test(value)) return 'shipping'
   if (/(รูป|ภาพ|ถ่าย|photo|image|pic|picture|ดูสี|ขอดู|ส่ง.*รูป|ส่ง.*ภาพ)/i.test(value)) return 'productImage'
-  if (/(ของ|สินค้า|ไซซ์|ไซส์|size|สี|stock|พร้อมส่ง|มีไหม|\b(?:s|m|l|xl|xxl|2xl|3xl|4xl|5xl)\b)/i.test(value)) return 'stock'
+  if (/(ของ|สินค้า|ไซซ์|ไซส์|ขนาด|รุ่น|size|สี|stock|พร้อมส่ง|มีไหม|\b(?:s|m|l|xl|xxl|2xl|3xl|4xl|5xl)\b)/i.test(value)) return 'stock'
   if (/(ราคา|เท่าไหร่|บาท|price)/i.test(value)) return 'price'
   if (/(พัสดุ|เลข|tracking|ส่งของ|order|คำสั่งซื้อ)/i.test(value)) return 'orderStatus'
   if (/(คืนเงิน|refund|ยกเลิก|cancel|เคลม)/i.test(value)) return 'refund'
@@ -38,10 +39,28 @@ function classifyIntent(text) {
 
 function riskForIntent(intent, policy, autoSendAll = AUTO_SEND_ALL) {
   if (autoSendAll) return 'low'
+  if (intent === 'humanReview') return 'medium'
   if (['productImage', 'orderPurchase', 'paymentProof', 'alternativeProduct'].includes(intent)) return 'medium'
   if (['refund', 'discount'].includes(intent)) return 'high'
   if (!policy?.autoSend?.[intent]) return 'medium'
   return 'low'
+}
+
+function isCustomerCorrection(text) {
+  return /(มั่ว|ผิดแล้ว|ตอบผิด|ไม่ถูก|ไม่ใช่|ตอบวน|วนแล้ว|ถามซ้ำ|อ่าน.*ไหม|ไปไหนมา|ตอบก่อน|งง|มั้่ว|มั่วแล้ว|คนจริง|แอดมินจริง)/i.test(String(text || ''))
+}
+
+function shouldHoldForHumanReview({ intent, inboundText, productFacts }) {
+  if (intent === 'humanReview') return 'customer_correction_or_complaint'
+  const value = String(inboundText || '')
+  const asksSpecificProductFact = /(ขนาด|ไซซ์.*(?:อะไร|ไหน|บ้าง)|ไซส์.*(?:อะไร|ไหน|บ้าง)|รุ่น|ราคา|มีสี|สี.*(?:อะไร|ไหน|บ้าง))/i.test(value)
+  if (['stock', 'price'].includes(intent) && !productFacts && asksSpecificProductFact) {
+    return 'product_question_without_inventory_fact'
+  }
+  if (intent === 'faq' && asksSpecificProductFact && !productFacts) {
+    return 'ambiguous_product_faq_without_inventory_fact'
+  }
+  return ''
 }
 
 function detectSize(text) {
@@ -289,6 +308,7 @@ function draftForIntent(intent, originContext = null, productFacts = null, slots
   }
   if (intent === 'orderStatus') return 'ได้ค่ะ เดี๋ยวช่วยเช็กสถานะคำสั่งซื้อให้ก่อนนะคะ เพื่อความถูกต้อง รบกวนส่งเลขออเดอร์ใน inbox แล้วแอดมินจะแจ้งสถานะกลับไปค่ะ'
   if (intent === 'refund') return 'รับทราบค่ะ เคสคืนเงิน ยกเลิก หรือเคลม ต้องให้แอดมินตรวจสอบรายละเอียดก่อนนะคะ เดี๋ยวส่งเรื่องให้ตรวจและจะแจ้งขั้นตอนที่ถูกต้องกลับไปค่ะ'
+  if (intent === 'humanReview') return 'ขอหยุดให้แอดมินตรวจคำตอบก่อนนะคะ เพื่อไม่ให้ตอบข้อมูลผิดซ้ำค่ะ'
   return 'รับทราบค่ะ เดี๋ยวช่วยดูรายละเอียดให้ครบก่อนนะคะ ถ้ามีรุ่น สี ไซซ์ หรือเลขออเดอร์ที่เกี่ยวข้อง ส่งเพิ่มมาได้เลยค่ะ'
 }
 
@@ -723,6 +743,8 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
       const originContext = compactOriginContext(thread, recentMessagesForThread(thread, snapshot))
       const productFacts = productFactsForThread(thread, snapshot, originContext)
       const slots = latestSalesSlots(thread, snapshot, originContext)
+      const holdReason = shouldHoldForHumanReview({ intent, inboundText: inbound?.text, productFacts })
+      const decisionAllowed = allowed && !holdReason
       const productSourceIds = productFacts
         ? (productFacts.variants || []).map((variant) => variant.id).filter(Boolean)
         : []
@@ -733,14 +755,14 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
         model,
         threadId: thread.id,
         intent,
-        risk,
-        action: allowed ? 'draft_ready' : 'needs_approval',
-        confidence: intent === 'faq' ? 0.72 : 0.82,
-        allowed,
+        risk: holdReason ? 'medium' : risk,
+        action: decisionAllowed ? 'draft_ready' : 'needs_approval',
+        confidence: holdReason ? 0.58 : (intent === 'faq' ? 0.72 : 0.82),
+        allowed: decisionAllowed,
         draftText: draftForIntent(intent, originContext, productFacts, slots),
         reason: productFacts
           ? 'product_inventory_fact_match'
-          : (allowed ? 'policy_allows_low_risk_intent' : 'guard_requires_human_or_more_data'),
+          : (holdReason || (allowed ? 'policy_allows_low_risk_intent' : 'guard_requires_human_or_more_data')),
         sourceIds: [...knowledge.map((source) => source.id), ...productSourceIds],
         evidenceIds: inbound?.id ? [inbound.id] : [],
         originContext,

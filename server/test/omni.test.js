@@ -1855,6 +1855,89 @@ test('AI reply engine classifies product image requests as human attachment work
   assert.doesNotMatch(decision.draftText, /เดี๋ยวส่งให้ดู|ยินดีส่งให้ดู/)
 })
 
+test('AI reply engine holds size list questions without inventory facts for human review', async () => {
+  const seed = createOmniSeed()
+  seed.customers.push({ id: 'cust_anna_size_list', displayName: 'Anna Size Customer', matchConfidence: 1 })
+  seed.threads.push({
+    id: 'thread_anna_size_list',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'cust_anna_size_list',
+    status: 'open',
+    intent: 'unknown',
+    risk: 'low',
+    unreadCount: 1,
+    messageCount: 1,
+    updatedAt: '2026-06-05T02:34:00.000Z',
+  })
+  seed.messages.push({
+    id: 'msg_anna_size_list',
+    threadId: 'thread_anna_size_list',
+    direction: 'inbound',
+    authorName: 'Anna Size Customer',
+    text: 'มีขนาดอะไรบ้าง',
+    createdAt: '2026-06-05T02:34:00.000Z',
+    providerMessageId: 'mid_anna_size_list',
+  })
+  const service = createOmniService(seed)
+  const thread = service.getThread('thread_anna_size_list')
+  const ai = createAiReplyEngine({ provider: 'local_rules', model: 'test' })
+  const decision = await ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
+
+  assert.equal(decision.intent, 'stock')
+  assert.equal(decision.allowed, false)
+  assert.equal(decision.action, 'needs_approval')
+  assert.equal(decision.reason, 'product_question_without_inventory_fact')
+  assert.doesNotMatch(decision.draftText, /มีไซซ์เดียว|สีมะนาว|เหลืองอ่อน/)
+})
+
+test('AI reply engine escalates customer corrections instead of looping auto replies', async () => {
+  const seed = createOmniSeed()
+  seed.customers.push({ id: 'cust_anna_correction', displayName: 'Anna Correction Customer', matchConfidence: 1 })
+  seed.threads.push({
+    id: 'thread_anna_correction',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'cust_anna_correction',
+    status: 'open',
+    intent: 'unknown',
+    risk: 'low',
+    unreadCount: 1,
+    messageCount: 2,
+    updatedAt: '2026-06-05T02:34:30.000Z',
+  })
+  seed.messages.push(
+    {
+      id: 'msg_anna_wrong_reply',
+      threadId: 'thread_anna_correction',
+      direction: 'outbound',
+      authorName: 'Anna Lynn AI',
+      text: 'ชุดเซ็ตโอเวอร์ไซซ์มีไซซ์เดียวค่ะ',
+      createdAt: '2026-06-05T02:34:10.000Z',
+      providerMessageId: 'mid_anna_wrong_reply',
+    },
+    {
+      id: 'msg_anna_correction',
+      threadId: 'thread_anna_correction',
+      direction: 'inbound',
+      authorName: 'Anna Correction Customer',
+      text: 'มั่วแล้ว',
+      createdAt: '2026-06-05T02:34:30.000Z',
+      providerMessageId: 'mid_anna_correction',
+    },
+  )
+  const service = createOmniService(seed)
+  const thread = service.getThread('thread_anna_correction')
+  const ai = createAiReplyEngine({ provider: 'local_rules', model: 'test' })
+  const decision = await ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
+
+  assert.equal(decision.intent, 'humanReview')
+  assert.equal(decision.allowed, false)
+  assert.equal(decision.action, 'needs_approval')
+  assert.equal(decision.reason, 'customer_correction_or_complaint')
+  assert.match(decision.draftText, /แอดมินตรวจคำตอบ/)
+})
+
 test('AI reply engine applies sales workflow for size-only product questions', async () => {
   const seed = createOmniSeed()
   seed.customers.push({ id: 'cust_sales_size', displayName: 'Sales Size Customer', matchConfidence: 1 })
