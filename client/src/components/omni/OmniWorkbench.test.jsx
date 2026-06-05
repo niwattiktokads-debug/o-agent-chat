@@ -641,6 +641,7 @@ describe('OmniWorkbench', () => {
     const draftBox = await screen.findByPlaceholderText(/พิมพ์ข้อความตอบลูกค้า/)
 
     fireEvent.click(await screen.findByRole('button', { name: 'สินค้า' }))
+    fireEvent.click(await screen.findByRole('tab', { name: 'สินค้าในแชท' }))
     fireEvent.click(await screen.findByText('ใช้รูปนี้'))
     await waitFor(() => {
       expect(draftBox).toHaveValue('ส่งภาพ เสื้อเชิ้ตโปโลผู้หญิง สีดำ ให้ดูค่ะ')
@@ -694,6 +695,7 @@ describe('OmniWorkbench', () => {
     const draftBox = await screen.findByPlaceholderText(/พิมพ์ข้อความตอบลูกค้า/)
 
     fireEvent.click(await screen.findByRole('button', { name: 'สินค้า' }))
+    fireEvent.click(await screen.findByRole('tab', { name: 'สินค้าในแชท' }))
 
     expect(await screen.findByText('ลูกค้าเดิม')).toBeInTheDocument()
     expect(await screen.findByText('081***5678')).toBeInTheDocument()
@@ -746,6 +748,49 @@ describe('OmniWorkbench', () => {
     expect(within(productTile).queryByText('สีดำ')).not.toBeInTheDocument()
     expect(within(productTile).queryByText('ไซซ์ XL')).not.toBeInTheDocument()
     expect(within(productTile).queryByText('ราคา ฿690')).not.toBeInTheDocument()
+  })
+
+  it('switches product context between chat product and EasyStore list tabs', async () => {
+    render(<OmniWorkbench />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'สินค้า' }))
+
+    const productListTab = await screen.findByRole('tab', { name: 'รายการสินค้า' })
+    const chatProductTab = await screen.findByRole('tab', { name: 'สินค้าในแชท' })
+    expect(productListTab).toHaveAttribute('aria-selected', 'true')
+    expect(chatProductTab).toHaveAttribute('aria-selected', 'false')
+    expect(await screen.findByLabelText('ค้นสินค้า EasyStore')).toBeInTheDocument()
+
+    fireEvent.click(chatProductTab)
+    expect(chatProductTab).toHaveAttribute('aria-selected', 'true')
+    expect(screen.queryByLabelText('ค้นสินค้า EasyStore')).not.toBeInTheDocument()
+    expect(await screen.findByText('เสื้อเชิ้ตโปโลผู้หญิง สีดำ')).toBeInTheDocument()
+    expect(screen.getByText('รูปแนะนำ')).toBeInTheDocument()
+
+    fireEvent.click(productListTab)
+    expect(productListTab).toHaveAttribute('aria-selected', 'true')
+    expect(await screen.findByRole('grid', { name: 'รายการสินค้า EasyStore' })).toBeInTheDocument()
+  })
+
+  it('switches the product list between grid and line icon views with active styling', async () => {
+    render(<OmniWorkbench />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'สินค้า' }))
+
+    const gridToggle = await screen.findByRole('button', { name: 'มุมมองกริดสินค้า' })
+    const lineToggle = await screen.findByRole('button', { name: 'มุมมองรายการสินค้า' })
+    expect(gridToggle).toHaveAttribute('aria-pressed', 'true')
+    expect(lineToggle).toHaveAttribute('aria-pressed', 'false')
+
+    fireEvent.click(lineToggle)
+    expect(lineToggle).toHaveAttribute('aria-pressed', 'true')
+    expect(gridToggle).toHaveAttribute('aria-pressed', 'false')
+    expect(await screen.findByRole('grid', { name: 'รายการสินค้า EasyStore' })).toHaveAttribute('data-view', 'line')
+
+    fireEvent.click(gridToggle)
+    expect(gridToggle).toHaveAttribute('aria-pressed', 'true')
+    expect(lineToggle).toHaveAttribute('aria-pressed', 'false')
+    expect(await screen.findByRole('grid', { name: 'รายการสินค้า EasyStore' })).toHaveAttribute('data-view', 'grid')
   })
 
   it('creates an EasyStore product draft from the selected thread without sending', async () => {
