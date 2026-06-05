@@ -487,7 +487,7 @@ describe('OmniWorkbench', () => {
     expect(screen.queryByText('โปรไฟล์เพจ')).not.toBeInTheDocument()
   })
 
-  it('lets the operator switch through ZORT-style chat, post, live, and report workflows', async () => {
+  it('lets the operator switch through EasyStore-style chat, post, live, and report workflows', async () => {
     render(<OmniWorkbench />)
 
     expect(await screen.findByRole('button', { name: 'แชท' })).toBeInTheDocument()
@@ -506,10 +506,10 @@ describe('OmniWorkbench', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /เปิดขาย BLACK-M/ }))
     expect((await screen.findAllByText('เชื่อมโพสต์แล้ว')).length).toBeGreaterThan(0)
-    fireEvent.change(screen.getByLabelText('ค้นหาสินค้า'), { target: { value: 'BLACK-M' } })
+    fireEvent.change(screen.getByLabelText('ค้นหาสินค้า'), { target: { value: 'Lorra' } })
     fireEvent.click(screen.getByRole('button', { name: 'ค้นหา' }))
-    fireEvent.click(await screen.findByRole('button', { name: /BLACK-M · Black Shirt M/ }))
-    expect(await screen.findByText('Session rule · BLACK-M')).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: /lorสีดำXL · Lorra สีดำ XL/ }))
+    expect(await screen.findByText('Session rule · lorสีดำXL')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'เปิดการขาย' }))
     expect(await screen.findByText(/บันทึกเป็น session state/)).toBeInTheDocument()
 

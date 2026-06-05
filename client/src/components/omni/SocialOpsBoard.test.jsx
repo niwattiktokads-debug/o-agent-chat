@@ -9,6 +9,7 @@ const apiMocks = {
   fetchLiveSources: vi.fn(),
   fetchMessageVolumeReport: vi.fn(),
   fetchSocialPosts: vi.fn(),
+  searchEasyStoreProducts: vi.fn(),
   searchZortProducts: vi.fn(),
 }
 
@@ -18,6 +19,7 @@ vi.mock('../../lib/omniApi.js', () => ({
   fetchLiveSources: (...args) => apiMocks.fetchLiveSources(...args),
   fetchMessageVolumeReport: (...args) => apiMocks.fetchMessageVolumeReport(...args),
   fetchSocialPosts: (...args) => apiMocks.fetchSocialPosts(...args),
+  searchEasyStoreProducts: (...args) => apiMocks.searchEasyStoreProducts(...args),
   searchZortProducts: (...args) => apiMocks.searchZortProducts(...args),
 }))
 
@@ -41,6 +43,7 @@ describe('SocialOpsBoard workspace derivation', () => {
     apiMocks.fetchLiveSources.mockReset()
     apiMocks.fetchSocialPosts.mockReset()
     apiMocks.fetchMessageVolumeReport.mockReset()
+    apiMocks.searchEasyStoreProducts.mockReset()
     apiMocks.searchZortProducts.mockReset()
 
     apiMocks.fetchConnections.mockResolvedValue({
@@ -66,6 +69,25 @@ describe('SocialOpsBoard workspace derivation', () => {
       blocker: 'none',
       posts: [],
     })
+  })
+
+  it('searches EasyStore SKU in Post Selling Session instead of ZORT', async () => {
+    apiMocks.searchEasyStoreProducts.mockResolvedValue({
+      ok: true,
+      products: [{ id: 'p_llp', sku: 'llpดำ28', name: 'Lillac Pant', sellPrice: 790, availableStock: 4 }],
+    })
+    apiMocks.searchZortProducts.mockResolvedValue({ ok: true, products: [] })
+
+    render(<SocialOpsBoard mode="post" snapshot={makeSnapshot()} onSnapshot={() => {}} onOpenChat={() => {}} />)
+
+    await waitFor(() => expect(apiMocks.fetchSocialPosts).toHaveBeenCalled())
+    fireEvent.change(screen.getByLabelText('ค้นหาสินค้า'), { target: { value: 'llpดำ28' } })
+    fireEvent.click(screen.getByRole('button', { name: 'ค้นหา' }))
+
+    await waitFor(() => expect(apiMocks.searchEasyStoreProducts).toHaveBeenCalledWith('llpดำ28', 8))
+    expect(apiMocks.searchZortProducts).not.toHaveBeenCalled()
+    fireEvent.click(await screen.findByRole('button', { name: /llpดำ28 · Lillac Pant/ }))
+    expect(await screen.findByText('Session rule · llpดำ28')).toBeInTheDocument()
   })
 
   it('anna_lynn profile maps to page_annalynn and shows ws_custom workspaceId without capture', async () => {

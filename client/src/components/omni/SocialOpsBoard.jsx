@@ -4,7 +4,7 @@ import {
   fetchLiveSources,
   fetchMessageVolumeReport,
   fetchSocialPosts,
-  searchZortProducts,
+  searchEasyStoreProducts,
 } from '../../lib/omniApi.js'
 
 const FALLBACK_PAGE_PROFILES = [
@@ -80,7 +80,7 @@ export default function SocialOpsBoard({ mode, snapshot, onSnapshot, onOpenChat 
     return (
       <OpsShell
         title="โพสต์"
-        summary="ตั้งค่า Post Selling Session แบบ ZORT: เลือกร้าน, เลือกโพสต์ Facebook, ผูกสินค้า, ตั้งรหัสสินค้า จำนวน และติดตามข้อความกับคำสั่งซื้อ"
+        summary="ตั้งค่า Post Selling Session แบบ EasyStore: เลือกร้าน, เลือกโพสต์ Facebook, ผูกสินค้า, ตั้งรหัสสินค้า จำนวน และติดตามข้อความกับคำสั่งซื้อ"
         onOpenChat={onOpenChat}
       >
         <PostSellingSessionBoard snapshot={snapshot} />
@@ -212,9 +212,9 @@ function PostSellingSessionBoard({ snapshot, onSnapshot }) {
       setSearchStatus('ใส่ SKU หรือชื่อสินค้าก่อน')
       return
     }
-    setSearchStatus('กำลังค้นสินค้า ZORT')
+    setSearchStatus('กำลังค้นสินค้า EasyStore')
     try {
-      const result = await searchZortProducts(productQuery.trim(), 8)
+      const result = await searchEasyStoreProducts(productQuery.trim(), 8)
       setProductResults(result.products || [])
       setSearchStatus(`พบสินค้า ${(result.products || []).length} รายการ`)
     } catch (error) {
@@ -241,7 +241,7 @@ function PostSellingSessionBoard({ snapshot, onSnapshot }) {
         quantity: 1,
         remaining: Number(product.availableStock ?? product.stock ?? 0),
         gift: '',
-        zortProduct: product,
+        easyStoreProduct: product,
       },
     ])
     setSearchStatus(`เพิ่ม ${sku} เข้าโพสต์ขายแล้ว`)
@@ -391,7 +391,7 @@ function PostSellingSessionBoard({ snapshot, onSnapshot }) {
                   disabled={loading || !productQuery.trim()}
                   className="h-10 rounded-[var(--radius-md)] bg-[var(--color-accent)] px-3 text-sm font-semibold text-[var(--color-accent-ink)] disabled:border disabled:border-[var(--color-rule)] disabled:bg-[var(--color-panel-2)] disabled:text-[var(--color-muted)] disabled:opacity-100"
                 >
-                  {searchStatus === 'กำลังค้นสินค้า ZORT' ? 'กำลังค้น' : 'ค้นหา'}
+                  {searchStatus === 'กำลังค้นสินค้า EasyStore' ? 'กำลังค้น' : 'ค้นหา'}
                 </button>
               </div>
               <StatusLine value={searchStatus} />
@@ -425,7 +425,7 @@ function PostSellingSessionBoard({ snapshot, onSnapshot }) {
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="truncate text-sm font-bold text-[var(--color-ink)]">{item.sku} · {item.name}</div>
-                          <div className="mt-1 text-[11px] text-[var(--color-muted)]">ZORT product {item.id || '-'}</div>
+                          <div className="mt-1 text-[11px] text-[var(--color-muted)]">EasyStore product {item.id || '-'}</div>
                         </div>
                         <button type="button" onClick={() => removeProduct(item.localId)} className="rounded-[var(--radius-md)] border border-[var(--color-rule)] px-2 py-1 text-xs font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)]">ลบ</button>
                       </div>
