@@ -2212,6 +2212,78 @@ test('POST /api/omni/threads/:threadId/send passes HTTPS image attachments and r
   }
 })
 
+test('POST /api/omni/threads/:threadId/send passes approved carousel cards to Facebook runtime', async () => {
+  const localApp = express()
+  localApp.use(express.json())
+  const localEvents = []
+  const localHub = { broadcast: (event, payload) => localEvents.push({ event, payload }) }
+  const seed = createOmniService().snapshot()
+  seed.customers.push({
+    id: 'fb_customer_carousel_send',
+    displayName: 'Carousel Customer',
+    platform: 'facebook',
+    providerCustomerId: 'psid_carousel_send',
+    matchConfidence: 1,
+  })
+  seed.threads.push({
+    id: 'fb_carousel_send_thread',
+    providerThreadId: 'fb_carousel_send_provider',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'fb_customer_carousel_send',
+    status: 'open',
+    intent: 'stock',
+    risk: 'medium',
+    unreadCount: 1,
+    messageCount: 1,
+    updatedAt: '2026-06-04T00:00:00.000Z',
+  })
+  const sent = []
+  mountRoutes(localApp, localHub, createState(), {
+    omni: createOmniService(seed),
+    sendFacebookReply: async (input) => {
+      sent.push(input)
+      return { ok: true, response: { message_id: 'mid_carousel_out' } }
+    },
+  })
+  const localServer = localApp.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const response = await fetch(`http://localhost:${localPort}/api/omni/threads/fb_carousel_send_thread/send`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        text: 'ส่งตัวเลือกให้ดูค่ะ',
+        cards: [{
+          title: 'Lorra สีดำ XL',
+          subtitle: 'พร้อมส่ง 5 ชิ้น',
+          imageUrl: 'https://cdn.example.com/lorra-black-xl.jpg',
+          buttons: [{ type: 'web_url', title: 'ดูสินค้า', url: 'https://annalynna.easy.co/products/lorra-black-xl' }],
+        }, {
+          title: 'Lorra สีดำ M',
+          subtitle: 'พร้อมส่ง 3 ชิ้น',
+          imageUrl: 'https://cdn.example.com/lorra-black-m.jpg',
+        }],
+        approved: true,
+        authorName: 'บอส',
+      }),
+    })
+    const body = await response.json()
+    assert.equal(response.status, 200)
+    assert.equal(body.ok, true)
+    assert.equal(body.sent, true)
+    assert.equal(sent.length, 1)
+    assert.equal(sent[0].carousel[0].title, 'Lorra สีดำ XL')
+    assert.equal(sent[0].carousel[1].imageUrl, 'https://cdn.example.com/lorra-black-m.jpg')
+    assert.equal(body.message.attachments.length, 2)
+    assert.equal(body.message.attachments[0].source, 'facebook_carousel_card')
+    assert.equal(body.message.attachments[0].url, 'https://cdn.example.com/lorra-black-xl.jpg')
+    assertBroadcastedOmni(localEvents)
+  } finally {
+    localServer.close()
+  }
+})
+
 test('POST /api/omni/threads/:threadId/send rejects non-HTTPS live image attachments', async () => {
   const localApp = express()
   localApp.use(express.json())
@@ -2556,6 +2628,74 @@ test('POST /webhook/meta does not auto send text-only loops for product image re
     assert.equal(body.result.autoReplies[0].draft.deliveryStatus, 'draft_only')
     assert.match(body.result.autoReplies[0].draft.text, /แนบรูปสินค้าจริง|product card/)
     assert.equal(sent.length, 0)
+  } finally {
+    localServer.close()
+  }
+})
+
+test('POST /webhook/meta sends HTTPS product image attachment for product image requests', async () => {
+  const app = express()
+  app.use(express.json())
+  const sent = []
+  const localEvents = []
+  const localHub = { broadcast: (event, payload) => localEvents.push({ event, payload }) }
+  const seed = createOmniSeed()
+  seed.customers.push({
+    id: 'cust_anna_image_send',
+    displayName: 'Image Customer',
+    providerCustomerId: 'customer_anna_image_send',
+  })
+  seed.inventorySnapshots.push({
+    id: 'es_stock_lorra_black_image',
+    sku: 'LORRA-BLK-XL',
+    source: 'easystore',
+    available: 5,
+    checkedAt: '2026-06-04T05:20:00.000Z',
+    productId: 'lorra-black',
+    variantId: 'xl',
+    productName: 'Lorra เดรสเชิ้ต Polo สีดำ',
+    price: 1290,
+    imageUrl: 'https://cdn.example/lorra-black-xl.jpg',
+  })
+  const localOmni = createOmniService(seed)
+  localOmni.updateSettings({ settings: { ai: { customerSendEnabled: true } }, updatedBy: 'test' })
+  mountWebhook(app, localHub, createState(), {
+    omni: localOmni,
+    metaVerifyToken: 'verify-token-test',
+    awaitAutoReplies: true,
+    sendReply: async (payload) => {
+      sent.push(payload)
+      return { ok: true, response: { message_id: 'sent_mid_product_image' } }
+    },
+  })
+  const localServer = app.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const response = await fetch(`http://localhost:${localPort}/webhook/meta?autoReply=1&send=1`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        object: 'page',
+        entry: [{
+          id: '122106446570001676',
+          messaging: [{
+            sender: { id: 'customer_anna_image_send' },
+            recipient: { id: '122106446570001676' },
+            timestamp: 1779470303000,
+            message: { mid: 'route_mid_anna_image_send', text: 'ขอดูภาพ Lorra สีดำ XL' },
+          }],
+        }],
+      }),
+    })
+    const body = await response.json()
+    assert.equal(response.status, 200)
+    assert.equal(body.result.autoReplies[0].sent, true)
+    assert.equal(body.result.autoReplies[0].recorded.intent, 'productImage')
+    assert.equal(body.result.autoReplies[0].outbound.attachments[0].url, 'https://cdn.example/lorra-black-xl.jpg')
+    assert.equal(body.result.autoReplies[0].outboundAudit.afterJson.attachmentCount, 1)
+    assert.equal(sent[0].recipientId, 'customer_anna_image_send')
+    assert.equal(sent[0].attachments[0].url, 'https://cdn.example/lorra-black-xl.jpg')
+    assertBroadcastedOmni(localEvents)
   } finally {
     localServer.close()
   }

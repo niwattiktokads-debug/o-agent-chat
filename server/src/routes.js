@@ -83,6 +83,42 @@ function buildEasyStoreProductDraft({ product, threadId }) {
   }
 }
 
+function normalizeCarouselCards(input = []) {
+  if (!Array.isArray(input)) return { ok: true, cards: [], attachments: [] }
+  if (input.length > 10) return { ok: false, error: 'carousel_card_limit_exceeded' }
+  const cards = []
+  const attachments = []
+  for (const [index, item] of input.entries()) {
+    const title = String(item?.title || '').trim().slice(0, 80)
+    const subtitle = String(item?.subtitle || '').trim().slice(0, 80)
+    const imageUrl = String(item?.image_url || item?.imageUrl || '').trim()
+    if (!title || !/^https:\/\//i.test(imageUrl)) return { ok: false, error: 'carousel_card_https_image_required' }
+    const buttons = Array.isArray(item?.buttons) ? item.buttons.map((button) => {
+      const type = String(button?.type || 'web_url').trim()
+      const buttonTitle = String(button?.title || '').trim().slice(0, 20)
+      const url = String(button?.url || '').trim()
+      if (type !== 'web_url' || !buttonTitle || !/^https:\/\//i.test(url)) return null
+      return { type: 'web_url', title: buttonTitle, url }
+    }).filter(Boolean).slice(0, 3) : []
+    const card = {
+      title,
+      ...(subtitle ? { subtitle } : {}),
+      imageUrl,
+      ...(buttons.length ? { buttons } : {}),
+    }
+    cards.push(card)
+    attachments.push({
+      id: item?.id || `carousel_card_${index + 1}`,
+      name: title,
+      type: 'image/jpeg',
+      size: 0,
+      url: imageUrl,
+      source: 'facebook_carousel_card',
+    })
+  }
+  return { ok: true, cards, attachments }
+}
+
 function pageProfileForOmniPage(pageId) {
   const target = String(pageId || '')
   return Object.values(loadPageRegistry()).find((profile) => profile.omniPageId === target)?.profileKey || null
@@ -443,6 +479,8 @@ export function mountRoutes(app, hub, room, options = {}) {
       if (req.body?.approved !== true) return res.status(403).json({ ok: false, sent: false, error: 'approval_required' })
       const text = String(req.body?.text || '').trim()
       const attachments = Array.isArray(req.body?.attachments) ? req.body.attachments : []
+      const carousel = normalizeCarouselCards(req.body?.cards || req.body?.carousel || [])
+      if (!carousel.ok) return res.status(400).json({ ok: false, sent: false, error: carousel.error })
       const liveAttachments = attachments.map((item) => ({
         id: item?.id,
         name: item?.name,
@@ -450,7 +488,7 @@ export function mountRoutes(app, hub, room, options = {}) {
         size: item?.size,
         url: String(item?.url || item?.imageUrl || '').trim(),
       }))
-      if (!text && liveAttachments.length === 0) return res.status(400).json({ ok: false, sent: false, error: 'message_required' })
+      if (!text && liveAttachments.length === 0 && carousel.cards.length === 0) return res.status(400).json({ ok: false, sent: false, error: 'message_required' })
       if (liveAttachments.some((item) => !item.type?.startsWith('image/') || !/^https:\/\//i.test(item.url))) {
         return res.status(400).json({ ok: false, sent: false, error: 'live_attachment_https_image_required' })
       }
@@ -464,14 +502,14 @@ export function mountRoutes(app, hub, room, options = {}) {
       const recipientId = thread.customer?.providerCustomerId
       if (!recipientId) return res.status(400).json({ ok: false, sent: false, error: 'recipient_id_not_found' })
 
-      const sendResult = await sendFacebookReplyRuntime({ pageProfile, recipientId, message: text, attachments: liveAttachments })
+      const sendResult = await sendFacebookReplyRuntime({ pageProfile, recipientId, message: text, attachments: liveAttachments, carousel: carousel.cards })
       if (!sendResult?.ok) return res.status(400).json({ ok: false, sent: false, error: sendResult?.error || 'facebook_send_failed', sendResult })
 
       const recorded = omni.recordOutboundMessage({
         threadId: thread.id,
         authorName: req.body?.authorName || 'บอส',
         text,
-        attachments: liveAttachments,
+        attachments: [...liveAttachments, ...carousel.attachments],
         providerMessageId: sendResult.response?.message_id || sendResult.response?.id || sendResult.response?.recipient_id || null,
         sourceRef: `manual_send:${pageProfile}`,
       })

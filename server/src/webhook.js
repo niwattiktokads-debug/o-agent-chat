@@ -396,6 +396,21 @@ function recoverAllowedFallbackDecision(decision) {
   }
 }
 
+function productImageAttachmentsForDecision(decision) {
+  if (decision?.intent !== 'productImage') return []
+  return (decision.productFacts?.variants || [])
+    .map((variant) => String(variant.imageUrl || '').trim())
+    .filter((url, index, rows) => /^https:\/\//i.test(url) && rows.indexOf(url) === index)
+    .slice(0, 1)
+    .map((url, index) => ({
+      id: `ai_product_image_${index + 1}`,
+      name: decision.productFacts?.productName || 'product image',
+      type: 'image/jpeg',
+      size: 0,
+      url,
+    }))
+}
+
 async function draftThreadReply({ omni, ai, threadId, send = false, sendReply = sendFacebookReply, sendCommentReply = sendFacebookCommentReply, sendIgCommentReply = sendInstagramCommentReply }) {
   const thread = omni.getThread(threadId)
   if (!thread) return { ok: false, error: 'thread_not_found', threadId }
@@ -409,8 +424,19 @@ async function draftThreadReply({ omni, ai, threadId, send = false, sendReply = 
   }
   const snapshot = omni.snapshot()
   const policy = omni.getPolicyForThread(thread)
-  const decision = recoverAllowedFallbackDecision(await ai.draft({ thread, snapshot, policy }))
+  let decision = recoverAllowedFallbackDecision(await ai.draft({ thread, snapshot, policy }))
   if (!decision.ok) return decision
+  const productImageAttachments = productImageAttachmentsForDecision(decision)
+  if (productImageAttachments.length) {
+    decision = {
+      ...decision,
+      allowed: true,
+      action: 'draft_ready',
+      reason: decision.reason === 'guard_requires_human_or_more_data'
+        ? 'https_product_image_attachment_ready'
+        : decision.reason,
+    }
+  }
   const recorded = omni.recordAiDecision({
     threadId: thread.id,
     agentProfileId: policy?.agentProfileId,
@@ -449,7 +475,7 @@ async function draftThreadReply({ omni, ai, threadId, send = false, sendReply = 
   if (wsSettings?.ai?.customerSendEnabled !== true) {
     return recordVisibleDraft('customer_send_guard_enabled')
   }
-  if (decision.intent === 'productImage') {
+  if (decision.intent === 'productImage' && !productImageAttachments.length) {
     return recordVisibleDraft('image_attachment_required')
   }
 
@@ -476,12 +502,14 @@ async function draftThreadReply({ omni, ai, threadId, send = false, sendReply = 
   const recipientId = thread.customer?.providerCustomerId
   if (!recipientId) return { ...result, sent: false, sendSkipped: 'missing_recipient_id' }
 
-  const sendResult = await sendReply({ pageProfile, recipientId, message: decision.draftText })
+  const attachments = decision.intent === 'productImage' ? productImageAttachments : []
+  const sendResult = await sendReply({ pageProfile, recipientId, message: decision.draftText, attachments })
   if (!sendResult?.ok) return { ...result, sent: false, sendSkipped: sendResult?.error || 'send_failed', sendResult }
   const recordedOutbound = omni.recordOutboundMessage({
     threadId: thread.id,
     authorName: 'Anna Lynn AI',
     text: decision.draftText,
+    attachments,
     providerMessageId: sendResult.response?.message_id || sendResult.response?.recipient_id || null,
     sourceRef: `meta_send:${pageProfile}`,
     decisionId: recorded.decision.id,

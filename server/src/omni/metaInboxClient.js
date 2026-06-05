@@ -197,10 +197,11 @@ export async function sendFacebookReply(input = {}, runnerArg = null) {
   if (!recipientId) throw new Error('recipient_id_required')
   const text = String(message || '').trim()
   const attachments = normalizeFacebookSendAttachments(input.attachments || [])
-  if (!text && attachments.length === 0) throw new Error('message_required')
+  const carousel = normalizeFacebookCarouselCards(input.carousel || input.cards || [])
+  if (!text && attachments.length === 0 && carousel.length === 0) throw new Error('message_required')
   // ถ้ามี custom runner inject มา (เช่นใน test) ให้ใช้ runner นั้นแทน
   if (input.runner || runnerArg) {
-    if (attachments.length > 0) return { ok: false, error: 'facebook_attachment_helper_not_supported' }
+    if (attachments.length > 0 || carousel.length > 0) return { ok: false, error: 'facebook_attachment_helper_not_supported' }
     const runner = input.runner || runnerArg
     const payload = await runner([
       'send-reply',
@@ -213,7 +214,7 @@ export async function sendFacebookReply(input = {}, runnerArg = null) {
     return payload
   }
   if (input.helperPath) {
-    if (attachments.length > 0) return { ok: false, error: 'facebook_attachment_helper_not_supported' }
+    if (attachments.length > 0 || carousel.length > 0) return { ok: false, error: 'facebook_attachment_helper_not_supported' }
     const helperPath = helperPathFrom(input)
     if (!helperExists(helperPath)) return helperUnavailable(helperPath)
     const payload = await defaultRunner([
@@ -242,6 +243,17 @@ export async function sendFacebookReply(input = {}, runnerArg = null) {
         payload: {
           url: attachment.url,
           is_reusable: true,
+        },
+      },
+    })
+  }
+  if (carousel.length) {
+    messages.push({
+      attachment: {
+        type: 'template',
+        payload: {
+          template_type: 'generic',
+          elements: carousel,
         },
       },
     })
@@ -294,6 +306,35 @@ function normalizeFacebookSendAttachments(input = []) {
     })
     .filter(Boolean)
     .slice(0, 5)
+}
+
+function normalizeFacebookCarouselCards(input = []) {
+  if (!Array.isArray(input)) return []
+  return input
+    .map((item) => {
+      const title = String(item?.title || '').trim().slice(0, 80)
+      const subtitle = String(item?.subtitle || '').trim().slice(0, 80)
+      const imageUrl = String(item?.image_url || item?.imageUrl || '').trim()
+      if (!title || !/^https:\/\//i.test(imageUrl)) return null
+      const buttons = Array.isArray(item?.buttons) ? item.buttons
+        .map((button) => {
+          const type = String(button?.type || 'web_url').trim()
+          const buttonTitle = String(button?.title || '').trim().slice(0, 20)
+          const url = String(button?.url || '').trim()
+          if (type !== 'web_url' || !buttonTitle || !/^https:\/\//i.test(url)) return null
+          return { type: 'web_url', title: buttonTitle, url }
+        })
+        .filter(Boolean)
+        .slice(0, 3) : []
+      return {
+        title,
+        ...(subtitle ? { subtitle } : {}),
+        image_url: imageUrl,
+        ...(buttons.length ? { buttons } : {}),
+      }
+    })
+    .filter(Boolean)
+    .slice(0, 10)
 }
 
 export async function sendFacebookCommentReply(input = {}, runnerArg = null) {

@@ -177,6 +177,7 @@ function productFactsForThread(thread, snapshot, originContext = null) {
       sku: row.sku || '',
       available: Number(row.available || 0),
       price: Number(row.price || 0) || null,
+      imageUrl: row.imageUrl || row.image_url || row.image?.url || '',
     })),
   }
 }

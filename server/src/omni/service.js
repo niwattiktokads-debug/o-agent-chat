@@ -185,6 +185,7 @@ function normalizeDraftAttachments(input = []) {
       size,
       dataUrl,
       url,
+      source: item.source || undefined,
     })
   }
 

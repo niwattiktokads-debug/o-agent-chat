@@ -1150,6 +1150,61 @@ test('Facebook reply connector sends text and image attachments through direct G
   }
 })
 
+test('Facebook reply connector sends generic template carousel through direct Graph API', async () => {
+  const savedToken = process.env.META_PAGE_TOKEN_ANNA_LYNN
+  const calls = []
+  try {
+    process.env.META_PAGE_TOKEN_ANNA_LYNN = 'test_anna_page_token'
+    const result = await sendFacebookReply({
+      pageProfile: 'anna_lynn',
+      recipientId: 'psid_carousel',
+      carousel: [{
+        title: 'Lorra สีดำ XL',
+        subtitle: 'พร้อมส่ง 5 ชิ้น',
+        imageUrl: 'https://cdn.example.com/lorra-black-xl.jpg',
+        buttons: [{ type: 'web_url', title: 'ดูสินค้า', url: 'https://annalynna.easy.co/products/lorra-black-xl' }],
+      }, {
+        title: 'Lorra สีดำ M',
+        subtitle: 'พร้อมส่ง 3 ชิ้น',
+        image_url: 'https://cdn.example.com/lorra-black-m.jpg',
+      }],
+      fetchImpl: async (url, options) => {
+        calls.push({ url: url.toString(), body: JSON.parse(options.body) })
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ message_id: `mid_${calls.length}` }),
+        }
+      },
+    })
+
+    assert.equal(result.ok, true)
+    assert.equal(calls.length, 1)
+    assert.equal(calls[0].body.messaging_type, 'RESPONSE')
+    assert.deepEqual(calls[0].body.message, {
+      attachment: {
+        type: 'template',
+        payload: {
+          template_type: 'generic',
+          elements: [{
+            title: 'Lorra สีดำ XL',
+            subtitle: 'พร้อมส่ง 5 ชิ้น',
+            image_url: 'https://cdn.example.com/lorra-black-xl.jpg',
+            buttons: [{ type: 'web_url', title: 'ดูสินค้า', url: 'https://annalynna.easy.co/products/lorra-black-xl' }],
+          }, {
+            title: 'Lorra สีดำ M',
+            subtitle: 'พร้อมส่ง 3 ชิ้น',
+            image_url: 'https://cdn.example.com/lorra-black-m.jpg',
+          }],
+        },
+      },
+    })
+  } finally {
+    if (savedToken === undefined) delete process.env.META_PAGE_TOKEN_ANNA_LYNN
+    else process.env.META_PAGE_TOKEN_ANNA_LYNN = savedToken
+  }
+})
+
 test('Facebook comment connector skips send when meta helper binary is unavailable', async () => {
   const helperPath = join(mkdtempSync(join(tmpdir(), 'meta-helper-missing-')), 'meta-inbox-api')
   const result = await sendFacebookCommentReply({
