@@ -17,6 +17,7 @@ const PRODUCT_LOOKUP_GENERIC_TERMS = new Set([
   'มี', 'ไหม', 'มั้ย', 'ของ', 'สินค้า', 'ราคา', 'เท่าไหร่', 'บาท', 'พร้อมส่ง', 'ส่ง', 'รูป', 'ภาพ', 'ขอดู',
   'สนใจ', 'ตัวนี้', 'รุ่น', 'สี', 'ไซซ์', 'ไซส์', 'size', 'stock', 'price', 'photo', 'image',
 ])
+const DEFAULT_LOW_RISK_AUTOSEND_INTENTS = new Set(['faq', 'stock', 'price', 'orderStatus', 'sizeAdvice', 'shipping'])
 
 function latestInboundMessage(thread, snapshot) {
   return (snapshot.messages || [])
@@ -67,8 +68,15 @@ function riskForIntent(intent, policy, autoSendAll = AUTO_SEND_ALL) {
   if (intent === 'humanReview') return 'medium'
   if (['productImage', 'orderPurchase', 'paymentProof', 'alternativeProduct'].includes(intent)) return 'medium'
   if (['refund', 'discount'].includes(intent)) return 'high'
-  if (!policy?.autoSend?.[intent]) return 'medium'
+  if (!autoSendEnabledForIntent(intent, policy, autoSendAll)) return 'medium'
   return 'low'
+}
+
+function autoSendEnabledForIntent(intent, policy, autoSendAll = AUTO_SEND_ALL) {
+  if (autoSendAll) return true
+  const autoSend = policy?.autoSend || {}
+  if (Object.prototype.hasOwnProperty.call(autoSend, intent)) return autoSend[intent] === true
+  return DEFAULT_LOW_RISK_AUTOSEND_INTENTS.has(intent)
 }
 
 function isCustomerCorrection(text) {
@@ -77,14 +85,6 @@ function isCustomerCorrection(text) {
 
 function shouldHoldForHumanReview({ intent, inboundText, productFacts }) {
   if (intent === 'humanReview') return 'customer_correction_or_complaint'
-  const value = String(inboundText || '')
-  const asksSpecificProductFact = /(ขนาด|ไซซ์.*(?:อะไร|ไหน|บ้าง)|ไซส์.*(?:อะไร|ไหน|บ้าง)|รุ่น|ราคา|มีสี|สี.*(?:อะไร|ไหน|บ้าง))/i.test(value)
-  if (['stock', 'price'].includes(intent) && !productFacts && asksSpecificProductFact) {
-    return 'product_question_without_inventory_fact'
-  }
-  if (intent === 'faq' && asksSpecificProductFact && !productFacts) {
-    return 'ambiguous_product_faq_without_inventory_fact'
-  }
   return ''
 }
 
@@ -491,13 +491,13 @@ function draftForIntent(intent, originContext = null, productFacts = null, slots
     return 'ลูกค้าขอดูภาพสินค้า ควรให้แอดมินแนบรูปสินค้าจริงหรือ product card ก่อนตอบกลับค่ะ'
   }
   if (intent === 'stock') {
-    if (productLabel) return `ได้ค่ะ เดี๋ยวช่วยเช็กสต็อก ${productLabel} ให้ก่อนนะคะ ถ้าต้องการตัวนี้ แอดมินจะตรวจสี ไซซ์ และจำนวนคงเหลือให้ชัดเจนก่อนตอบกลับค่ะ`
-    if (isLive) return 'สนใจตัวไหนในไลฟ์คะ บอกชื่อ สี ไซซ์ หรือช่วงเวลาที่เห็นได้เลยค่ะ เดี๋ยวแอดมินช่วยเช็กให้ตรงตัวก่อนตอบกลับค่ะ'
+    if (productLabel) return `ได้ค่ะ เดี๋ยวช่วยเช็กสต็อก ${productLabel} ให้ตรงตัวค่ะ รบกวนแจ้งสีหรือไซซ์ที่ต้องการเพิ่มได้เลยนะคะ`
+    if (isLive) return 'สนใจตัวไหนในไลฟ์คะ บอกชื่อ สี ไซซ์ หรือช่วงเวลาที่เห็นได้เลยค่ะ เดี๋ยวช่วยเช็กให้ตรงตัวค่ะ'
     return 'ได้ค่ะ เดี๋ยวช่วยเช็กสต็อก สี และไซซ์ให้ก่อนนะคะ รบกวนบอกสี/ไซซ์ที่ต้องการ หรือส่งรูปสินค้าที่สนใจมาได้เลยค่ะ'
   }
   if (intent === 'price') {
-    if (productLabel) return `ได้ค่ะ เดี๋ยวช่วยเช็กราคา โปร และค่าส่งสำหรับ ${productLabel} ให้ถูกต้องก่อนนะคะ แอดมินจะสรุปให้ชัดเจนก่อนตอบกลับค่ะ`
-    if (isLive) return 'สนใจตัวไหนในไลฟ์คะ บอกชื่อ สี ไซซ์ หรือช่วงเวลาที่เห็นได้เลยค่ะ เดี๋ยวแอดมินช่วยเช็กราคาและโปรให้ตรงตัวก่อนตอบกลับค่ะ'
+    if (productLabel) return `ได้ค่ะ เดี๋ยวช่วยเช็กราคา โปร และค่าส่งสำหรับ ${productLabel} ให้ถูกต้องค่ะ รบกวนแจ้งสีหรือไซซ์ที่สนใจได้เลยนะคะ`
+    if (isLive) return 'สนใจตัวไหนในไลฟ์คะ บอกชื่อ สี ไซซ์ หรือช่วงเวลาที่เห็นได้เลยค่ะ เดี๋ยวช่วยเช็กราคาและโปรให้ตรงตัวค่ะ'
     return 'ได้ค่ะ เดี๋ยวสรุปราคา โปร และค่าส่งที่ใช้ได้ให้ชัดเจนนะคะ ถ้าสนใจรุ่นไหนเป็นพิเศษ ส่งชื่อรุ่นหรือรูปมาได้เลยค่ะ'
   }
   if (intent === 'orderStatus') return 'ได้ค่ะ เดี๋ยวช่วยเช็กสถานะคำสั่งซื้อให้ก่อนนะคะ เพื่อความถูกต้อง รบกวนส่งเลขออเดอร์ใน inbox แล้วแอดมินจะแจ้งสถานะกลับไปค่ะ'
@@ -1129,7 +1129,7 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
       const classificationText = classificationTextForThread(thread, snapshot)
       const intent = classifyIntent(classificationText || inbound?.text || '')
       const risk = riskForIntent(intent, policy)
-      const allowed = AUTO_SEND_ALL || (Boolean(policy?.autoSend?.[intent]) && risk === 'low')
+      const allowed = autoSendEnabledForIntent(intent, policy) && risk === 'low'
       // Derive workspaceId from thread's page for tenant-scoped knowledge
       const threadPage = (snapshot.pages || []).find((p) => p.id === thread.pageId)
       const workspaceId = threadPage?.workspaceId || undefined

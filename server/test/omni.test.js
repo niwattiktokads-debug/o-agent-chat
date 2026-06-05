@@ -2541,7 +2541,7 @@ test('AI reply engine classifies product image requests as human attachment work
   assert.doesNotMatch(decision.draftText, /เดี๋ยวส่งให้ดู|ยินดีส่งให้ดู/)
 })
 
-test('AI reply engine holds size list questions without inventory facts for human review', async () => {
+test('AI reply engine answers size list questions with safe fallback when inventory facts are missing', async () => {
   const seed = createOmniSeed()
   seed.customers.push({ id: 'cust_anna_size_list', displayName: 'Anna Size Customer', matchConfidence: 1 })
   seed.threads.push({
@@ -2571,10 +2571,50 @@ test('AI reply engine holds size list questions without inventory facts for huma
   const decision = await ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
 
   assert.equal(decision.intent, 'stock')
+  assert.equal(decision.allowed, true)
+  assert.equal(decision.action, 'draft_ready')
+  assert.equal(decision.reason, 'policy_allows_low_risk_intent')
+  assert.match(decision.draftText, /บอกสี\/ไซซ์ที่ต้องการ|สีและไซซ์/)
+  assert.doesNotMatch(decision.draftText, /มีไซซ์เดียว|สีมะนาว|เหลืองอ่อน/)
+  assert.doesNotMatch(decision.draftText, /พร้อมส่งรวม|ราคาเริ่มต้น/)
+})
+
+test('AI reply engine respects explicitly disabled product auto-send policy', async () => {
+  const seed = createOmniSeed()
+  const policy = seed.policySets.find((item) => item.id === 'policy_annalynn')
+  policy.autoSend = { ...policy.autoSend, stock: false }
+  seed.customers.push({ id: 'cust_anna_stock_disabled', displayName: 'Anna Stock Disabled Customer', matchConfidence: 1 })
+  seed.threads.push({
+    id: 'thread_anna_stock_disabled',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'cust_anna_stock_disabled',
+    status: 'open',
+    intent: 'unknown',
+    risk: 'low',
+    unreadCount: 1,
+    messageCount: 1,
+    updatedAt: '2026-06-05T02:36:00.000Z',
+  })
+  seed.messages.push({
+    id: 'msg_anna_stock_disabled',
+    threadId: 'thread_anna_stock_disabled',
+    direction: 'inbound',
+    authorName: 'Anna Stock Disabled Customer',
+    text: 'มีขนาดอะไรบ้าง',
+    createdAt: '2026-06-05T02:36:00.000Z',
+    providerMessageId: 'mid_anna_stock_disabled',
+  })
+  const service = createOmniService(seed)
+  const thread = service.getThread('thread_anna_stock_disabled')
+  const ai = createAiReplyEngine({ provider: 'local_rules', model: 'test' })
+  const decision = await ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
+
+  assert.equal(decision.intent, 'stock')
   assert.equal(decision.allowed, false)
   assert.equal(decision.action, 'needs_approval')
-  assert.equal(decision.reason, 'product_question_without_inventory_fact')
-  assert.doesNotMatch(decision.draftText, /มีไซซ์เดียว|สีมะนาว|เหลืองอ่อน/)
+  assert.equal(decision.reason, 'guard_requires_human_or_more_data')
+  assert.match(decision.draftText, /สีและไซซ์|บอกสี\/ไซซ์/)
 })
 
 test('AI reply engine escalates customer corrections instead of looping auto replies', async () => {
