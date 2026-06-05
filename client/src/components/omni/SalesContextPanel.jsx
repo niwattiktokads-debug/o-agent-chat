@@ -27,14 +27,8 @@ function productStock(product = {}) {
   return product.availableStock ?? product.stock?.totalQuantity ?? product.availableTotal ?? 0
 }
 
-function productMeta(product = {}) {
-  return [
-    product.sku ? `SKU: ${product.sku}` : '',
-    product.color ? `สี${product.color}` : '',
-    product.size ? `ไซซ์ ${product.size}` : '',
-    `พร้อมส่ง ${productStock(product)} ชิ้น`,
-    productPrice(product) !== '-' ? `ราคา ${productPrice(product)}` : '',
-  ].filter(Boolean)
+function productSku(product = {}) {
+  return product.sku || product.productId || product.id || '-'
 }
 
 function buildEasyStoreProductDraft({ product, thread }) {
@@ -182,7 +176,19 @@ export default function SalesContextPanel({ thread, onUseDraft }) {
             <h2 className="text-sm font-bold text-[var(--color-ink)]">รายการสินค้า</h2>
             <p className="mt-1 text-xs font-semibold text-[var(--color-muted)]">ค้นสินค้า EasyStore เพื่อใช้ตอบในกล่องแชท</p>
           </div>
-          <span className="rounded-[var(--radius-pill)] bg-[var(--color-panel-2)] px-2 py-1 text-[10px] font-bold text-[var(--color-muted)]">EasyStore</span>
+          <button
+            type="button"
+            aria-label="มุมมองกริดสินค้า"
+            aria-pressed="true"
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-[var(--radius-sm)] border border-[var(--color-accent)] bg-[var(--color-accent-soft)] text-[var(--color-accent)]"
+          >
+            <svg aria-hidden="true" viewBox="0 0 16 16" className="h-4 w-4" fill="none">
+              <rect x="2" y="2" width="5" height="5" rx="1.2" stroke="currentColor" strokeWidth="1.5" />
+              <rect x="9" y="2" width="5" height="5" rx="1.2" stroke="currentColor" strokeWidth="1.5" />
+              <rect x="2" y="9" width="5" height="5" rx="1.2" stroke="currentColor" strokeWidth="1.5" />
+              <rect x="9" y="9" width="5" height="5" rx="1.2" stroke="currentColor" strokeWidth="1.5" />
+            </svg>
+          </button>
         </div>
         <form onSubmit={searchProducts} className="mt-3 grid grid-cols-[minmax(0,1fr)_auto] gap-2">
           <label className="min-w-0 text-xs font-semibold text-[var(--color-muted)]" htmlFor="sales-easystore-search">
@@ -204,35 +210,41 @@ export default function SalesContextPanel({ thread, onUseDraft }) {
           </button>
         </form>
         {productStatus ? <div className="mt-2 text-xs font-semibold text-[var(--color-muted)]">{productStatus}</div> : null}
-        <div className="mt-3 space-y-2">
+        <div
+          role="grid"
+          aria-label="รายการสินค้า EasyStore"
+          data-view="grid"
+          className="mt-3 grid grid-cols-2 gap-2"
+        >
           {products.length ? products.map((product) => (
-            <div key={product.id || product.variantId || product.sku} className="grid min-w-0 grid-cols-[48px_minmax(0,1fr)_auto] items-center gap-3 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] p-2">
-              <div className="h-12 w-12 overflow-hidden rounded-[var(--radius-sm)] border border-[var(--color-rule)] bg-[var(--color-panel)]">
-                {product.imageUrl ? (
-                  <img src={product.imageUrl} alt={product.name || productName(product)} className="h-full w-full object-cover" loading="lazy" />
-                ) : (
-                  <div className="grid h-full place-items-center text-[10px] font-bold text-[var(--color-muted)]">สินค้า</div>
-                )}
-              </div>
-              <div className="min-w-0">
-                <div className="truncate text-xs font-bold text-[var(--color-ink)]">{productName(product)}</div>
-                {product.variantTitle && product.variantTitle !== productName(product) ? <div className="mt-0.5 truncate text-[11px] font-semibold text-[var(--color-ink-2)]">{product.variantTitle}</div> : null}
-                <div className="mt-1 flex min-w-0 flex-wrap gap-1">
-                  {productMeta(product).slice(0, 4).map((item) => (
-                    <span key={item} className="rounded-[var(--radius-pill)] bg-[var(--color-panel)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--color-muted)]">{item}</span>
-                  ))}
-                </div>
-              </div>
+            <div
+              key={product.id || product.variantId || product.sku}
+              role="gridcell"
+              aria-label={`${productName(product)} ${productSku(product)} ${productStock(product)} ชิ้น`}
+              className="min-w-0 overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] transition hover:border-[var(--color-accent)]"
+            >
               <button
                 type="button"
                 onClick={() => useProduct(product)}
-                className="rounded-[var(--radius-sm)] bg-[var(--color-accent)] px-2 py-1.5 text-xs font-bold text-[var(--color-accent-ink)]"
+                aria-label={`ใช้ตอบ ${productSku(product)}`}
+                className="block w-full text-left"
               >
-                ใช้ตอบ {product.sku || product.productId || product.id}
+                <div className="overflow-hidden bg-[var(--color-panel)]">
+                  {product.imageUrl ? (
+                    <img src={product.imageUrl} alt={product.name || productName(product)} className="aspect-square w-full object-cover" loading="lazy" />
+                  ) : (
+                    <div className="grid aspect-square w-full place-items-center text-xs font-bold text-[var(--color-muted)]">สินค้า</div>
+                  )}
+                </div>
+                <div className="space-y-1 p-2">
+                  <div className="truncate text-xs font-bold text-[var(--color-ink)]">{productName(product)}</div>
+                  <div className="truncate text-[10px] font-semibold text-[var(--color-muted)]">SKU: {productSku(product)}</div>
+                  <div className="text-[10px] font-semibold text-[var(--color-muted)]">{productStock(product)} ชิ้น</div>
+                </div>
               </button>
             </div>
           )) : (
-            <div className="rounded-[var(--radius-sm)] border border-dashed border-[var(--color-rule)] px-3 py-6 text-center text-xs text-[var(--color-muted)]">ค้นหาเพื่อดึงสินค้า EasyStore จริง</div>
+            <div className="col-span-2 rounded-[var(--radius-sm)] border border-dashed border-[var(--color-rule)] px-3 py-6 text-center text-xs text-[var(--color-muted)]">ค้นหาเพื่อดึงสินค้า EasyStore จริง</div>
           )}
         </div>
       </section>

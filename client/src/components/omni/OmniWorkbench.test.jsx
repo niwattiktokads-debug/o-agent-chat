@@ -1,6 +1,6 @@
 import React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import OmniWorkbench from './OmniWorkbench.jsx'
 
 const omniMock = vi.hoisted(() => ({
@@ -726,6 +726,26 @@ describe('OmniWorkbench', () => {
     expect(draftBox.value).toContain('แนะนำตัวนี้ค่ะ: Lorra เดรสเชิ้ต Polo')
     expect(draftBox.value).toContain('SKU: lorสีดำXL')
     expect(screen.getAllByAltText('Lorra สีดำ XL').length).toBeGreaterThan(0)
+  })
+
+  it('renders EasyStore products as square grid tiles with only name sku and quantity details', async () => {
+    render(<OmniWorkbench />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'สินค้า' }))
+
+    const gridToggle = await screen.findByRole('button', { name: 'มุมมองกริดสินค้า' })
+    expect(gridToggle).toHaveAttribute('aria-pressed', 'true')
+
+    const grid = await screen.findByRole('grid', { name: 'รายการสินค้า EasyStore' })
+    expect(grid).toHaveAttribute('data-view', 'grid')
+    const productTile = within(grid).getByRole('gridcell', { name: /Lorra เดรสเชิ้ต Polo/ })
+    expect(within(productTile).getByAltText('Lorra สีดำ XL')).toHaveClass('aspect-square')
+    expect(within(productTile).getByText('Lorra เดรสเชิ้ต Polo')).toBeInTheDocument()
+    expect(within(productTile).getByText('SKU: lorสีดำXL')).toBeInTheDocument()
+    expect(within(productTile).getByText('13 ชิ้น')).toBeInTheDocument()
+    expect(within(productTile).queryByText('สีดำ')).not.toBeInTheDocument()
+    expect(within(productTile).queryByText('ไซซ์ XL')).not.toBeInTheDocument()
+    expect(within(productTile).queryByText('ราคา ฿690')).not.toBeInTheDocument()
   })
 
   it('creates an EasyStore product draft from the selected thread without sending', async () => {
