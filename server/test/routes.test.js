@@ -2954,6 +2954,68 @@ test('POST /webhook/meta keeps customer send blocked until customerSendEnabled i
   }
 })
 
+test('POST /webhook/meta creates a visible draft when customer send is on but AI needs approval', async () => {
+  const app = express()
+  app.use(express.json())
+  const sent = []
+  mountWebhook(app, { broadcast: () => {} }, createState(), {
+    omni: createOmniServiceWithCustomerSend(),
+    metaVerifyToken: 'verify-token-test',
+    awaitAutoReplies: true,
+    ai: {
+      async draft() {
+        return {
+          ok: true,
+          provider: 'test',
+          model: 'needs-approval-test',
+          intent: 'stock',
+          risk: 'medium',
+          confidence: 0.85,
+          action: 'needs_approval',
+          sourceIds: ['ks_annalynn_product_faq'],
+          reason: 'product_question_without_inventory_fact',
+          allowed: false,
+          draftText: 'ได้ค่ะ เดี๋ยวช่วยเช็กขนาดสินค้าให้ก่อนนะคะ รบกวนแจ้งสีหรือไซซ์ที่สนใจเพิ่มนิดนึงค่ะ',
+        }
+      },
+    },
+    sendReply: async (payload) => {
+      sent.push(payload)
+      return { ok: true, response: { message_id: 'should_not_send' } }
+    },
+  })
+  const localServer = app.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const response = await fetch(`http://localhost:${localPort}/webhook/meta?autoReply=1&send=1`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        object: 'page',
+        entry: [{
+          id: '122106446570001676',
+          messaging: [{
+            sender: { id: 'customer_anna_needs_approval_draft' },
+            recipient: { id: '122106446570001676' },
+            timestamp: 1779470301500,
+            message: { mid: 'route_mid_anna_needs_approval_draft', text: 'ขนาดสินค้า' },
+          }],
+        }],
+      }),
+    })
+    const body = await response.json()
+    assert.equal(response.status, 200)
+    assert.equal(body.result.autoReplies[0].sent, false)
+    assert.equal(body.result.autoReplies[0].sendSkipped, 'decision_not_allowed')
+    assert.equal(body.result.autoReplies[0].draft.deliveryStatus, 'draft_only')
+    assert.match(body.result.autoReplies[0].draft.text, /เช็กขนาดสินค้า/)
+    assert.equal(body.result.autoReplies[0].draftAudit.action, 'ai_reply_draft_created')
+    assert.equal(sent.length, 0)
+  } finally {
+    localServer.close()
+  }
+})
+
 test('POST /webhook/meta does not auto send text-only loops for product image requests', async () => {
   const app = express()
   app.use(express.json())

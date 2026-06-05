@@ -698,7 +698,7 @@ async function draftThreadReply({ omni, ai, threadId, send = false, sendReply = 
 
   const pageProfile = pageProfileForThread(thread)
   if (!pageProfile) return { ...result, sent: false, sendSkipped: 'unsupported_page_for_auto_send' }
-  if (!decision.allowed) return { ...result, sent: false, sendSkipped: 'decision_not_allowed' }
+  if (!decision.allowed) return recordVisibleDraft('decision_not_allowed')
   if (isCommentThread(thread)) {
     if (decisionAttachments.length || decisionCarousel.length) return recordVisibleDraft('comment_assets_require_inbox_or_manual_send')
     const commentId = commentIdForThread(thread)
