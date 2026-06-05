@@ -461,6 +461,13 @@ describe('OmniWorkbench', () => {
     expect(await screen.findByText('tiktok')).toBeInTheDocument()
     expect((await screen.findAllByText('Viris Zamara')).length).toBeGreaterThan(0)
     expect(await screen.findByRole('button', { name: 'AI ร่างให้' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'แนบภาพ' })).toBeInTheDocument()
+    expect(screen.queryByText('แนบภาพ')).not.toBeInTheDocument()
+    expect(await screen.findByRole('switch', { name: /เสียงแจ้งเตือนปิด/ })).toBeInTheDocument()
+    expect(screen.queryByText('Webhook live')).not.toBeInTheDocument()
+    expect(screen.queryByText(/AI auto-reply/)).not.toBeInTheDocument()
+    expect(screen.queryByText('AI draft on')).not.toBeInTheDocument()
+    expect(screen.queryByText('Auto-send active')).not.toBeInTheDocument()
     expect(screen.queryByText('AI ทำอะไรอยู่')).not.toBeInTheDocument()
     expect(screen.queryByText('AI ร่างคำตอบแล้ว')).not.toBeInTheDocument()
     expect(await screen.findByText('ออเดอร์')).toBeInTheDocument()
@@ -904,11 +911,11 @@ describe('OmniWorkbench', () => {
     }))
 
     render(<OmniWorkbench />)
-    const soundSwitch = await screen.findByRole('switch', { name: /เสียงปิด/ })
+    const soundSwitch = await screen.findByRole('switch', { name: /เสียงแจ้งเตือนปิด/ })
 
     expect(oscillatorStart).not.toHaveBeenCalled()
     fireEvent.click(soundSwitch)
-    expect(await screen.findByRole('switch', { name: /เสียงเปิด/ })).toBeInTheDocument()
+    expect(await screen.findByRole('switch', { name: /เสียงแจ้งเตือนเปิด/ })).toBeInTheDocument()
 
     act(() => {
       omniMock.subscribers.at(-1)?.({
@@ -931,8 +938,8 @@ describe('OmniWorkbench', () => {
       expect(oscillatorStart).toHaveBeenCalledTimes(1)
     })
 
-    fireEvent.click(screen.getByRole('switch', { name: /เสียงเปิด/ }))
-    expect(await screen.findByRole('switch', { name: /เสียงปิด/ })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('switch', { name: /เสียงแจ้งเตือนเปิด/ }))
+    expect(await screen.findByRole('switch', { name: /เสียงแจ้งเตือนปิด/ })).toBeInTheDocument()
 
     act(() => {
       omniMock.subscribers.at(-1)?.({
@@ -984,7 +991,7 @@ describe('OmniWorkbench', () => {
     }))
 
     render(<OmniWorkbench />)
-    fireEvent.click(await screen.findByRole('switch', { name: /เสียงปิด/ }))
+    fireEvent.click(await screen.findByRole('switch', { name: /เสียงแจ้งเตือนปิด/ }))
 
     act(() => {
       omniMock.subscribers.at(-1)?.({
@@ -1000,8 +1007,9 @@ describe('OmniWorkbench', () => {
       })
     })
 
-    expect(await screen.findByText('AI รออนุมัติ 1 เคส')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /เปิดเคส ลูกค้า A/ })).toBeInTheDocument()
+    expect(await screen.findByText('AI รออนุมัติ 1')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /เปิดเคสที่รออนุมัติ ลูกค้า A/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /เปิดเคส ลูกค้า A/ })).not.toBeInTheDocument()
     expect(screen.getAllByText('ต้องอนุมัติ AI').length).toBeGreaterThan(0)
     await waitFor(() => {
       expect(oscillatorStart).toHaveBeenCalledTimes(1)
@@ -1028,8 +1036,8 @@ describe('OmniWorkbench', () => {
       })
     })
 
-    expect(await screen.findByText('AI รออนุมัติ 1 เคส')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /เปิดเคส ลูกค้า A/ }))
+    expect(await screen.findByText('AI รออนุมัติ 1')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /เปิดเคสที่รออนุมัติ ลูกค้า A/ }))
 
     expect(await screen.findByText('กล่องรวม')).toBeInTheDocument()
     expect(screen.getAllByText('ต้องอนุมัติ AI').length).toBeGreaterThan(0)

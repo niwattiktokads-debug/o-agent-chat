@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { autoSendStatus, customerAvatarUrl, customerForThread, formatShortTime, initialsForName, pageForThread, sourceLabel, statusLabel } from '../../lib/omniModel.js'
+import { customerAvatarUrl, customerForThread, formatShortTime, initialsForName, pageForThread, sourceLabel, statusLabel } from '../../lib/omniModel.js'
 import { createAiDraft, saveOmniSettings, sendManualReply } from '../../lib/omniApi.js'
 
 export default function ThreadDetail({ snapshot, thread, onSnapshot, suggestedDraft, workspaceId }) {
@@ -12,7 +12,6 @@ export default function ThreadDetail({ snapshot, thread, onSnapshot, suggestedDr
     .filter((message) => message.threadId === thread?.id)
     .slice()
     .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')))
-  const autoSend = autoSendStatus(snapshot || {}, thread)
   const settings = snapshot?.settings || snapshot?.omniSettings?.find?.((item) => item.id === 'default')?.settings || {}
   const customerSendEnabled = settings?.ai?.customerSendEnabled === true
 
@@ -59,10 +58,7 @@ export default function ThreadDetail({ snapshot, thread, onSnapshot, suggestedDr
               </div>
             </div>
           </div>
-          <div className="flex flex-wrap items-center justify-end gap-2 text-xs">
-            <span className="rounded-[var(--radius-pill)] bg-[var(--color-live-soft)] px-2 py-1 font-semibold text-[var(--color-live)]">Webhook live</span>
-            <span className="rounded-[var(--radius-pill)] bg-[var(--color-ai-soft)] px-2 py-1 font-semibold text-[var(--color-ai)]">AI draft on</span>
-            <span className={`rounded-[var(--radius-pill)] px-2 py-1 font-semibold ${autoSend.active ? 'bg-[var(--color-live-soft)] text-[var(--color-live)]' : 'bg-[var(--color-warn-soft)] text-[var(--color-warn)]'}`}>{autoSend.label}</span>
+          <div className="flex items-center justify-end text-xs">
             <button
               type="button"
               role="switch"
@@ -335,10 +331,12 @@ function ManualReplyComposer({ thread, messagesSignature = '', onSnapshot, sugge
             </button>
             <button
               type="button"
+              aria-label="แนบภาพ"
+              title="แนบภาพ"
               onClick={() => fileInputRef.current?.click()}
-              className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)]"
+              className="grid h-10 w-10 place-items-center rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)] hover:text-[var(--color-ink)]"
             >
-              แนบภาพ
+              <AttachImageIcon />
             </button>
           </div>
           <button
@@ -367,5 +365,16 @@ function ManualReplyComposer({ thread, messagesSignature = '', onSnapshot, sugge
         </div>
       ) : null}
     </form>
+  )
+}
+
+function AttachImageIcon() {
+  return (
+    <svg aria-hidden="true" className="h-5 w-5" viewBox="0 0 24 24" fill="none">
+      <path d="M5 5.5h10.5a3.5 3.5 0 0 1 3.5 3.5v8.5H5z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+      <path d="M8 15l2.4-2.7 2.1 2.1 1.4-1.6 3.1 3.2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M9 9.3h.01" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+      <path d="M18 5.5h1.2A2.8 2.8 0 0 1 22 8.3V18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
   )
 }

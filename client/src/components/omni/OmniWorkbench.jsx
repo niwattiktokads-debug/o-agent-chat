@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { fetchOmniSnapshot, loginOmniAccess, subscribeOmniSnapshots } from '../../lib/omniApi.js'
-import { aiApprovalQueue, autoSendStatus, customerForThread, filterThreads, formatShortTime, pageForThread } from '../../lib/omniModel.js'
+import { aiApprovalQueue, customerForThread, filterThreads, formatShortTime, pageForThread } from '../../lib/omniModel.js'
 import PageRail from './PageRail.jsx'
 import ThreadList from './ThreadList.jsx'
 import ThreadDetail from './ThreadDetail.jsx'
@@ -145,8 +145,6 @@ export default function OmniWorkbench({
 
   const threads = useMemo(() => filterThreads(snapshot?.threads || [], { pageId }), [snapshot, pageId])
   const selectedThread = threads.find((thread) => thread.id === threadId) || threads[0] || null
-  const activeAutoReplyPages = (snapshot?.pages || []).filter((page) => page.autoReplyEnabled !== false).length
-  const autoSend = useMemo(() => autoSendStatus(snapshot || {}), [snapshot])
   const pendingAiApprovals = useMemo(() => aiApprovalQueue(snapshot || {}), [snapshot])
 
   function openApprovalThread(thread) {
@@ -215,22 +213,17 @@ export default function OmniWorkbench({
               <h1 className="text-lg font-bold text-[var(--color-ink)]">กล่องรวม</h1>
               <p className="text-xs text-[var(--color-muted)]">AI operator hub สำหรับตอบลูกค้าแบบ realtime</p>
             </div>
-            <div className="flex flex-wrap items-center gap-2 text-xs">
-              <span className="rounded-[var(--radius-pill)] bg-[var(--color-live-soft)] px-2 py-1 font-semibold text-[var(--color-live)]">Webhook live</span>
-              <span className="rounded-[var(--radius-pill)] bg-[var(--color-ai-soft)] px-2 py-1 font-semibold text-[var(--color-ai)]">AI auto-reply {activeAutoReplyPages}/{snapshot.pages.length}</span>
-              <span className={`rounded-[var(--radius-pill)] px-2 py-1 font-semibold ${autoSend.active ? 'bg-[var(--color-live-soft)] text-[var(--color-live)]' : 'bg-[var(--color-warn-soft)] text-[var(--color-warn)]'}`}>{autoSend.label}</span>
+            <div className="flex items-center">
               <button
                 type="button"
                 role="switch"
                 aria-checked={notificationSoundEnabled}
+                aria-label={`เสียงแจ้งเตือน${notificationSoundEnabled ? 'เปิด' : 'ปิด'}`}
                 onClick={toggleNotificationSound}
-                className={`flex min-w-[104px] items-center justify-between gap-2 rounded-[var(--radius-pill)] border px-2 py-1 font-semibold transition ${notificationSoundEnabled ? 'border-[var(--color-live)] bg-[var(--color-live-soft)] text-[var(--color-live)]' : 'border-[var(--color-rule)] bg-[var(--color-panel-2)] text-[var(--color-ink-2)]'}`}
+                className={`grid h-9 w-9 place-items-center rounded-[var(--radius-md)] border transition ${notificationSoundEnabled ? 'border-[var(--color-live)] bg-[var(--color-live-soft)] text-[var(--color-live)]' : 'border-[var(--color-rule)] bg-[var(--color-panel)] text-[var(--color-muted)] hover:bg-[var(--color-panel-2)] hover:text-[var(--color-ink)]'}`}
                 title={notificationSoundEnabled ? 'ปิดเสียงแจ้งเตือนข้อความเข้าใหม่' : 'เปิดเสียงแจ้งเตือนข้อความเข้าใหม่'}
               >
-                <span>{notificationSoundEnabled ? 'เสียงเปิด' : 'เสียงปิด'}</span>
-                <span className={`relative h-4 w-7 rounded-full ${notificationSoundEnabled ? 'bg-[var(--color-live)]' : 'bg-[var(--color-muted)]'}`}>
-                  <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition ${notificationSoundEnabled ? 'left-3.5' : 'left-0.5'}`} />
-                </span>
+                <NotificationSoundIcon enabled={notificationSoundEnabled} />
               </button>
             </div>
           </div>
@@ -255,6 +248,22 @@ export default function OmniWorkbench({
   )
 }
 
+function NotificationSoundIcon({ enabled }) {
+  return (
+    <svg aria-hidden="true" className="h-5 w-5" viewBox="0 0 24 24" fill="none">
+      <path d="M5 9.5h3.3L13 5.8v12.4l-4.7-3.7H5z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+      {enabled ? (
+        <>
+          <path d="M16 8.5a5 5 0 0 1 0 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          <path d="M18.8 6a9 9 0 0 1 0 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        </>
+      ) : (
+        <path d="M17 9l5 5m0-5l-5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      )}
+    </svg>
+  )
+}
+
 function AiApprovalQueueAlert({ approvals = [], snapshot = {}, onOpen }) {
   const first = approvals[0]
   if (!first) return null
@@ -262,23 +271,20 @@ function AiApprovalQueueAlert({ approvals = [], snapshot = {}, onOpen }) {
   const page = pageForThread(snapshot.pages || [], first.thread)
   const customerName = customer?.displayName || 'ลูกค้า'
   const time = formatShortTime(first.decision.createdAt || first.thread.updatedAt)
+  const label = `AI รออนุมัติ ${approvals.length}`
+  const detail = [customerName, page?.name || first.thread.pageId, first.decision.intent || 'unknown', time].filter(Boolean).join(' · ')
   return (
-    <div role="alert" className="border-b border-[var(--color-warn)] bg-[var(--color-warn-soft)] px-5 py-3 text-sm text-[var(--color-warn)]">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0">
-          <div className="font-black">AI รออนุมัติ {approvals.length} เคส</div>
-          <div className="mt-1 truncate text-xs font-semibold">
-            ล่าสุด: {customerName} · {page?.name || first.thread.pageId} · {first.decision.intent || 'unknown'}{time ? ` · ${time}` : ''}
-          </div>
-        </div>
-        <button
-          type="button"
-          className="rounded-[var(--radius-md)] border border-[var(--color-warn)] bg-[var(--color-panel)] px-3 py-1.5 text-xs font-black text-[var(--color-warn)] hover:bg-white"
-          onClick={() => onOpen?.(first.thread)}
-        >
-          เปิดเคส {customerName}
-        </button>
-      </div>
+    <div role="status" className="flex justify-end border-b border-[var(--color-rule)] bg-[var(--color-panel)] px-5 py-2">
+      <button
+        type="button"
+        aria-label={`เปิดเคสที่รออนุมัติ ${customerName}`}
+        title={detail}
+        className="inline-flex max-w-full items-center gap-2 rounded-[var(--radius-pill)] border border-[var(--color-warn)] bg-[var(--color-warn-soft)] px-3 py-1 text-xs font-black text-[var(--color-warn)] shadow-sm hover:bg-[var(--color-panel)]"
+        onClick={() => onOpen?.(first.thread)}
+      >
+        <span>{label}</span>
+        <span className="max-w-[220px] truncate font-semibold opacity-85">{detail}</span>
+      </button>
     </div>
   )
 }
