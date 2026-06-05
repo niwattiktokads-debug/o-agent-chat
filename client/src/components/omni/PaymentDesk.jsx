@@ -86,7 +86,15 @@ export default function PaymentDesk({ snapshot, thread, onSnapshot, onUseDraft }
         sourceRef: 'omni_ui:kgp_payment_desk',
       })
       onSnapshot?.(result.snapshot)
-      setNotice('สร้างร่างชำระเงินแล้ว ยังไม่ส่งให้ลูกค้า')
+      if (result.payment) {
+        onUseDraft?.({
+          id: `payment_message_${result.payment.id}_${Date.now()}`,
+          threadId: thread.id,
+          text: paymentMessage(result.payment),
+          source: 'payment',
+        })
+      }
+      setNotice('สร้างร่างชำระเงินแล้ว และใส่ข้อความในกล่องตอบแล้ว')
     } catch (err) {
       setError(err.message || 'payment_draft_failed')
     } finally {

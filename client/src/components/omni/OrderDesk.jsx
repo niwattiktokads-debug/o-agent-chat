@@ -78,13 +78,13 @@ function mergeSnapshotSettings(currentSnapshot, nextSnapshot) {
   return { ...nextSnapshot, settings: currentSnapshot.settings }
 }
 
-export default function OrderDesk({ snapshot, thread, onSnapshot, workspaceId }) {
+export default function OrderDesk({ snapshot, thread, onSnapshot, workspaceId, onUseDraft }) {
   const allOrders = snapshot.orders || []
   const orders = thread ? allOrders.filter((order) => order.customerId && order.customerId === thread.customerId) : []
   const recentTikTokOrders = allOrders.filter((order) => order.platform === 'tiktok').slice(-5).reverse()
   return (
     <section className="p-4">
-      <OrderDraft snapshot={snapshot} thread={thread} onSnapshot={onSnapshot} workspaceId={workspaceId} />
+      <OrderDraft snapshot={snapshot} thread={thread} onSnapshot={onSnapshot} workspaceId={workspaceId} onUseDraft={onUseDraft} />
       <h2 className="mt-5 text-sm font-bold text-[var(--color-ink)]">ออเดอร์เดิม</h2>
       {orders.length === 0 ? <p className="mt-2 text-xs text-[var(--color-muted)]">ยังไม่มีออเดอร์ที่ผูกกับลูกค้าคนนี้</p> : null}
       {orders.map((order) => (
@@ -106,7 +106,7 @@ export default function OrderDesk({ snapshot, thread, onSnapshot, workspaceId })
   )
 }
 
-function OrderDraft({ snapshot, thread, onSnapshot, workspaceId }) {
+function OrderDraft({ snapshot, thread, onSnapshot, workspaceId, onUseDraft }) {
   const customer = useMemo(() => customerForThread(snapshot, thread), [snapshot, thread])
   const [orderSource, setOrderSource] = useState('zort')
   const [query, setQuery] = useState('')
@@ -216,6 +216,37 @@ function OrderDraft({ snapshot, thread, onSnapshot, workspaceId }) {
       : `AI เติมได้บางส่วน · ยังขาด ${(extracted.missingFields || []).join(', ')}`)
   }
 
+  function orderSummaryText(order) {
+    const items = (order.items || []).map((item) => {
+      const sku = item.sku || item.name || '-'
+      const qty = Number(item.quantity || 1)
+      const lineTotal = Number(item.unitPrice || 0) * qty
+      return `${sku} x ${qty}${lineTotal ? ` = ฿${lineTotal.toLocaleString('th-TH')}` : ''}`
+    })
+    const address = order.shippingAddress || {}
+    return [
+      'สรุปออเดอร์',
+      ...items,
+      `ผู้รับ: ${address.recipientName || order.customerName || recipientName.trim()}`,
+      `โทร: ${address.recipientPhone || order.customerPhone || recipientPhone.trim()}`,
+      `ที่อยู่: ${address.formattedAddress || [address.addressLine, address.subDistrict ? `แขวง/ตำบล ${address.subDistrict}` : '', address.district ? `เขต/อำเภอ ${address.district}` : '', address.province, address.postalCode].filter(Boolean).join(' ')}`,
+      `ส่ง: ${SHIPPING_METHODS.find((item) => item.value === (order.shippingMethod || shippingMethod))?.label || order.shippingMethod || shippingMethod}`,
+      `จ่าย: ${PAYMENT_METHODS.find((item) => item.value === (order.paymentMethod || paymentMethod))?.label || order.paymentMethod || paymentMethod}`,
+      `ยอดรวม ฿${Number(order.totalAmount || total || 0).toLocaleString('th-TH')}`,
+    ].filter(Boolean).join('\n')
+  }
+
+  function putDraftInComposer({ id, text, attachments = [] }) {
+    if (!thread?.id || !text) return
+    onUseDraft?.({
+      id: `${id}_${Date.now()}`,
+      threadId: thread.id,
+      text,
+      attachments,
+      source: 'order',
+    })
+  }
+
   async function importAddressFromChat() {
     if (!thread?.id) {
       setAddressIntakeStatus('เลือกแชทลูกค้าก่อน')
@@ -223,12 +254,18 @@ function OrderDraft({ snapshot, thread, onSnapshot, workspaceId }) {
     }
     setAddressIntakeStatus('AI กำลังคัดกรองชื่อ เบอร์ และที่อยู่จากแชท')
     try {
-      const result = await extractOrderAddressFromThread(thread.id, { createConfirmationDraft: true })
+      const result = await extractOrderAddressFromThread(thread.id, { createConfirmationDraft: false })
       applyAddressExtraction(result)
       if (result.snapshot) onSnapshot?.(result.snapshot)
+      if (result.confirmationText || result.confirmationDraft?.message?.text) {
+        putDraftInComposer({
+          id: `address_confirmation_${thread.id}`,
+          text: result.confirmationText || result.confirmationDraft?.message?.text,
+        })
+      }
       setAddressIntakeStatus(result.extracted?.readyForDraft
-        ? 'เติมฟอร์มแล้ว และสร้าง draft ให้ลูกค้าตรวจที่อยู่แล้ว'
-        : 'เติมฟอร์มบางส่วนแล้ว และสร้าง draft ขอข้อมูลเพิ่มแล้ว')
+        ? 'เติมฟอร์มแล้ว และใส่ข้อความให้ลูกค้าตรวจที่อยู่ในกล่องตอบแล้ว'
+        : 'เติมฟอร์มบางส่วนแล้ว และใส่ข้อความขอข้อมูลเพิ่มในกล่องตอบแล้ว')
     } catch (error) {
       setAddressIntakeStatus(error.message)
     }
@@ -293,6 +330,10 @@ function OrderDraft({ snapshot, thread, onSnapshot, workspaceId }) {
       setDraft(result.order)
       setConfirmingApprove(false)
       if (result.snapshot) onSnapshot?.(mergeSnapshotSettings(snapshot, result.snapshot))
+      putDraftInComposer({
+        id: `order_summary_${result.order.id || thread?.id || 'standalone'}`,
+        text: orderSummaryText(result.order),
+      })
       setStatus('บันทึก draft แล้ว')
     } catch (error) {
       setStatus(error.message)

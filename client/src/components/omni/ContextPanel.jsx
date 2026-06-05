@@ -103,7 +103,7 @@ export default function ContextPanel({ snapshot, thread, onSnapshot, workspaceId
       {tab === 'ai' ? <AiDecisionPanel snapshot={panelSnapshot} thread={thread} onDrafted={handlePanelSnapshot} onUseDraft={onUseDraft} /> : null}
       {tab === 'sales' ? <SalesContextPanel thread={thread} onUseDraft={onUseDraft} /> : null}
       {tab === 'profiles' ? <ProfilePanel snapshot={panelSnapshot} thread={thread} /> : null}
-      {tab === 'orders' ? <OrderDesk snapshot={panelSnapshot} thread={thread} onSnapshot={handlePanelSnapshot} workspaceId={workspaceId} /> : null}
+      {tab === 'orders' ? <OrderDesk snapshot={panelSnapshot} thread={thread} onSnapshot={handlePanelSnapshot} workspaceId={workspaceId} onUseDraft={onUseDraft} /> : null}
       {tab === 'payment' ? <PaymentDesk snapshot={panelSnapshot} thread={thread} onSnapshot={handlePanelSnapshot} onUseDraft={onUseDraft} /> : null}
     </aside>
   )

@@ -242,6 +242,17 @@ vi.mock('../../lib/omniApi.js', () => ({
       connectorHealth: [],
     },
   }),
+  fetchEasyStoreProductPreview: async () => ({
+    ok: true,
+    product: {
+      id: '16462646',
+      title: 'Amanda Jumpsuit',
+      price: { formatted: '฿1,290' },
+      stock: { totalQuantity: 3, status: 'in_stock' },
+      images: [{ id: 'img_amanda', alt: 'Amanda Jumpsuit', url: 'https://cdn.example/amanda.jpg' }],
+      links: { storefrontUrl: 'https://annalynna.easy.co/products/amanda-jumpsuit' },
+    },
+  }),
   setPageAutoReply: async (pageId, enabled) => ({
     ok: true,
     snapshot: {
@@ -392,8 +403,8 @@ vi.mock('../../lib/omniApi.js', () => ({
     order: {
       id: 'order_draft_1',
       status: 'draft',
-      totalAmount: 590,
-      items: [{ sku: 'BLACK-M', quantity: 1 }],
+      totalAmount: (input.items || []).reduce((sum, item) => sum + Number(item.unitPrice || 0) * Number(item.quantity || 1), 0),
+      items: input.items || [{ sku: 'BLACK-M', quantity: 1 }],
       shippingMethod: input.shippingMethod,
       paymentMethod: input.paymentMethod,
       shippingAddress: {
@@ -407,7 +418,7 @@ vi.mock('../../lib/omniApi.js', () => ({
       threads: [{ id: 'thread_1', customerId: 'cust_1', pageId: 'page_mankynd', platform: 'facebook', status: 'draft_ready', intent: 'stock', risk: 'low' }],
       messages: [{ id: 'msg_1', threadId: 'thread_1', direction: 'inbound', authorName: 'ลูกค้า A', text: 'มีไซซ์ M สีดำไหม' }],
       customers: [{ id: 'cust_1', displayName: 'ลูกค้า A' }],
-      orders: [{ id: 'order_draft_1', customerId: 'cust_1', platform: 'omni', status: 'draft', totalAmount: 590, items: [{ sku: 'BLACK-M', quantity: 1 }] }],
+      orders: [{ id: 'order_draft_1', customerId: 'cust_1', platform: 'omni', status: 'draft', totalAmount: 590, items: input.items || [{ sku: 'BLACK-M', quantity: 1 }] }],
       aiDecisions: [],
       paymentRequests: [],
       connectorHealth: [],
@@ -498,12 +509,14 @@ describe('OmniWorkbench', () => {
 
   it('shows a guarded order draft workflow beside the active chat', async () => {
     render(<OmniWorkbench />)
+    const draftBox = await screen.findByPlaceholderText(/พิมพ์ข้อความตอบลูกค้า/)
 
     fireEvent.click(await screen.findByRole('button', { name: 'ออเดอร์' }))
 
     expect(await screen.findByRole('heading', { name: 'คำสั่งซื้อใหม่' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'AI ดึงที่อยู่จากแชท' }))
-    expect(await screen.findByText('เติมฟอร์มแล้ว และสร้าง draft ให้ลูกค้าตรวจที่อยู่แล้ว')).toBeInTheDocument()
+    expect(await screen.findByText('เติมฟอร์มแล้ว และใส่ข้อความให้ลูกค้าตรวจที่อยู่ในกล่องตอบแล้ว')).toBeInTheDocument()
+    expect(draftBox.value).toContain('รบกวนตรวจสอบที่อยู่จัดส่งนี้ให้หน่อยค่ะ')
     expect(await screen.findByText('draft ให้ลูกค้าตรวจที่อยู่')).toBeInTheDocument()
     expect(screen.getByLabelText('ชื่อผู้รับ')).toHaveValue('ลูกค้า A')
     expect(screen.getByLabelText('เบอร์โทร')).toHaveValue('0812345678')
@@ -517,6 +530,9 @@ describe('OmniWorkbench', () => {
     expect(await screen.findByText('คลองตัน')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'บันทึก draft ออเดอร์' }))
     expect(await screen.findByText('draft: order_draft_1')).toBeInTheDocument()
+    expect(draftBox.value).toContain('สรุปออเดอร์')
+    expect(draftBox.value).toContain('BLACK-M x 1')
+    expect(draftBox.value).toContain('ยอดรวม ฿590')
     expect((await screen.findAllByText(/99\/1 ถนนสุขุมวิท/)).length).toBeGreaterThan(0)
     fireEvent.click(screen.getByRole('button', { name: 'Approve ไป ZORT' }))
     expect(await screen.findByText('ยืนยัน approval ก่อนสร้าง ZORT order')).toBeInTheDocument()
@@ -527,13 +543,14 @@ describe('OmniWorkbench', () => {
 
   it('lets the operator switch order creation to EasyStore', async () => {
     render(<OmniWorkbench />)
+    const draftBox = await screen.findByPlaceholderText(/พิมพ์ข้อความตอบลูกค้า/)
 
     fireEvent.click(await screen.findByRole('button', { name: 'ออเดอร์' }))
     fireEvent.click(await screen.findByRole('button', { name: 'EasyStore' }))
 
     expect(await screen.findByText('EasyStore order draft')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'AI ดึงที่อยู่จากแชท' }))
-    expect(await screen.findByText('เติมฟอร์มแล้ว และสร้าง draft ให้ลูกค้าตรวจที่อยู่แล้ว')).toBeInTheDocument()
+    expect(await screen.findByText('เติมฟอร์มแล้ว และใส่ข้อความให้ลูกค้าตรวจที่อยู่ในกล่องตอบแล้ว')).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('ค้นสินค้า EasyStore'), { target: { value: 'Lorra' } })
     fireEvent.click(screen.getByRole('button', { name: 'ค้น EasyStore' }))
     expect(await screen.findByText('Lorra เดรสเชิ้ต Polo')).toBeInTheDocument()
@@ -547,6 +564,8 @@ describe('OmniWorkbench', () => {
     expect(await screen.findByText('พบที่อยู่ 1 รายการ · ครอบคลุม 77 จังหวัด')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'บันทึก draft ออเดอร์' }))
     expect(await screen.findByText('draft: order_draft_1')).toBeInTheDocument()
+    expect(draftBox.value).toContain('สรุปออเดอร์')
+    expect(draftBox.value).toContain('lorสีดำXL x 1')
     fireEvent.click(screen.getByRole('button', { name: 'Approve ไป EasyStore' }))
     expect(await screen.findByText('ยืนยัน approval ก่อนสร้าง EasyStore order')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'ยืนยันสร้าง EasyStore order' }))
@@ -563,7 +582,7 @@ describe('OmniWorkbench', () => {
     expect(await screen.findByText('ปิด approval guard แล้ว')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'AI ดึงที่อยู่จากแชท' }))
-    expect(await screen.findByText('เติมฟอร์มแล้ว และสร้าง draft ให้ลูกค้าตรวจที่อยู่แล้ว')).toBeInTheDocument()
+    expect(await screen.findByText('เติมฟอร์มแล้ว และใส่ข้อความให้ลูกค้าตรวจที่อยู่ในกล่องตอบแล้ว')).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('ค้นสินค้า ZORT'), { target: { value: 'BLACK-M' } })
     fireEvent.click(screen.getByRole('button', { name: 'ค้น ZORT' }))
     expect(await screen.findByText('Black Shirt M')).toBeInTheDocument()
@@ -576,17 +595,15 @@ describe('OmniWorkbench', () => {
     expect(await screen.findByText('สร้าง ZORT order แล้ว zort_1001')).toBeInTheDocument()
   })
 
-  it('lets the operator type a manual draft in the selected thread', async () => {
+  it('keeps manual draft text visible in the composer instead of saving a hidden draft bubble', async () => {
     render(<OmniWorkbench />)
     const draftBox = await screen.findByPlaceholderText(/พิมพ์ข้อความตอบลูกค้า/)
 
     fireEvent.change(draftBox, { target: { value: 'ตอบจากช่องพิมพ์ใหม่' } })
-    fireEvent.click(screen.getByRole('button', { name: 'บันทึก draft' }))
 
-    await waitFor(() => {
-      expect(screen.getByText('ตอบจากช่องพิมพ์ใหม่')).toBeInTheDocument()
-    })
-    expect(screen.getByText('Draft')).toBeInTheDocument()
+    expect(draftBox).toHaveValue('ตอบจากช่องพิมพ์ใหม่')
+    expect(screen.queryByRole('button', { name: 'บันทึก draft' })).not.toBeInTheDocument()
+    expect(screen.queryByText('Draft ยังไม่ส่งออกไปหาลูกค้า ปุ่มส่งลูกค้าจริงใช้ได้เมื่อเปิด “ส่งจริงเปิด”')).not.toBeInTheDocument()
   })
 
   it('sends a manual reply with one click after customer send is enabled', async () => {
@@ -650,19 +667,34 @@ describe('OmniWorkbench', () => {
       expect(draftBox).toHaveValue('ส่งภาพ เสื้อเชิ้ตโปโลผู้หญิง สีดำ ให้ดูค่ะ')
     })
     expect(screen.getAllByAltText('เสื้อเชิ้ตโปโลผู้หญิง สีดำ M').length).toBeGreaterThan(0)
-    expect(screen.getByText('Draft ยังไม่ส่งออกไปหาลูกค้า ปุ่มส่งลูกค้าจริงใช้ได้เมื่อเปิด “ส่งจริงเปิด”')).toBeInTheDocument()
+    expect(screen.getByText('ข้อความ รูป ลิงก์ ออเดอร์ และชำระเงินในกล่องนี้คือ draft ที่บอสเห็นก่อนส่งจริง')).toBeInTheDocument()
   })
 
   it('creates an EasyStore product draft from the selected thread without sending', async () => {
     render(<OmniWorkbench />)
+    const draftBox = await screen.findByPlaceholderText(/พิมพ์ข้อความตอบลูกค้า/)
 
     fireEvent.click(await screen.findByRole('button', { name: 'สินค้า' }))
     fireEvent.change(screen.getByLabelText('EasyStore product id'), { target: { value: '16462646' } })
     fireEvent.click(screen.getByRole('button', { name: 'แนบสินค้า' }))
 
     expect(await screen.findByText(/แนบสินค้าแล้ว: Amanda Jumpsuit/)).toBeInTheDocument()
-    expect((await screen.findAllByText(/แนะนำตัวนี้ค่ะ: Amanda Jumpsuit/)).length).toBeGreaterThan(0)
-    expect((await screen.findAllByText('สินค้า')).length).toBeGreaterThan(0)
-    expect(screen.getByText('Draft ยังไม่ส่งออกไปหาลูกค้า ปุ่มส่งลูกค้าจริงใช้ได้เมื่อเปิด “ส่งจริงเปิด”')).toBeInTheDocument()
+    expect(draftBox.value).toContain('แนะนำตัวนี้ค่ะ: Amanda Jumpsuit')
+    expect(screen.getAllByAltText('Amanda Jumpsuit').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Draft ยังไม่ส่งออกไปหาลูกค้า ปุ่มส่งลูกค้าจริงใช้ได้เมื่อเปิด “ส่งจริงเปิด”')).not.toBeInTheDocument()
+  })
+
+  it('places a new payment request message into the reply composer immediately', async () => {
+    render(<OmniWorkbench />)
+    const draftBox = await screen.findByPlaceholderText(/พิมพ์ข้อความตอบลูกค้า/)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'ชำระเงิน' }))
+    fireEvent.change(screen.getByLabelText('ยอดที่ต้องเรียกเก็บ'), { target: { value: '729' } })
+    fireEvent.click(screen.getByRole('button', { name: 'สร้างร่างชำระเงิน' }))
+
+    await waitFor(() => {
+      expect(draftBox.value).toContain('สรุปยอดชำระค่ะ')
+    })
+    expect(draftBox.value).toContain('ยอดชำระ: THB 729')
   })
 })

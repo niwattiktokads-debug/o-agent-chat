@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { autoSendStatus, customerAvatarUrl, customerForThread, formatShortTime, initialsForName, pageForThread, sourceLabel, statusLabel } from '../../lib/omniModel.js'
-import { createEasyStoreProductDraft, saveManualReplyDraft, sendManualReply } from '../../lib/omniApi.js'
+import { fetchEasyStoreProductPreview, sendManualReply } from '../../lib/omniApi.js'
 
 export default function ThreadDetail({ snapshot, thread, onSnapshot, suggestedDraft }) {
   const endRef = useRef(null)
@@ -48,7 +48,13 @@ export default function ThreadDetail({ snapshot, thread, onSnapshot, suggestedDr
         ))}
         <div ref={endRef} />
       </div>
-      <ManualReplyComposer thread={thread} onSnapshot={onSnapshot} suggestedDraft={suggestedDraft} customerSendEnabled={customerSendEnabled} />
+      <ManualReplyComposer
+        thread={thread}
+        messagesSignature={messages.map((message) => `${message.id}:${message.createdAt || ''}:${message.sourceRef || ''}`).join('|')}
+        onSnapshot={onSnapshot}
+        suggestedDraft={suggestedDraft}
+        customerSendEnabled={customerSendEnabled}
+      />
     </>
   )
 }
@@ -96,7 +102,7 @@ function MessageBubble({ message, pageName, customerName }) {
   )
 }
 
-function ManualReplyComposer({ thread, onSnapshot, suggestedDraft, customerSendEnabled = false }) {
+function ManualReplyComposer({ thread, messagesSignature = '', onSnapshot, suggestedDraft, customerSendEnabled = false }) {
   const [text, setText] = useState('')
   const [attachments, setAttachments] = useState([])
   const [busy, setBusy] = useState(false)
@@ -105,6 +111,7 @@ function ManualReplyComposer({ thread, onSnapshot, suggestedDraft, customerSendE
   const [productId, setProductId] = useState('')
   const [productStatus, setProductStatus] = useState('')
   const fileInputRef = useRef(null)
+  const messageSignatureRef = useRef('')
 
   useEffect(() => {
     setText('')
@@ -113,7 +120,22 @@ function ManualReplyComposer({ thread, onSnapshot, suggestedDraft, customerSendE
     setProductId('')
     setProductStatus('')
     setProductPanelOpen(false)
+    messageSignatureRef.current = messagesSignature
   }, [thread?.id])
+
+  useEffect(() => {
+    if (!thread?.id) return
+    if (!messageSignatureRef.current) {
+      messageSignatureRef.current = messagesSignature
+      return
+    }
+    if (messageSignatureRef.current === messagesSignature) return
+    messageSignatureRef.current = messagesSignature
+    setText('')
+    setAttachments([])
+    setError('')
+    setProductStatus('')
+  }, [messagesSignature, thread?.id])
 
   useEffect(() => {
     if (!suggestedDraft?.text || suggestedDraft.threadId !== thread?.id) return
@@ -141,26 +163,31 @@ function ManualReplyComposer({ thread, onSnapshot, suggestedDraft, customerSendE
     setAttachments((current) => [...current, ...rows].slice(0, 5))
   }
 
-  async function submit(event) {
+  function submit(event) {
     event.preventDefault()
-    if (!thread || busy) return
-    const cleanText = text.trim()
-    if (!cleanText && attachments.length === 0) return
-    setBusy(true)
-    setError('')
-    try {
-      const result = await saveManualReplyDraft(thread.id, {
-        authorName: 'บอส',
-        text: cleanText,
-        attachments,
-      })
-      onSnapshot?.(result.snapshot)
-      setText('')
-      setAttachments([])
-    } catch (err) {
-      setError(err.message || 'manual_draft_failed')
-    } finally {
-      setBusy(false)
+  }
+
+  function buildProductDraft(product = {}) {
+    const previewUrl = `${window.location.origin}/p/easystore/${encodeURIComponent(product.id || product.productId || productId.trim())}?threadId=${encodeURIComponent(thread.id)}`
+    const image = product.images?.[0] || product.image || null
+    const stockQuantity = Number(product.stock?.totalQuantity || product.availableTotal || 0)
+    const lines = [
+      `แนะนำตัวนี้ค่ะ: ${product.title || product.productName || product.name || productId.trim()}`,
+      product.price?.formatted ? `ราคา: ${product.price.formatted}` : '',
+      stockQuantity > 0 ? `สถานะ: พร้อมส่ง ${stockQuantity} ชิ้น` : '',
+      `ดูสินค้า: ${previewUrl}`,
+      product.links?.storefrontUrl ? `ลิงก์ร้าน: ${product.links.storefrontUrl}` : '',
+      'ถ้าสนใจตัวนี้ แอดมินปิดออเดอร์ต่อในแชทได้เลยค่ะ',
+    ].filter(Boolean)
+    return {
+      text: lines.join('\n'),
+      attachments: image?.url ? [{
+        id: `easystore_product_${product.id || productId.trim()}`,
+        name: image.alt || product.title || product.productName || 'EasyStore product',
+        type: 'image/jpeg',
+        size: 0,
+        url: image.url,
+      }] : [],
     }
   }
 
@@ -203,16 +230,19 @@ function ManualReplyComposer({ thread, onSnapshot, suggestedDraft, customerSendE
     }
     setBusy(true)
     setError('')
-    setProductStatus('กำลังสร้าง product draft')
+      setProductStatus('กำลังดึงสินค้าเข้าในกล่องตอบ')
     try {
-      const result = await createEasyStoreProductDraft(thread.id, cleanProductId)
-      onSnapshot?.(result.snapshot)
+      const result = await fetchEasyStoreProductPreview(cleanProductId)
+      const product = result.product || {}
+      const draft = buildProductDraft(product)
+      setText(draft.text)
+      setAttachments(draft.attachments)
       setProductId('')
-      setProductStatus(`แนบสินค้าแล้ว: ${result.product?.title || cleanProductId}`)
+      setProductStatus(`แนบสินค้าแล้ว: ${product.title || product.productName || cleanProductId}`)
       setProductPanelOpen(false)
     } catch (err) {
       setProductStatus('')
-      setError(err.message || 'easystore_product_draft_failed')
+      setError(err.message || 'easystore_product_preview_failed')
     } finally {
       setBusy(false)
     }
@@ -295,11 +325,16 @@ function ManualReplyComposer({ thread, onSnapshot, suggestedDraft, customerSendE
             สินค้า
           </button>
           <button
-            type="submit"
+            type="button"
             disabled={busy || (!text.trim() && attachments.length === 0)}
-            className="rounded-[var(--radius-md)] bg-[var(--color-accent)] px-4 py-2 text-sm font-semibold text-[var(--color-accent-ink)] shadow-sm disabled:opacity-45"
+            onClick={() => {
+              setText('')
+              setAttachments([])
+              setError('')
+            }}
+            className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-4 py-2 text-sm font-semibold text-[var(--color-ink-2)] shadow-sm disabled:opacity-45"
           >
-            {busy ? 'บันทึก...' : 'บันทึก draft'}
+            ล้าง
           </button>
           <button
             type="button"
@@ -314,7 +349,7 @@ function ManualReplyComposer({ thread, onSnapshot, suggestedDraft, customerSendE
       {error ? <p className="mt-2 text-xs text-rose-600">{error}</p> : null}
       {productStatus ? <p className="mt-2 text-xs text-[var(--color-muted)]">{productStatus}</p> : null}
       <p className="mt-2 text-[11px] text-[var(--color-muted)]">
-        Draft ยังไม่ส่งออกไปหาลูกค้า ปุ่มส่งลูกค้าจริงใช้ได้เมื่อเปิด “ส่งจริงเปิด”
+        ข้อความ รูป ลิงก์ ออเดอร์ และชำระเงินในกล่องนี้คือ draft ที่บอสเห็นก่อนส่งจริง
       </p>
     </form>
   )
