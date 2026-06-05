@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { autoSendStatus, filterThreads, statusLabel } from './omniModel.js'
+import { aiApprovalQueue, autoSendStatus, filterThreads, statusLabel } from './omniModel.js'
 
 describe('omniModel', () => {
   it('filters threads by active page', () => {
@@ -70,5 +70,29 @@ describe('omniModel', () => {
     expect(status.active).toBe(false)
     expect(status.label).toBe('Draft only')
     expect(status.detail).toBe('customer send guard is on')
+  })
+
+  it('returns only unresolved latest AI needs approval decisions', () => {
+    const queue = aiApprovalQueue({
+      threads: [
+        { id: 'thread_pending', pageId: 'page_annalynn', updatedAt: '2026-06-05T10:00:00.000Z' },
+        { id: 'thread_resolved', pageId: 'page_annalynn', updatedAt: '2026-06-05T10:01:00.000Z' },
+        { id: 'thread_superseded', pageId: 'page_annalynn', updatedAt: '2026-06-05T10:02:00.000Z' },
+      ],
+      messages: [
+        { id: 'sent_after_approval', threadId: 'thread_resolved', direction: 'outbound', deliveryStatus: 'sent', sourceRef: 'meta_send:anna_lynn', createdAt: '2026-06-05T10:04:00.000Z' },
+      ],
+      aiDecisions: [
+        { id: 'decision_pending', threadId: 'thread_pending', action: 'needs_approval', intent: 'productImage', reason: 'image_attachment_required', createdAt: '2026-06-05T10:05:00.000Z' },
+        { id: 'decision_resolved', threadId: 'thread_resolved', action: 'needs_approval', intent: 'stock', createdAt: '2026-06-05T10:03:00.000Z' },
+        { id: 'decision_old', threadId: 'thread_superseded', action: 'needs_approval', intent: 'stock', createdAt: '2026-06-05T10:02:00.000Z' },
+        { id: 'decision_new', threadId: 'thread_superseded', action: 'draft_ready', intent: 'stock', createdAt: '2026-06-05T10:06:00.000Z' },
+      ],
+    })
+
+    expect(queue).toHaveLength(1)
+    expect(queue[0].thread.id).toBe('thread_pending')
+    expect(queue[0].decision.id).toBe('decision_pending')
+    expect(queue[0].reason).toBe('image_attachment_required')
   })
 })

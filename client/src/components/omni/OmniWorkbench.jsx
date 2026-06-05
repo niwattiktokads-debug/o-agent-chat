@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { fetchOmniSnapshot, loginOmniAccess, subscribeOmniSnapshots } from '../../lib/omniApi.js'
-import { autoSendStatus, filterThreads } from '../../lib/omniModel.js'
+import { aiApprovalQueue, autoSendStatus, customerForThread, filterThreads, formatShortTime, pageForThread } from '../../lib/omniModel.js'
 import PageRail from './PageRail.jsx'
 import ThreadList from './ThreadList.jsx'
 import ThreadDetail from './ThreadDetail.jsx'
@@ -41,6 +41,7 @@ export default function OmniWorkbench({
   const [notificationSoundEnabled, setNotificationSoundEnabled] = useState(initialNotificationSoundEnabled)
   const audioContextRef = useRef(null)
   const knownInboundMessageIdsRef = useRef(new Set())
+  const knownApprovalDecisionIdsRef = useRef(new Set())
   const hasSeenInitialSnapshotRef = useRef(false)
   const operationMode = controlledOperationMode || localOperationMode
   const gridClass = operationMode === 'chat'
@@ -96,11 +97,16 @@ export default function OmniWorkbench({
       .filter((message) => message.direction === 'inbound')
       .map((message) => message.id)
       .filter(Boolean))
+    const approvalDecisionIds = new Set(aiApprovalQueue(snapshot)
+      .map((item) => item.decision.id)
+      .filter(Boolean))
     const hasNewInbound = [...inboundIds].some((id) => !knownInboundMessageIdsRef.current.has(id))
-    if (hasSeenInitialSnapshotRef.current && notificationSoundEnabled && hasNewInbound) {
+    const hasNewApproval = [...approvalDecisionIds].some((id) => !knownApprovalDecisionIdsRef.current.has(id))
+    if (hasSeenInitialSnapshotRef.current && notificationSoundEnabled && (hasNewInbound || hasNewApproval)) {
       playNotificationSound()
     }
     knownInboundMessageIdsRef.current = inboundIds
+    knownApprovalDecisionIdsRef.current = approvalDecisionIds
     hasSeenInitialSnapshotRef.current = true
   }, [notificationSoundEnabled, playNotificationSound, snapshot])
 
@@ -141,6 +147,14 @@ export default function OmniWorkbench({
   const selectedThread = threads.find((thread) => thread.id === threadId) || threads[0] || null
   const activeAutoReplyPages = (snapshot?.pages || []).filter((page) => page.autoReplyEnabled !== false).length
   const autoSend = useMemo(() => autoSendStatus(snapshot || {}), [snapshot])
+  const pendingAiApprovals = useMemo(() => aiApprovalQueue(snapshot || {}), [snapshot])
+
+  function openApprovalThread(thread) {
+    if (!thread?.id) return
+    setPageId(thread.pageId || 'all')
+    setThreadId(thread.id)
+    selectOperationMode('chat')
+  }
 
   if (!snapshot && loadError === 'access_password_required') {
     return (
@@ -217,6 +231,9 @@ export default function OmniWorkbench({
             </div>
           </div>
         </header>
+        {pendingAiApprovals.length ? (
+          <AiApprovalQueueAlert approvals={pendingAiApprovals} snapshot={snapshot} onOpen={openApprovalThread} />
+        ) : null}
         <ThreadDetail snapshot={snapshot} thread={selectedThread} onSnapshot={setSnapshot} suggestedDraft={composerDraft} workspaceId={workspaceId} />
       </main>
       <div className="order-3 max-h-[50dvh] min-h-[320px] shrink-0 overflow-hidden lg:hidden xl:order-none xl:block xl:max-h-none xl:min-h-0">
@@ -232,6 +249,34 @@ export default function OmniWorkbench({
       ) : (
         <SocialOpsBoard mode={operationMode} snapshot={snapshot} onSnapshot={setSnapshot} onOpenChat={() => selectOperationMode('chat')} />
       )}
+    </div>
+  )
+}
+
+function AiApprovalQueueAlert({ approvals = [], snapshot = {}, onOpen }) {
+  const first = approvals[0]
+  if (!first) return null
+  const customer = customerForThread(snapshot.customers || [], first.thread)
+  const page = pageForThread(snapshot.pages || [], first.thread)
+  const customerName = customer?.displayName || 'ลูกค้า'
+  const time = formatShortTime(first.decision.createdAt || first.thread.updatedAt)
+  return (
+    <div role="alert" className="border-b border-[var(--color-warn)] bg-[var(--color-warn-soft)] px-5 py-3 text-sm text-[var(--color-warn)]">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="font-black">AI รออนุมัติ {approvals.length} เคส</div>
+          <div className="mt-1 truncate text-xs font-semibold">
+            ล่าสุด: {customerName} · {page?.name || first.thread.pageId} · {first.decision.intent || 'unknown'}{time ? ` · ${time}` : ''}
+          </div>
+        </div>
+        <button
+          type="button"
+          className="rounded-[var(--radius-md)] border border-[var(--color-warn)] bg-[var(--color-panel)] px-3 py-1.5 text-xs font-black text-[var(--color-warn)] hover:bg-white"
+          onClick={() => onOpen?.(first.thread)}
+        >
+          เปิดเคส {customerName}
+        </button>
+      </div>
     </div>
   )
 }

@@ -1,7 +1,8 @@
 import React from 'react'
-import { customerAvatarUrl, customerForThread, formatShortTime, initialsForName, latestMessageForThread, pageForThread, statusLabel } from '../../lib/omniModel.js'
+import { aiApprovalQueue, customerAvatarUrl, customerForThread, formatShortTime, initialsForName, latestMessageForThread, pageForThread, statusLabel } from '../../lib/omniModel.js'
 
 export default function ThreadList({ threads, snapshot, activeThreadId, onSelect }) {
+  const approvalByThreadId = new Map(aiApprovalQueue(snapshot || {}).map((item) => [item.thread.id, item]))
   return (
     <section className="order-4 max-h-[48dvh] shrink-0 overflow-y-auto border-t border-[var(--color-rule)] bg-[var(--color-panel)] lg:order-none lg:max-h-none lg:min-h-0 lg:border-r lg:border-t-0">
       <div className="sticky top-0 z-10 border-b border-[var(--color-rule)] bg-[var(--color-panel)] px-4 py-3">
@@ -15,6 +16,7 @@ export default function ThreadList({ threads, snapshot, activeThreadId, onSelect
           key={thread.id}
           thread={thread}
           snapshot={snapshot}
+          approval={approvalByThreadId.get(thread.id)}
           active={activeThreadId === thread.id}
           onSelect={() => onSelect(thread.id)}
         />
@@ -23,7 +25,7 @@ export default function ThreadList({ threads, snapshot, activeThreadId, onSelect
   )
 }
 
-function ThreadRow({ thread, snapshot, active, onSelect }) {
+function ThreadRow({ thread, snapshot, approval, active, onSelect }) {
   const customer = customerForThread(snapshot.customers, thread)
   const page = pageForThread(snapshot.pages, thread)
   const latest = latestMessageForThread(snapshot.messages, thread.id)
@@ -44,6 +46,7 @@ function ThreadRow({ thread, snapshot, active, onSelect }) {
             <div className="flex min-w-0 items-center gap-2">
               <span className="truncate text-sm font-bold text-[var(--color-ink)]">{customerName}</span>
               {thread.unreadCount ? <span className="rounded-[var(--radius-pill)] bg-[var(--color-danger)] px-1.5 text-[10px] font-semibold text-white">{thread.unreadCount}</span> : null}
+              {approval ? <span className="rounded-[var(--radius-pill)] bg-[var(--color-warn-soft)] px-1.5 text-[10px] font-black text-[var(--color-warn)]">ต้องอนุมัติ AI</span> : null}
             </div>
             <div className="mt-1 flex min-w-0 items-center gap-2 text-[11px] text-[var(--color-muted)]">
               <span className="truncate">{page?.name || thread.pageId}</span>
@@ -56,7 +59,9 @@ function ThreadRow({ thread, snapshot, active, onSelect }) {
       <p className="mt-2 line-clamp-2 text-sm leading-5 text-[var(--color-ink-2)]">{preview}</p>
       <div className="mt-3 flex items-center justify-between gap-2">
         <span className="rounded-[var(--radius-pill)] bg-[var(--color-panel-2)] px-2 py-1 text-[11px] font-semibold text-[var(--color-ink-2)]">{statusLabel(thread.status, thread)}</span>
-        <span className="text-[11px] text-[var(--color-muted)]">{thread.intent} · {thread.risk}</span>
+        <span className={`text-[11px] ${approval ? 'font-bold text-[var(--color-warn)]' : 'text-[var(--color-muted)]'}`}>
+          {approval ? `${approval.decision.intent || thread.intent} · ${approval.decision.risk || thread.risk}` : `${thread.intent} · ${thread.risk}`}
+        </span>
       </div>
     </button>
   )

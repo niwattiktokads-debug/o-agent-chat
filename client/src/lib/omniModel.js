@@ -6,6 +6,41 @@ export function filterThreads(threads, filters = {}) {
     .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
 }
 
+export function aiApprovalQueue(snapshot = {}, filters = {}) {
+  const threads = filterThreads(snapshot.threads || [], filters)
+  const threadIds = new Set(threads.map((thread) => thread.id))
+  const latestDecisionByThread = new Map()
+  for (const decision of snapshot.aiDecisions || []) {
+    if (!threadIds.has(decision.threadId)) continue
+    const current = latestDecisionByThread.get(decision.threadId)
+    if (!current || String(decision.createdAt || decision.id || '').localeCompare(String(current.createdAt || current.id || '')) > 0) {
+      latestDecisionByThread.set(decision.threadId, decision)
+    }
+  }
+
+  return threads
+    .map((thread) => {
+      const decision = latestDecisionByThread.get(thread.id)
+      if (!decision || decision.action !== 'needs_approval') return null
+      const decisionAt = new Date(decision.createdAt || 0).getTime()
+      const resolvedByOutbound = (snapshot.messages || []).some((message) => {
+        if (message.threadId !== thread.id || message.direction !== 'outbound') return false
+        if (message.deliveryStatus === 'draft_only') return false
+        if (!/(^|:)(meta_send|meta_comment_send|ig_comment_send|manual_send):/.test(`:${message.sourceRef || ''}`)) return false
+        const messageAt = new Date(message.createdAt || 0).getTime()
+        return !Number.isFinite(decisionAt) || !Number.isFinite(messageAt) || messageAt >= decisionAt
+      })
+      if (resolvedByOutbound) return null
+      return {
+        thread,
+        decision,
+        reason: decision.reason || decision.intent || 'needs_approval',
+      }
+    })
+    .filter(Boolean)
+    .sort((a, b) => String(b.decision.createdAt || b.decision.id || '').localeCompare(String(a.decision.createdAt || a.decision.id || '')))
+}
+
 export function statusLabel(status, thread = null) {
   if (thread?.platform === 'easystore' || thread?.kind === 'order_event' || thread?.kind === 'product_event') {
     if (thread?.kind === 'product_event' || thread?.intent === 'product') return 'สินค้าอัปเดต'
