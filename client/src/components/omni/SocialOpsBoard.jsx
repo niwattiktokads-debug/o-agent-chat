@@ -75,13 +75,14 @@ function orderBelongsToPostSession(order, selectedPost) {
   return orderPostRefs(order).some((ref) => ref === postId)
 }
 
-export default function SocialOpsBoard({ mode, snapshot, onSnapshot, onOpenChat }) {
+export default function SocialOpsBoard({ mode, snapshot, onSnapshot, onOpenChat, topSlot = null }) {
   if (mode === 'post') {
     return (
       <OpsShell
         title="โพสต์"
         summary="ตั้งค่า Post Selling Session แบบ EasyStore: เลือกร้าน, เลือกโพสต์ Facebook, ผูกสินค้า, ตั้งรหัสสินค้า จำนวน และติดตามข้อความกับคำสั่งซื้อ"
         onOpenChat={onOpenChat}
+        topSlot={topSlot}
       >
         <PostSellingSessionBoard snapshot={snapshot} />
       </OpsShell>
@@ -94,6 +95,7 @@ export default function SocialOpsBoard({ mode, snapshot, onSnapshot, onOpenChat 
         title="ไลฟ์สตรีม"
         summary="ตรวจ live/comment stream ก่อน ถ้า Meta scope ยังไม่พร้อมจะใช้ live-post comment capture เป็น fallback"
         onOpenChat={onOpenChat}
+        topSlot={topSlot}
       >
         <LiveCaptureBoard snapshot={snapshot} />
       </OpsShell>
@@ -101,15 +103,16 @@ export default function SocialOpsBoard({ mode, snapshot, onSnapshot, onOpenChat 
   }
 
   if (mode === 'report') {
-    return <MessageReport snapshot={snapshot} onOpenChat={onOpenChat} />
+    return <MessageReport snapshot={snapshot} onOpenChat={onOpenChat} topSlot={topSlot} />
   }
 
   return null
 }
 
-function OpsShell({ title, summary, onOpenChat, children }) {
+function OpsShell({ title, summary, onOpenChat, topSlot = null, children }) {
   return (
     <main className="order-1 min-h-0 overflow-y-auto bg-[var(--color-paper)] p-4 lg:order-none lg:h-full lg:p-6">
+      {topSlot}
       <header className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--color-rule)] pb-4">
         <div className="min-w-0">
           <h1 className="text-xl font-bold text-[var(--color-ink)]">{title}</h1>
@@ -624,7 +627,7 @@ function LiveCaptureBoard({ snapshot }) {
   )
 }
 
-function MessageReport({ snapshot, onOpenChat }) {
+function MessageReport({ snapshot, onOpenChat, topSlot = null }) {
   const today = new Date().toISOString().slice(0, 10)
   const [filters, setFilters] = useState({ from: '', to: '', pageId: '' })
   const [report, setReport] = useState(null)
@@ -657,6 +660,7 @@ function MessageReport({ snapshot, onOpenChat }) {
 
   return (
     <main className="order-1 min-h-0 overflow-y-auto bg-[var(--color-paper)] p-4 lg:order-none lg:h-full lg:p-6">
+      {topSlot}
       <header className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--color-rule)] pb-4">
         <div>
           <h1 className="text-xl font-bold text-[var(--color-ink)]">รายงานปริมาณการส่งข้อความ</h1>

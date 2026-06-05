@@ -95,4 +95,26 @@ describe('omniModel', () => {
     expect(queue[0].decision.id).toBe('decision_pending')
     expect(queue[0].reason).toBe('image_attachment_required')
   })
+
+  it('keeps AI approval visible when timestamps cannot prove a later customer send', () => {
+    const queue = aiApprovalQueue({
+      threads: [
+        { id: 'thread_missing_decision_time', pageId: 'page_annalynn', updatedAt: '2026-06-05T10:00:00.000Z' },
+        { id: 'thread_invalid_message_time', pageId: 'page_annalynn', updatedAt: '2026-06-05T10:01:00.000Z' },
+      ],
+      messages: [
+        { id: 'sent_without_decision_order', threadId: 'thread_missing_decision_time', direction: 'outbound', deliveryStatus: 'sent', sourceRef: 'meta_send:anna_lynn', createdAt: '2026-06-05T10:04:00.000Z' },
+        { id: 'sent_with_bad_time', threadId: 'thread_invalid_message_time', direction: 'outbound', deliveryStatus: 'sent', sourceRef: 'manual_send:anna_lynn', createdAt: 'not-a-date' },
+      ],
+      aiDecisions: [
+        { id: 'decision_missing_time', threadId: 'thread_missing_decision_time', action: 'needs_approval', intent: 'stock' },
+        { id: 'decision_valid_time', threadId: 'thread_invalid_message_time', action: 'needs_approval', intent: 'stock', createdAt: '2026-06-05T10:03:00.000Z' },
+      ],
+    })
+
+    expect(queue.map((item) => item.thread.id).sort()).toEqual([
+      'thread_invalid_message_time',
+      'thread_missing_decision_time',
+    ])
+  })
 })

@@ -994,4 +994,31 @@ describe('OmniWorkbench', () => {
       expect(oscillatorStart).toHaveBeenCalledTimes(1)
     })
   })
+
+  it('keeps AI approval alert visible outside chat mode and opens the queued thread', async () => {
+    render(<OmniWorkbench />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'โพสต์' }))
+    expect(await screen.findByRole('heading', { name: 'โพสต์' })).toBeInTheDocument()
+
+    act(() => {
+      omniMock.subscribers.at(-1)?.({
+        pages: [{ id: 'page_mankynd', name: 'MAN KYND', status: 'active' }],
+        platformAccounts: [{ id: 'acct_fb_mankynd', pageId: 'page_mankynd', platform: 'facebook' }],
+        threads: [{ id: 'thread_1', customerId: 'cust_1', pageId: 'page_mankynd', platform: 'facebook', status: 'needs_approval', intent: 'productImage', risk: 'medium', unreadCount: 1 }],
+        messages: [{ id: 'msg_approval', threadId: 'thread_1', direction: 'inbound', authorName: 'ลูกค้า A', text: 'ขอดูรูปสินค้า', createdAt: '2026-06-05T10:00:00.000Z' }],
+        customers: [{ id: 'cust_1', displayName: 'ลูกค้า A' }],
+        orders: [],
+        aiDecisions: [{ id: 'decision_needs_approval_post', threadId: 'thread_1', action: 'needs_approval', intent: 'productImage', risk: 'medium', reason: 'image_attachment_required', createdAt: '2026-06-05T10:01:00.000Z' }],
+        paymentRequests: [],
+        connectorHealth: [],
+      })
+    })
+
+    expect(await screen.findByText('AI รออนุมัติ 1 เคส')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /เปิดเคส ลูกค้า A/ }))
+
+    expect(await screen.findByText('กล่องรวม')).toBeInTheDocument()
+    expect(screen.getAllByText('ต้องอนุมัติ AI').length).toBeGreaterThan(0)
+  })
 })

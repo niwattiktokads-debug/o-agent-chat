@@ -6,31 +6,60 @@ export function filterThreads(threads, filters = {}) {
     .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
 }
 
-export function aiApprovalQueue(snapshot = {}, filters = {}) {
-  const threads = filterThreads(snapshot.threads || [], filters)
-  const threadIds = new Set(threads.map((thread) => thread.id))
+const CUSTOMER_SEND_SOURCE_PATTERN = /(^|:)(meta_send|meta_comment_send|ig_comment_send|manual_send):/
+
+function approvalSortKey(item = {}) {
+  return String(item.createdAt || item.id || '')
+}
+
+function latestAiDecisionByThread(decisions = [], threadIds = new Set()) {
   const latestDecisionByThread = new Map()
-  for (const decision of snapshot.aiDecisions || []) {
+  for (const decision of decisions) {
     if (!threadIds.has(decision.threadId)) continue
     const current = latestDecisionByThread.get(decision.threadId)
-    if (!current || String(decision.createdAt || decision.id || '').localeCompare(String(current.createdAt || current.id || '')) > 0) {
+    if (!current || approvalSortKey(decision).localeCompare(approvalSortKey(current)) > 0) {
       latestDecisionByThread.set(decision.threadId, decision)
     }
   }
+  return latestDecisionByThread
+}
+
+function isCustomerSendMessage(message = {}) {
+  if (message.direction !== 'outbound') return false
+  if (message.deliveryStatus === 'draft_only') return false
+  return CUSTOMER_SEND_SOURCE_PATTERN.test(`:${message.sourceRef || ''}`)
+}
+
+function timestampMs(value) {
+  if (!value) return null
+  const ms = new Date(value).getTime()
+  return Number.isFinite(ms) ? ms : null
+}
+
+function isMessageAtOrAfterDecision(message = {}, decision = {}) {
+  const decisionAt = timestampMs(decision.createdAt)
+  const messageAt = timestampMs(message.createdAt)
+  return decisionAt !== null && messageAt !== null && messageAt >= decisionAt
+}
+
+function hasCustomerSendAfterDecision(messages = [], threadId, decision) {
+  return messages.some((message) => (
+    message.threadId === threadId &&
+    isCustomerSendMessage(message) &&
+    isMessageAtOrAfterDecision(message, decision)
+  ))
+}
+
+export function aiApprovalQueue(snapshot = {}, filters = {}) {
+  const threads = filterThreads(snapshot.threads || [], filters)
+  const threadIds = new Set(threads.map((thread) => thread.id))
+  const latestDecisionByThread = latestAiDecisionByThread(snapshot.aiDecisions || [], threadIds)
 
   return threads
     .map((thread) => {
       const decision = latestDecisionByThread.get(thread.id)
       if (!decision || decision.action !== 'needs_approval') return null
-      const decisionAt = new Date(decision.createdAt || 0).getTime()
-      const resolvedByOutbound = (snapshot.messages || []).some((message) => {
-        if (message.threadId !== thread.id || message.direction !== 'outbound') return false
-        if (message.deliveryStatus === 'draft_only') return false
-        if (!/(^|:)(meta_send|meta_comment_send|ig_comment_send|manual_send):/.test(`:${message.sourceRef || ''}`)) return false
-        const messageAt = new Date(message.createdAt || 0).getTime()
-        return !Number.isFinite(decisionAt) || !Number.isFinite(messageAt) || messageAt >= decisionAt
-      })
-      if (resolvedByOutbound) return null
+      if (hasCustomerSendAfterDecision(snapshot.messages || [], thread.id, decision)) return null
       return {
         thread,
         decision,
@@ -38,7 +67,7 @@ export function aiApprovalQueue(snapshot = {}, filters = {}) {
       }
     })
     .filter(Boolean)
-    .sort((a, b) => String(b.decision.createdAt || b.decision.id || '').localeCompare(String(a.decision.createdAt || a.decision.id || '')))
+    .sort((a, b) => approvalSortKey(b.decision).localeCompare(approvalSortKey(a.decision)))
 }
 
 export function statusLabel(status, thread = null) {

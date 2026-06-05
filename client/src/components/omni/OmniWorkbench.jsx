@@ -156,6 +156,10 @@ export default function OmniWorkbench({
     selectOperationMode('chat')
   }
 
+  const approvalAlert = pendingAiApprovals.length ? (
+    <AiApprovalQueueAlert approvals={pendingAiApprovals} snapshot={snapshot} onOpen={openApprovalThread} />
+  ) : null
+
   if (!snapshot && loadError === 'access_password_required') {
     return (
       <OmniAccessGate
@@ -231,9 +235,7 @@ export default function OmniWorkbench({
             </div>
           </div>
         </header>
-        {pendingAiApprovals.length ? (
-          <AiApprovalQueueAlert approvals={pendingAiApprovals} snapshot={snapshot} onOpen={openApprovalThread} />
-        ) : null}
+        {approvalAlert}
         <ThreadDetail snapshot={snapshot} thread={selectedThread} onSnapshot={setSnapshot} suggestedDraft={composerDraft} workspaceId={workspaceId} />
       </main>
       <div className="order-3 max-h-[50dvh] min-h-[320px] shrink-0 overflow-hidden lg:hidden xl:order-none xl:block xl:max-h-none xl:min-h-0">
@@ -247,7 +249,7 @@ export default function OmniWorkbench({
       </div>
         </>
       ) : (
-        <SocialOpsBoard mode={operationMode} snapshot={snapshot} onSnapshot={setSnapshot} onOpenChat={() => selectOperationMode('chat')} />
+        <SocialOpsBoard mode={operationMode} snapshot={snapshot} onSnapshot={setSnapshot} onOpenChat={() => selectOperationMode('chat')} topSlot={approvalAlert} />
       )}
     </div>
   )
