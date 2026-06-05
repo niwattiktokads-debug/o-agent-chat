@@ -4,6 +4,8 @@ import {
   createOrderDraft,
   extractOrderAddressFromThread,
   lookupThaiAddressByPostcode,
+  saveOmniSettings,
+  searchEasyStoreProducts,
   searchZortProducts,
 } from '../../lib/omniApi.js'
 
@@ -16,6 +18,11 @@ const SHIPPING_METHODS = [
 const PAYMENT_METHODS = [
   { value: 'bank_transfer', label: 'โอนเงิน/บัตรเครดิต' },
   { value: 'cash_on_delivery', label: 'เก็บเงินปลายทาง' },
+]
+
+const ORDER_SOURCE_OPTIONS = [
+  { id: 'zort', label: 'ZORT', badge: 'ZORT read-only lookup', searchLabel: 'ค้นสินค้า ZORT', buttonLabel: 'ค้น ZORT', approveLabel: 'Approve ไป ZORT', confirmLabel: 'ยืนยันสร้าง ZORT order' },
+  { id: 'easystore', label: 'EasyStore', badge: 'EasyStore order draft', searchLabel: 'ค้นสินค้า EasyStore', buttonLabel: 'ค้น EasyStore', approveLabel: 'Approve ไป EasyStore', confirmLabel: 'ยืนยันสร้าง EasyStore order' },
 ]
 
 function customerForThread(snapshot, thread) {
@@ -35,13 +42,36 @@ function normalizePostcodeInput(value) {
   return String(value || '').replace(/\D/g, '').slice(0, 5)
 }
 
-export default function OrderDesk({ snapshot, thread, onSnapshot }) {
+function orderSourceConfig(source) {
+  return ORDER_SOURCE_OPTIONS.find((item) => item.id === source) || ORDER_SOURCE_OPTIONS[0]
+}
+
+function mergeOrderDraftSettings(snapshotSettings = {}, orderDraftPatch = {}) {
+  return {
+    ...snapshotSettings,
+    orderDraft: {
+      enabled: true,
+      approvalRequired: true,
+      createZortOrderOnApprove: true,
+      ...(snapshotSettings.orderDraft || {}),
+      ...orderDraftPatch,
+    },
+  }
+}
+
+function mergeSnapshotSettings(currentSnapshot, nextSnapshot) {
+  if (!nextSnapshot) return null
+  if (nextSnapshot.settings || !currentSnapshot?.settings) return nextSnapshot
+  return { ...nextSnapshot, settings: currentSnapshot.settings }
+}
+
+export default function OrderDesk({ snapshot, thread, onSnapshot, workspaceId }) {
   const allOrders = snapshot.orders || []
   const orders = thread ? allOrders.filter((order) => order.customerId && order.customerId === thread.customerId) : []
   const recentTikTokOrders = allOrders.filter((order) => order.platform === 'tiktok').slice(-5).reverse()
   return (
     <section className="p-4">
-      <OrderDraft snapshot={snapshot} thread={thread} onSnapshot={onSnapshot} />
+      <OrderDraft snapshot={snapshot} thread={thread} onSnapshot={onSnapshot} workspaceId={workspaceId} />
       <h2 className="mt-5 text-sm font-bold text-[var(--color-ink)]">ออเดอร์เดิม</h2>
       {orders.length === 0 ? <p className="mt-2 text-xs text-[var(--color-muted)]">ยังไม่มีออเดอร์ที่ผูกกับลูกค้าคนนี้</p> : null}
       {orders.map((order) => (
@@ -63,8 +93,9 @@ export default function OrderDesk({ snapshot, thread, onSnapshot }) {
   )
 }
 
-function OrderDraft({ snapshot, thread, onSnapshot }) {
+function OrderDraft({ snapshot, thread, onSnapshot, workspaceId }) {
   const customer = useMemo(() => customerForThread(snapshot, thread), [snapshot, thread])
+  const [orderSource, setOrderSource] = useState('zort')
   const [query, setQuery] = useState('')
   const [products, setProducts] = useState([])
   const [selectedProduct, setSelectedProduct] = useState(null)
@@ -84,9 +115,14 @@ function OrderDraft({ snapshot, thread, onSnapshot }) {
   const [status, setStatus] = useState('')
   const [approveStatus, setApproveStatus] = useState('')
   const [confirmingApprove, setConfirmingApprove] = useState(false)
+  const [guardBusy, setGuardBusy] = useState(false)
+  const [guardStatus, setGuardStatus] = useState('')
+  const sourceConfig = orderSourceConfig(orderSource)
+  const orderDraftSettings = mergeOrderDraftSettings(snapshot?.settings || {}).orderDraft
+  const approvalGuardEnabled = orderDraftSettings.approvalRequired !== false
 
   const selectedAddress = addressOptions.find((option) => option.key === selectedAddressKey) || null
-  const unitPrice = Number(selectedProduct?.sellPrice || selectedProduct?.unitPrice || 0)
+  const unitPrice = Number(selectedProduct?.sellPrice || selectedProduct?.unitPrice || selectedProduct?.price || 0)
   const total = selectedProduct ? unitPrice * quantity : 0
   const canSaveDraft = Boolean(
     selectedProduct &&
@@ -112,6 +148,17 @@ function OrderDraft({ snapshot, thread, onSnapshot }) {
     setApproveStatus('')
     setConfirmingApprove(false)
   }, [thread?.id, customer?.displayName, customer?.phone, customer?.address])
+
+  function switchOrderSource(nextSource) {
+    setOrderSource(nextSource)
+    setQuery('')
+    setProducts([])
+    setSelectedProduct(null)
+    setDraft(null)
+    setStatus('')
+    setApproveStatus('')
+    setConfirmingApprove(false)
+  }
 
   useEffect(() => {
     if (postalCode.length !== 5) {
@@ -179,9 +226,11 @@ function OrderDraft({ snapshot, thread, onSnapshot }) {
       setStatus('ใส่ SKU หรือชื่อสินค้าก่อน')
       return
     }
-    setStatus('กำลังค้นสินค้า ZORT')
+    setStatus(`กำลังค้นสินค้า ${sourceConfig.label}`)
     try {
-      const result = await searchZortProducts(query.trim())
+      const result = orderSource === 'easystore'
+        ? await searchEasyStoreProducts(query.trim())
+        : await searchZortProducts(query.trim())
       setProducts(result.products || [])
       setStatus(`พบสินค้า ${(result.products || []).length} รายการ`)
     } catch (error) {
@@ -202,7 +251,8 @@ function OrderDraft({ snapshot, thread, onSnapshot }) {
         customerName: recipientName.trim(),
         customerPhone: recipientPhone.trim(),
         platform: thread?.platform || 'omni',
-        sourceRef: `omni_manual_draft:${thread?.id || 'standalone'}`,
+        sourceRef: `omni_${orderSource}_manual_draft:${thread?.id || 'standalone'}`,
+        orderProvider: orderSource,
         shippingMethod,
         paymentMethod,
         shippingAddress: {
@@ -220,13 +270,16 @@ function OrderDraft({ snapshot, thread, onSnapshot }) {
           name: selectedProduct.name,
           quantity,
           unitPrice,
-          zortProductId: selectedProduct.id,
-          zortProduct: selectedProduct,
+          zortProductId: orderSource === 'zort' ? selectedProduct.id : null,
+          zortProduct: orderSource === 'zort' ? selectedProduct : null,
+          easyStoreProductId: orderSource === 'easystore' ? selectedProduct.productId || selectedProduct.id : null,
+          easyStoreVariantId: orderSource === 'easystore' ? selectedProduct.variantId || null : null,
+          easyStoreProduct: orderSource === 'easystore' ? selectedProduct : null,
         }],
       })
       setDraft(result.order)
       setConfirmingApprove(false)
-      if (result.snapshot) onSnapshot?.(result.snapshot)
+      if (result.snapshot) onSnapshot?.(mergeSnapshotSettings(snapshot, result.snapshot))
       setStatus('บันทึก draft แล้ว')
     } catch (error) {
       setStatus(error.message)
@@ -236,47 +289,97 @@ function OrderDraft({ snapshot, thread, onSnapshot }) {
   function openApproveConfirmation() {
     if (!draft?.id) return
     setConfirmingApprove(true)
-    setApproveStatus('ตรวจรายการ ผู้รับ และที่อยู่ก่อนยืนยันสร้าง ZORT order')
+    setApproveStatus(`ตรวจรายการ ผู้รับ และที่อยู่ก่อนยืนยันสร้าง ${sourceConfig.label} order`)
   }
 
   async function submitApprovedDraft() {
     if (!draft?.id) return
-    setApproveStatus('กำลังส่ง ZORT order หลัง approval')
+    setApproveStatus(approvalGuardEnabled ? `กำลังส่ง ${sourceConfig.label} order หลัง approval` : `กำลังสร้าง ${sourceConfig.label} order โดยไม่บังคับ approval`)
     try {
-      const result = await approveOrderDraft(draft.id)
+      const result = await approveOrderDraft(draft.id, {
+        provider: draft.orderProvider || orderSource,
+        approved: approvalGuardEnabled,
+      })
       setDraft(result.order)
       setConfirmingApprove(false)
-      if (result.snapshot) onSnapshot?.(result.snapshot)
-      setApproveStatus(`สร้าง ZORT order แล้ว ${result.order.providerOrderId || result.provider?.providerOrderId || result.order.id}`)
+      if (result.snapshot) onSnapshot?.(mergeSnapshotSettings(snapshot, result.snapshot))
+      setApproveStatus(`สร้าง ${sourceConfig.label} order แล้ว ${result.order.providerOrderId || result.provider?.providerOrderId || result.order.id}`)
     } catch (error) {
       setApproveStatus(error.message)
     }
   }
 
+  async function toggleApprovalGuard() {
+    if (guardBusy) return
+    const nextEnabled = !approvalGuardEnabled
+    const nextSettings = mergeOrderDraftSettings(snapshot?.settings || {}, { approvalRequired: nextEnabled })
+    setGuardBusy(true)
+    setGuardStatus(nextEnabled ? 'กำลังเปิด approval guard' : 'กำลังปิด approval guard')
+    try {
+      const result = await saveOmniSettings(nextSettings, { workspaceId: workspaceId || undefined })
+      if (result.snapshot) {
+        onSnapshot?.(result.snapshot)
+      } else if (snapshot) {
+        onSnapshot?.({ ...snapshot, settings: result.settings || nextSettings })
+      }
+      setGuardStatus(nextEnabled ? 'เปิด approval guard แล้ว' : 'ปิด approval guard แล้ว')
+      setConfirmingApprove(false)
+    } catch (error) {
+      setGuardStatus(error.message)
+    } finally {
+      setGuardBusy(false)
+    }
+  }
+
   return (
-    <div className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)]">
+    <div className="min-w-0 overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)]">
       <div className="border-b border-[var(--color-rule)] px-3 py-3">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-sm font-bold text-[var(--color-ink)]">คำสั่งซื้อใหม่</h2>
-          <span className="rounded-[var(--radius-pill)] bg-[var(--color-warn-soft)] px-2 py-1 text-[11px] font-semibold text-[var(--color-warn)]">
-            approval guard
-          </span>
+          <h2 className="min-w-0 text-sm font-bold text-[var(--color-ink)]">คำสั่งซื้อใหม่</h2>
+          <button
+            type="button"
+            aria-pressed={approvalGuardEnabled}
+            onClick={toggleApprovalGuard}
+            disabled={guardBusy}
+            className={`grid min-w-[88px] grid-cols-[1fr_auto] items-center gap-2 rounded-[var(--radius-pill)] border px-2 py-1 text-[11px] font-semibold transition disabled:opacity-60 ${approvalGuardEnabled ? 'border-[var(--color-warn)] bg-[var(--color-warn-soft)] text-[var(--color-warn)]' : 'border-[var(--color-rule)] bg-[var(--color-panel-2)] text-[var(--color-muted)]'}`}
+          >
+            <span className="truncate">{approvalGuardEnabled ? 'guard เปิด' : 'guard ปิด'}</span>
+            <span className={`h-4 w-7 rounded-[var(--radius-pill)] p-0.5 transition ${approvalGuardEnabled ? 'bg-[var(--color-warn)]' : 'bg-[var(--color-rule)]'}`}>
+              <span className={`block h-3 w-3 rounded-full bg-white transition ${approvalGuardEnabled ? 'translate-x-3' : ''}`} />
+            </span>
+          </button>
         </div>
         <p className="mt-1 text-xs leading-5 text-[var(--color-muted)]">
-          สร้าง order draft จากแชทก่อนส่งลูกค้าและก่อนตัดสต็อกจริง
+          {approvalGuardEnabled ? 'สร้าง order draft จากแชทก่อนส่งลูกค้าและก่อนตัดสต็อกจริง' : 'โหมดมนุษย์คุมเอง: สร้างบิลได้จาก draft โดยไม่ถามยืนยันซ้ำ'}
         </p>
+        {guardStatus ? <div className="mt-2 text-[11px] font-semibold text-[var(--color-muted)]">{guardStatus}</div> : null}
       </div>
       <div className="space-y-4 px-3 py-3 text-sm">
         <div>
+          <div className="mb-2 text-xs font-semibold text-[var(--color-muted)]">ระบบเปิดบิล</div>
+          <div className="grid grid-cols-2 gap-2">
+            {ORDER_SOURCE_OPTIONS.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => switchOrderSource(option.id)}
+                className={`min-w-0 rounded-[var(--radius-md)] border px-3 py-2 text-xs font-bold transition ${orderSource === option.id ? 'border-[var(--color-accent)] bg-[var(--color-accent-soft)] text-[var(--color-accent)]' : 'border-[var(--color-rule)] bg-[var(--color-panel-2)] text-[var(--color-muted)]'}`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div>
           <div className="mb-2 flex items-center justify-between gap-3">
             <span className="font-semibold text-[var(--color-ink)]">รายการสินค้า</span>
-            <span className="rounded-[var(--radius-pill)] bg-[var(--color-panel-2)] px-2 py-1 text-[11px] font-semibold text-[var(--color-muted)]">ZORT read-only lookup</span>
+            <span className="shrink-0 rounded-[var(--radius-pill)] bg-[var(--color-panel-2)] px-2 py-1 text-[11px] font-semibold text-[var(--color-muted)]">{sourceConfig.badge}</span>
           </div>
           <div className="grid gap-2">
-            <label className="text-xs font-semibold text-[var(--color-muted)]" htmlFor="zort-product-search">ค้นสินค้า ZORT</label>
-            <div className="flex gap-2">
+            <label className="text-xs font-semibold text-[var(--color-muted)]" htmlFor="order-product-search">{sourceConfig.searchLabel}</label>
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
               <input
-                id="zort-product-search"
+                id="order-product-search"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="SKU หรือชื่อสินค้า"
@@ -285,27 +388,27 @@ function OrderDraft({ snapshot, thread, onSnapshot }) {
               <button
                 type="button"
                 onClick={searchProducts}
-                className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-xs font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)]"
+                className="whitespace-nowrap rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-xs font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)]"
               >
-                ค้น ZORT
+                {sourceConfig.buttonLabel}
               </button>
             </div>
             {status ? <div className="text-xs font-semibold text-[var(--color-muted)]">{status}</div> : null}
-            <div className="divide-y divide-[var(--color-rule)] rounded-[var(--radius-sm)] border border-[var(--color-rule)]">
+            <div className="min-w-0 divide-y divide-[var(--color-rule)] overflow-hidden rounded-[var(--radius-sm)] border border-[var(--color-rule)]">
               {products.length === 0 ? (
-                <div className="px-3 py-4 text-center text-xs text-[var(--color-muted)]">ค้นหาเพื่อดึงสินค้า ZORT จริง</div>
+                <div className="px-3 py-4 text-center text-xs text-[var(--color-muted)]">ค้นหาเพื่อดึงสินค้า {sourceConfig.label} จริง</div>
               ) : products.map((product) => (
-                <div key={product.id || product.sku} className="flex items-center justify-between gap-3 px-3 py-2">
+                <div key={product.id || product.sku} className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2">
                   <div className="min-w-0">
                     <div className="truncate font-semibold text-[var(--color-ink)]">{product.name}</div>
-                    <div className="mt-1 text-[11px] text-[var(--color-muted)]">{product.sku} · stock {product.availableStock ?? product.stock ?? '-'}</div>
+                    <div className="mt-1 truncate text-[11px] text-[var(--color-muted)]">{product.sku || product.id} · stock {product.availableStock ?? product.stock ?? '-'}</div>
                   </div>
                   <button
                     type="button"
-                    aria-label={`เลือก ${product.sku}`}
+                    aria-label={`เลือก ${product.sku || product.id}`}
                     onClick={() => {
                       setSelectedProduct(product)
-                      setStatus(`เลือก ${product.sku}`)
+                      setStatus(`เลือก ${product.sku || product.id}`)
                     }}
                     className="shrink-0 rounded-[var(--radius-md)] bg-[var(--color-accent-soft)] px-2 py-1 text-xs font-semibold text-[var(--color-accent)]"
                   >
@@ -322,7 +425,7 @@ function OrderDraft({ snapshot, thread, onSnapshot }) {
               <div className="min-w-0">
                 <div className="text-xs font-semibold text-[var(--color-muted)]">สินค้าที่เลือก</div>
                 <div className="mt-1 truncate text-sm font-bold text-[var(--color-ink)]">{selectedProduct.name}</div>
-                <div className="mt-1 text-xs text-[var(--color-muted)]">{selectedProduct.sku}</div>
+                <div className="mt-1 truncate text-xs text-[var(--color-muted)]">{selectedProduct.sku || selectedProduct.id}</div>
               </div>
               <label className="grid w-20 gap-1 text-xs font-semibold text-[var(--color-muted)]">
                 จำนวน
@@ -471,16 +574,26 @@ function OrderDraft({ snapshot, thread, onSnapshot }) {
             {draft.shippingAddress?.formattedAddress ? <div className="mt-1 line-clamp-2">ที่อยู่: {draft.shippingAddress.formattedAddress}</div> : null}
             {draft.status === 'draft' ? (
               <>
-                <button
-                  type="button"
-                  onClick={openApproveConfirmation}
-                  className="mt-3 w-full rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-xs font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)]"
-                >
-                  Approve ไป ZORT
-                </button>
+                {approvalGuardEnabled ? (
+                  <button
+                    type="button"
+                    onClick={openApproveConfirmation}
+                    className="mt-3 w-full rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-xs font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)]"
+                  >
+                    {sourceConfig.approveLabel}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={submitApprovedDraft}
+                    className="mt-3 w-full rounded-[var(--radius-md)] bg-[var(--color-accent)] px-3 py-2 text-xs font-semibold text-[var(--color-accent-ink)]"
+                  >
+                    สร้าง {sourceConfig.label} order ทันที
+                  </button>
+                )}
                 {confirmingApprove ? (
                   <div className="mt-3 rounded-[var(--radius-sm)] border border-[var(--color-warn)] bg-[var(--color-warn-soft)] p-3 text-[11px] text-[var(--color-ink)]">
-                    <div className="font-bold">ยืนยัน approval ก่อนสร้าง ZORT order</div>
+                    <div className="font-bold">ยืนยัน approval ก่อนสร้าง {sourceConfig.label} order</div>
                     <div className="mt-2 grid gap-1">
                       <div>ผู้รับ: {draft.shippingAddress?.recipientName || draft.customerName || '-'}</div>
                       <div>โทร: {draft.shippingAddress?.recipientPhone || draft.customerPhone || '-'}</div>
@@ -498,7 +611,7 @@ function OrderDraft({ snapshot, thread, onSnapshot }) {
                         onClick={submitApprovedDraft}
                         className="flex-1 rounded-[var(--radius-md)] bg-[var(--color-accent)] px-3 py-2 text-xs font-semibold text-[var(--color-accent-ink)]"
                       >
-                        ยืนยันสร้าง ZORT order
+                        {sourceConfig.confirmLabel}
                       </button>
                       <button
                         type="button"

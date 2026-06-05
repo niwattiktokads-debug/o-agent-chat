@@ -173,6 +173,17 @@ function unwrapProducts(payload) {
   return Array.isArray(products) ? products : []
 }
 
+function unwrapOrder(payload) {
+  return payload?.response?.order
+    || payload?.response?.data?.order
+    || payload?.response?.data
+    || payload?.response
+    || payload?.order
+    || payload?.data?.order
+    || payload?.data
+    || null
+}
+
 function imageUrl(image = {}) {
   return image.url || image.src || image.image_url || image.imageUrl || image.path || ''
 }
@@ -264,6 +275,93 @@ function normalizeProductPreview(product = {}, { shopBase, pixelId } = {}) {
   }
 }
 
+function normalizeProductSearchRows(products = [], { shopBase } = {}) {
+  const rows = []
+  for (const product of products) {
+    const preview = normalizeProductPreview(product, { shopBase, pixelId: '' }).product
+    const fallbackVariant = {
+      id: '',
+      sku: '',
+      title: preview.title,
+      quantity: preview.stock.totalQuantity,
+      price: preview.price,
+      imageUrl: preview.images[0]?.url || '',
+    }
+    for (const variant of (preview.variants.length ? preview.variants : [fallbackVariant])) {
+      rows.push({
+        id: variant.id || preview.id,
+        productId: preview.id,
+        variantId: variant.id || '',
+        sku: variant.sku || String(variant.id || preview.id),
+        name: [preview.title, variant.title && variant.title !== preview.title ? variant.title : ''].filter(Boolean).join(' · '),
+        sellPrice: variant.price?.amount ?? preview.price.amount ?? 0,
+        unitPrice: variant.price?.amount ?? preview.price.amount ?? 0,
+        stock: variant.quantity ?? preview.stock.totalQuantity,
+        availableStock: variant.quantity ?? preview.stock.totalQuantity,
+        imageUrl: variant.imageUrl || preview.images[0]?.url || '',
+        storefrontUrl: preview.links.storefrontUrl || '',
+      })
+    }
+  }
+  return rows
+}
+
+function orderShippingAddress(order = {}) {
+  const shippingAddress = order.shippingAddress || {}
+  const formattedAddress = cleanText(shippingAddress.formattedAddress || [
+    shippingAddress.addressLine,
+    shippingAddress.subDistrict,
+    shippingAddress.district,
+    shippingAddress.province,
+    shippingAddress.postalCode,
+  ].filter(Boolean).join(' '))
+  return {
+    name: cleanText(shippingAddress.recipientName || order.customerName || 'Omni Customer'),
+    phone: cleanText(shippingAddress.recipientPhone || order.customerPhone || ''),
+    address1: formattedAddress,
+    zip: cleanText(shippingAddress.postalCode || ''),
+    city: cleanText(shippingAddress.district || ''),
+    province: cleanText(shippingAddress.province || ''),
+    country: cleanText(shippingAddress.country || 'ไทย'),
+  }
+}
+
+function buildEasyStoreOrderBody(order = {}) {
+  const shippingAddress = orderShippingAddress(order)
+  return {
+    order: {
+      email: order.customerEmail || '',
+      phone: order.customerPhone || shippingAddress.phone,
+      currency: order.currency || 'THB',
+      financial_status: 'pending',
+      fulfillment_status: 'unfulfilled',
+      note: `Created from Omni draft ${order.id}`,
+      source_name: order.platform || 'omni',
+      line_items: (order.items || []).map((item) => ({
+        variant_id: item.easyStoreVariantId || undefined,
+        product_id: item.easyStoreProductId || undefined,
+        sku: item.sku || undefined,
+        title: item.name || item.sku || 'สินค้า',
+        quantity: Number(item.quantity || 1),
+        price: Number(item.unitPrice || 0),
+      })),
+      shipping_address: shippingAddress,
+      billing_address: shippingAddress,
+      transactions: [{
+        kind: 'sale',
+        status: 'pending',
+        amount: Number(order.totalAmount || 0),
+        gateway: order.paymentMethod || 'bank_transfer',
+      }],
+    },
+  }
+}
+
+function extractProviderOrderId(payload) {
+  const order = unwrapOrder(payload)
+  return order?.id || order?.order_id || order?.order_number || order?.name || null
+}
+
 export function createEasyStoreRuntime({
   runner,
   env = process.env,
@@ -316,6 +414,44 @@ export function createEasyStoreRuntime({
       }
     },
     listProducts,
+    async searchProducts({ keyword = '', limit = 10 } = {}) {
+      const cleanKeyword = cleanText(keyword).toLowerCase()
+      const payload = await listProducts({ limit: Math.max(Number(limit || 10), 50), page: 1 })
+      const rows = normalizeProductSearchRows(payload.products, { shopBase })
+      const filtered = cleanKeyword
+        ? rows.filter((row) => [row.name, row.sku, row.productId, row.variantId].filter(Boolean).join(' ').toLowerCase().includes(cleanKeyword))
+        : rows
+      return {
+        ok: true,
+        products: filtered.slice(0, Number(limit || 10)),
+        count: filtered.length,
+      }
+    },
+    async createOrder({ order, uniquenumber, approved = false } = {}) {
+      if (!approved) throw new Error('approval_required')
+      const body = buildEasyStoreOrderBody(order)
+      if (directReady) {
+        const payload = await easyStoreApiRequest({
+          fetchImpl,
+          credentials: directCredentials,
+          method: 'POST',
+          pathname: '/orders.json',
+          body,
+        })
+        return {
+          ok: true,
+          providerOrderId: extractProviderOrderId(payload) || `es_${order.id}`,
+          response: payload.response || payload,
+        }
+      }
+      if (!effectiveRunner) throw missingCredentialsError({ credentials: directCredentials, helper })
+      const payload = await runHelper(effectiveRunner, ['raw', 'POST', '/orders.json', JSON.stringify(body), '--approve-write'])
+      return {
+        ok: true,
+        providerOrderId: extractProviderOrderId(payload) || `es_${uniquenumber || order.id}`,
+        response: payload.response || payload,
+      }
+    },
     async getProductPreview({ productId, pixelId = resolvePixelId(env) } = {}) {
       const cleanProductId = String(productId || '').trim()
       if (!cleanProductId) throw new Error('easystore_product_id_required')

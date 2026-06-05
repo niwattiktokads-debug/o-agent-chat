@@ -763,6 +763,18 @@ export function mountRoutes(app, hub, room, options = {}) {
     }
   })
 
+  app.get('/api/omni/easystore/products', async (req, res) => {
+    try {
+      const result = await easyStore.searchProducts({
+        keyword: String(req.query.q || req.query.keyword || ''),
+        limit: normalizePageSize(req.query.limit),
+      })
+      res.json(result)
+    } catch (error) {
+      res.status(400).json({ ok: false, error: error.message || 'easystore_products_failed' })
+    }
+  })
+
   app.get('/feeds/meta/annalynna.csv', async (req, res) => {
     try {
       const result = await easyStore.getMetaCatalogFeed({
@@ -814,11 +826,19 @@ export function mountRoutes(app, hub, room, options = {}) {
   })
 
   app.post('/api/omni/order-drafts/:orderId/approve', async (req, res) => {
+    const provider = ['easystore', 'zort'].includes(String(req.body?.provider || '').toLowerCase())
+      ? String(req.body.provider).toLowerCase()
+      : undefined
     const result = await omni.approveOrderDraft({
       orderId: req.params.orderId,
       approved: req.body?.approved,
       approvedBy: req.body?.approvedBy || 'boss',
-      createExternalOrder: ({ order, uniquenumber, approved }) => commerce.createOrder({ order, uniquenumber, approved }),
+      provider,
+      createExternalOrder: ({ order, uniquenumber, approved, provider: targetProvider }) => (
+        targetProvider === 'easystore'
+          ? easyStore.createOrder({ order, uniquenumber, approved })
+          : commerce.createOrder({ order, uniquenumber, approved })
+      ),
     })
     if (!result.ok) {
       const status = result.error === 'approval_required' ? 403 : result.error === 'zort_order_create_disabled' ? 409 : 400

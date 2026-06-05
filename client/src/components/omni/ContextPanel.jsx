@@ -21,7 +21,7 @@ export default function ContextPanel({ snapshot, thread, onSnapshot, workspaceId
   const [guardError, setGuardError] = useState('')
 
   useEffect(() => {
-    setSettings(snapshot?.settings || null)
+    if (snapshot?.settings) setSettings(snapshot.settings)
   }, [snapshot?.settings])
 
   useEffect(() => {
@@ -60,6 +60,12 @@ export default function ContextPanel({ snapshot, thread, onSnapshot, workspaceId
   }
 
   const customerSendEnabled = settings?.ai?.customerSendEnabled === true
+  const panelSnapshot = settings ? { ...snapshot, settings } : snapshot
+
+  function handlePanelSnapshot(nextSnapshot) {
+    if (nextSnapshot?.settings) setSettings(nextSnapshot.settings)
+    onSnapshot?.(nextSnapshot)
+  }
 
   return (
     <aside className="h-full min-h-0 overflow-y-auto border-t border-[var(--color-rule)] bg-[var(--color-panel)] xl:border-l xl:border-t-0">
@@ -94,11 +100,11 @@ export default function ContextPanel({ snapshot, thread, onSnapshot, workspaceId
           ))}
         </div>
       </div>
-      {tab === 'ai' ? <AiDecisionPanel snapshot={snapshot} thread={thread} onDrafted={onSnapshot} onUseDraft={onUseDraft} /> : null}
+      {tab === 'ai' ? <AiDecisionPanel snapshot={panelSnapshot} thread={thread} onDrafted={handlePanelSnapshot} onUseDraft={onUseDraft} /> : null}
       {tab === 'sales' ? <SalesContextPanel thread={thread} onUseDraft={onUseDraft} /> : null}
-      {tab === 'profiles' ? <ProfilePanel snapshot={snapshot} /> : null}
-      {tab === 'orders' ? <OrderDesk snapshot={snapshot} thread={thread} onSnapshot={onSnapshot} /> : null}
-      {tab === 'payment' ? <PaymentDesk snapshot={snapshot} thread={thread} onSnapshot={onSnapshot} onUseDraft={onUseDraft} /> : null}
+      {tab === 'profiles' ? <ProfilePanel snapshot={panelSnapshot} /> : null}
+      {tab === 'orders' ? <OrderDesk snapshot={panelSnapshot} thread={thread} onSnapshot={handlePanelSnapshot} workspaceId={workspaceId} /> : null}
+      {tab === 'payment' ? <PaymentDesk snapshot={panelSnapshot} thread={thread} onSnapshot={handlePanelSnapshot} onUseDraft={onUseDraft} /> : null}
     </aside>
   )
 }

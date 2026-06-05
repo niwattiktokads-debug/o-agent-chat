@@ -1104,6 +1104,81 @@ test('Order draft searches ZORT products, creates draft, and requires approval b
   }
 })
 
+test('Order draft can search EasyStore products and create an EasyStore order after approval', async () => {
+  const localApp = express()
+  localApp.use(express.json())
+  const localOmni = createOmniService()
+  const calls = []
+  const fakeCommerce = {
+    createOrder: async () => {
+      throw new Error('should_not_create_zort_order')
+    },
+  }
+  const fakeEasyStore = {
+    searchProducts: async ({ keyword }) => {
+      calls.push({ action: 'searchEasyStore', keyword })
+      return {
+        ok: true,
+        products: [{
+          id: '76013285',
+          productId: '16462394',
+          variantId: '76013285',
+          sku: 'lorสีดำXL',
+          name: 'Lorra สีดำ XL',
+          sellPrice: 690,
+          availableStock: 13,
+        }],
+      }
+    },
+    createOrder: async ({ order, uniquenumber, approved }) => {
+      calls.push({ action: 'createEasyStoreOrder', orderId: order.id, uniquenumber, approved, provider: order.orderProvider })
+      return { ok: true, providerOrderId: 'es_1001', response: { order: { id: 'es_1001' } } }
+    },
+  }
+  mountRoutes(localApp, { broadcast: () => {} }, createState(), { omni: localOmni, commerce: fakeCommerce, easyStore: fakeEasyStore })
+  const localServer = localApp.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const searchResponse = await fetch(`http://localhost:${localPort}/api/omni/easystore/products?q=Lorra`)
+    const searchBody = await searchResponse.json()
+    assert.equal(searchResponse.status, 200)
+    assert.equal(searchBody.products[0].sku, 'lorสีดำXL')
+
+    const draftResponse = await fetch(`http://localhost:${localPort}/api/omni/order-drafts`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(zortReadyDraftPayload({
+        orderProvider: 'easystore',
+        sourceRef: 'omni_easystore_manual_draft:thread_1',
+        items: [{
+          sku: 'lorสีดำXL',
+          name: 'Lorra สีดำ XL',
+          quantity: 1,
+          unitPrice: 690,
+          easyStoreProductId: '16462394',
+          easyStoreVariantId: '76013285',
+        }],
+      })),
+    })
+    const draftBody = await draftResponse.json()
+    assert.equal(draftResponse.status, 200)
+    assert.equal(draftBody.order.orderProvider, 'easystore')
+
+    const approveResponse = await fetch(`http://localhost:${localPort}/api/omni/order-drafts/${draftBody.order.id}/approve`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ approved: true, approvedBy: 'boss', provider: 'easystore' }),
+    })
+    const approveBody = await approveResponse.json()
+    assert.equal(approveResponse.status, 200)
+    assert.equal(approveBody.order.status, 'easystore_created')
+    assert.equal(approveBody.order.providerOrderId, 'es_1001')
+    assert.equal(calls.some((call) => call.action === 'createEasyStoreOrder' && call.approved === true && call.provider === 'easystore'), true)
+  } finally {
+    localServer.close()
+  }
+})
+
 test('Order draft approval blocks ZORT create until Thai shipping address is complete', async () => {
   const localApp = express()
   localApp.use(express.json())
@@ -1237,6 +1312,46 @@ test('Order draft approval respects createZortOrderOnApprove setting', async () 
     assert.equal(approveResponse.status, 409)
     assert.equal(approveBody.error, 'zort_order_create_disabled')
     assert.equal(localOmni.snapshot().orders.find((order) => order.id === draftBody.order.id).status, 'draft')
+  } finally {
+    localServer.close()
+  }
+})
+
+test('Order draft approval guard can be disabled from settings for human-controlled order create', async () => {
+  const localApp = express()
+  localApp.use(express.json())
+  const localOmni = createOmniService()
+  localOmni.updateSettings({ settings: { orderDraft: { approvalRequired: false } }, updatedBy: 'boss' })
+  const fakeCommerce = {
+    createOrder: async ({ order, approved }) => ({
+      ok: true,
+      providerOrderId: `zort_${order.id}`,
+      response: { approved },
+    }),
+  }
+  mountRoutes(localApp, { broadcast: () => {} }, createState(), { omni: localOmni, commerce: fakeCommerce })
+  const localServer = localApp.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const draftResponse = await fetch(`http://localhost:${localPort}/api/omni/order-drafts`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(zortReadyDraftPayload()),
+    })
+    const draftBody = await draftResponse.json()
+    assert.equal(draftResponse.status, 200)
+
+    const approveResponse = await fetch(`http://localhost:${localPort}/api/omni/order-drafts/${draftBody.order.id}/approve`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ approved: false, approvedBy: 'boss' }),
+    })
+    const approveBody = await approveResponse.json()
+
+    assert.equal(approveResponse.status, 200)
+    assert.equal(approveBody.ok, true)
+    assert.equal(approveBody.order.status, 'zort_created')
+    assert.equal(approveBody.order.providerOrderId, `zort_${draftBody.order.id}`)
   } finally {
     localServer.close()
   }

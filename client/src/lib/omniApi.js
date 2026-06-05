@@ -206,6 +206,11 @@ export async function searchZortProducts(query, limit = 8) {
   return getJson(`/api/omni/zort/products?${params.toString()}`)
 }
 
+export async function searchEasyStoreProducts(query, limit = 8) {
+  const params = new URLSearchParams({ q: query, limit: String(limit) })
+  return getJson(`/api/omni/easystore/products?${params.toString()}`)
+}
+
 export async function fetchEasyStoreProductPreview(productId) {
   return getJson(`/api/omni/easystore/products/${encodeURIComponent(productId)}/preview`)
 }
@@ -226,8 +231,8 @@ export async function createOrderDraft(input) {
   return postJson('/api/omni/order-drafts', { ...input, createdBy: 'boss' })
 }
 
-export async function approveOrderDraft(orderId) {
-  return postJson(`/api/omni/order-drafts/${encodeURIComponent(orderId)}/approve`, { approved: true, approvedBy: 'boss' })
+export async function approveOrderDraft(orderId, options = {}) {
+  return postJson(`/api/omni/order-drafts/${encodeURIComponent(orderId)}/approve`, { approved: true, approvedBy: 'boss', ...options })
 }
 
 export async function createPaymentRequest(input) {

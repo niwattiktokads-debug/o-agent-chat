@@ -258,7 +258,7 @@ function normalizeOrderDraftItem(item = {}) {
   const name = String(item.name || sku || 'สินค้า').trim()
   const quantity = Number(item.quantity || 1)
   const unitPrice = Number(item.unitPrice ?? item.sellPrice ?? item.price ?? 0)
-  if (!sku && !item.zortProductId) return { ok: false, error: 'order_item_sku_required' }
+  if (!sku && !item.zortProductId && !item.easyStoreProductId && !item.easyStoreVariantId) return { ok: false, error: 'order_item_sku_required' }
   if (!Number.isFinite(quantity) || quantity <= 0) return { ok: false, error: 'order_item_quantity_required' }
   if (!Number.isFinite(unitPrice) || unitPrice < 0) return { ok: false, error: 'order_item_price_invalid' }
   return {
@@ -270,6 +270,9 @@ function normalizeOrderDraftItem(item = {}) {
       unitPrice,
       zortProductId: item.zortProductId || item.zortProduct?.id || null,
       zortProduct: item.zortProduct || null,
+      easyStoreProductId: item.easyStoreProductId || item.easyStoreProduct?.productId || item.easyStoreProduct?.id || null,
+      easyStoreVariantId: item.easyStoreVariantId || item.easyStoreProduct?.variantId || null,
+      easyStoreProduct: item.easyStoreProduct || null,
       sourceCommentId: item.sourceCommentId || null,
     },
   }
@@ -311,6 +314,7 @@ function createOrderDraftRow(input = {}, snapshot = {}) {
       customerEmail: customer?.email || input.customerEmail || '',
       platform: input.platform || thread?.platform || 'omni',
       providerOrderId: null,
+      orderProvider: ['easystore', 'zort'].includes(String(input.orderProvider || '').toLowerCase()) ? String(input.orderProvider).toLowerCase() : 'zort',
       status: 'draft',
       approvalRequired: true,
       approvalStatus: 'pending',
@@ -341,6 +345,27 @@ async function validateOrderReadyForZort(order = {}) {
     if (!item.zortProductId && !item.zortProduct?.id) missingFields.push(`items.${item.sku || 'unknown'}.zortProductId`)
   }
   if (missingFields.length) return { ok: false, error: 'zort_order_missing_required_data', missingFields }
+
+  const address = await validateThaiShippingAddress({
+    ...(order.shippingAddress || {}),
+    recipientName: order.shippingAddress?.recipientName || order.customerName,
+    recipientPhone: order.shippingAddress?.recipientPhone || order.customerPhone,
+  })
+  if (!address.ok) return address
+  return { ok: true, shippingAddress: address.address }
+}
+
+async function validateOrderReadyForProvider(order = {}, provider = order.orderProvider || 'zort') {
+  const missingFields = []
+  if (!order.customerName) missingFields.push('customerName')
+  if (!order.customerPhone) missingFields.push('customerPhone')
+  if (!Array.isArray(order.items) || order.items.length === 0) missingFields.push('items')
+  for (const item of order.items || []) {
+    if (!item.sku) missingFields.push('items.sku')
+    if (provider === 'zort' && !item.zortProductId && !item.zortProduct?.id) missingFields.push(`items.${item.sku || 'unknown'}.zortProductId`)
+    if (provider === 'easystore' && !item.easyStoreProductId && !item.easyStoreVariantId) missingFields.push(`items.${item.sku || 'unknown'}.easyStoreProductId`)
+  }
+  if (missingFields.length) return { ok: false, error: `${provider}_order_missing_required_data`, missingFields }
 
   const address = await validateThaiShippingAddress({
     ...(order.shippingAddress || {}),
@@ -963,8 +988,7 @@ export function createOmniService(options = createOmniSeed()) {
       const auditResult = upsert('actionAudits', [audit])
       return { ok: true, result: { orders: orderResult, orderLinks: linkResult, actionAudits: auditResult }, order: structuredClone(normalized.row), audit, snapshot: this.snapshot() }
     },
-    async approveOrderDraft({ orderId, approved = false, approvedBy = 'boss', createExternalOrder } = {}) {
-      if (approved !== true) return { ok: false, error: 'approval_required' }
+    async approveOrderDraft({ orderId, approved = false, approvedBy = 'boss', provider = '', createExternalOrder } = {}) {
       const snapshot = currentData()
       const order = (snapshot.orders || []).find((item) => item.id === orderId)
       if (!order) return { ok: false, error: 'order_not_found' }
@@ -972,35 +996,40 @@ export function createOmniService(options = createOmniSeed()) {
       const orderLink = (snapshot.orderLinks || []).find((link) => link.orderId === orderId)
       const settings = orderLink?.threadId ? this.getSettingsForThread(orderLink.threadId) : this.getSettings()
       if (settings.orderDraft?.enabled === false) return { ok: false, error: 'order_draft_disabled' }
-      if (settings.orderDraft?.createZortOrderOnApprove === false) return { ok: false, error: 'zort_order_create_disabled' }
+      const approvalRequired = settings.orderDraft?.approvalRequired !== false
+      if (approvalRequired && approved !== true) return { ok: false, error: 'approval_required' }
+      const targetProvider = ['easystore', 'zort'].includes(String(provider || '').toLowerCase())
+        ? String(provider).toLowerCase()
+        : (order.orderProvider || 'zort')
+      if (targetProvider === 'zort' && settings.orderDraft?.createZortOrderOnApprove === false) return { ok: false, error: 'zort_order_create_disabled' }
       if (typeof createExternalOrder !== 'function') return { ok: false, error: 'order_runtime_missing' }
-      const ready = await validateOrderReadyForZort(order)
+      const ready = await validateOrderReadyForProvider(order, targetProvider)
       if (!ready.ok) return ready
-      const providerOrder = { ...order, shippingAddress: ready.shippingAddress }
-      let provider
+      const providerOrder = { ...order, orderProvider: targetProvider, shippingAddress: ready.shippingAddress }
+      let providerResult
       try {
-        provider = await createExternalOrder({ order: providerOrder, uniquenumber: order.id, approved: true })
+        providerResult = await createExternalOrder({ order: providerOrder, uniquenumber: order.id, approved: true, provider: targetProvider })
       } catch (error) {
         return {
           ok: false,
-          error: 'zort_order_create_failed',
-          provider: { ok: false, error: error.message || 'zort_order_create_failed' },
+          error: `${targetProvider}_order_create_failed`,
+          provider: { ok: false, error: error.message || `${targetProvider}_order_create_failed` },
         }
       }
-      if (!provider?.ok) return { ok: false, error: provider?.error || 'zort_order_create_failed', provider }
+      if (!providerResult?.ok) return { ok: false, error: providerResult?.error || `${targetProvider}_order_create_failed`, provider: providerResult }
       const updatedOrder = {
         ...providerOrder,
-        status: 'zort_created',
+        status: `${targetProvider}_created`,
         approvalStatus: 'approved',
-        providerOrderId: provider.providerOrderId || order.providerOrderId || null,
-        providerResponse: provider.response || null,
+        providerOrderId: providerResult.providerOrderId || order.providerOrderId || null,
+        providerResponse: providerResult.response || null,
         approvedBy,
         approvedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       }
       const orderResult = upsert('orders', [updatedOrder])
       const audit = createActionAuditRow({
-        action: 'order_draft_approved_zort_created',
+        action: `order_draft_approved_${targetProvider}_created`,
         workspaceId: order.workspaceId || null,
         actorType: 'human',
         actorId: approvedBy,
@@ -1009,7 +1038,7 @@ export function createOmniService(options = createOmniSeed()) {
         sourceRef: updatedOrder.sourceRef,
       })
       const auditResult = upsert('actionAudits', [audit])
-      return { ok: true, result: { orders: orderResult, actionAudits: auditResult }, order: structuredClone(updatedOrder), provider, audit, snapshot: this.snapshot() }
+      return { ok: true, result: { orders: orderResult, actionAudits: auditResult }, order: structuredClone(updatedOrder), provider: providerResult, audit, snapshot: this.snapshot() }
     },
     messageVolumeReport({ from, to, pageId } = {}) {
       const snapshot = currentData()

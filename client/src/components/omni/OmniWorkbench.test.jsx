@@ -301,6 +301,10 @@ vi.mock('../../lib/omniApi.js', () => ({
     ok: true,
     products: [{ id: '637', sku: 'BLACK-M', name: 'Black Shirt M', sellPrice: 590, availableStock: 7 }],
   }),
+  searchEasyStoreProducts: async () => ({
+    ok: true,
+    products: [{ id: '76013285', productId: '16462394', variantId: '76013285', sku: 'lorสีดำXL', name: 'Lorra สีดำ XL', sellPrice: 690, availableStock: 13 }],
+  }),
   lookupThaiAddressByPostcode: async () => ({
     ok: true,
     postalCode: '10110',
@@ -393,9 +397,14 @@ vi.mock('../../lib/omniApi.js', () => ({
       connectorHealth: [],
     },
   }),
-  approveOrderDraft: async () => ({
+  approveOrderDraft: async (_orderId, options = {}) => ({
     ok: true,
-    order: { id: 'order_draft_1', status: 'zort_created', providerOrderId: 'zort_1001' },
+    order: {
+      id: 'order_draft_1',
+      status: options.provider === 'easystore' ? 'easystore_created' : 'zort_created',
+      orderProvider: options.provider || 'zort',
+      providerOrderId: options.provider === 'easystore' ? 'es_1001' : 'zort_1001',
+    },
   }),
 }))
 
@@ -484,6 +493,51 @@ describe('OmniWorkbench', () => {
     expect(await screen.findByText('ยืนยัน approval ก่อนสร้าง ZORT order')).toBeInTheDocument()
     expect((await screen.findAllByText(/ผู้รับ: ลูกค้า A/)).length).toBeGreaterThan(0)
     fireEvent.click(screen.getByRole('button', { name: 'ยืนยันสร้าง ZORT order' }))
+    expect(await screen.findByText('สร้าง ZORT order แล้ว zort_1001')).toBeInTheDocument()
+  })
+
+  it('lets the operator switch order creation to EasyStore', async () => {
+    render(<OmniWorkbench />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'ออเดอร์' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'EasyStore' }))
+
+    expect(await screen.findByText('EasyStore order draft')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'AI ดึงที่อยู่จากแชท' }))
+    expect(await screen.findByText('เติมฟอร์มแล้ว และสร้าง draft ให้ลูกค้าตรวจที่อยู่แล้ว')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('ค้นสินค้า EasyStore'), { target: { value: 'Lorra' } })
+    fireEvent.click(screen.getByRole('button', { name: 'ค้น EasyStore' }))
+    expect(await screen.findByText('Lorra สีดำ XL')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'เลือก lorสีดำXL' }))
+    expect(await screen.findByText('พบที่อยู่ 1 รายการ · ครอบคลุม 77 จังหวัด')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึก draft ออเดอร์' }))
+    expect(await screen.findByText('draft: order_draft_1')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Approve ไป EasyStore' }))
+    expect(await screen.findByText('ยืนยัน approval ก่อนสร้าง EasyStore order')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'ยืนยันสร้าง EasyStore order' }))
+    expect(await screen.findByText('สร้าง EasyStore order แล้ว es_1001')).toBeInTheDocument()
+  })
+
+  it('lets the operator turn off the order approval guard from the order desk', async () => {
+    render(<OmniWorkbench />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'ออเดอร์' }))
+    expect(await screen.findByRole('button', { name: /guard เปิด/ })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /guard เปิด/ }))
+    expect(await screen.findByRole('button', { name: /guard ปิด/ })).toBeInTheDocument()
+    expect(await screen.findByText('ปิด approval guard แล้ว')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'AI ดึงที่อยู่จากแชท' }))
+    expect(await screen.findByText('เติมฟอร์มแล้ว และสร้าง draft ให้ลูกค้าตรวจที่อยู่แล้ว')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('ค้นสินค้า ZORT'), { target: { value: 'BLACK-M' } })
+    fireEvent.click(screen.getByRole('button', { name: 'ค้น ZORT' }))
+    expect(await screen.findByText('Black Shirt M')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'เลือก BLACK-M' }))
+    expect(await screen.findByText('พบที่อยู่ 1 รายการ · ครอบคลุม 77 จังหวัด')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึก draft ออเดอร์' }))
+    expect(await screen.findByText('draft: order_draft_1')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Approve ไป ZORT' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'สร้าง ZORT order ทันที' }))
     expect(await screen.findByText('สร้าง ZORT order แล้ว zort_1001')).toBeInTheDocument()
   })
 
