@@ -622,6 +622,19 @@ describe('OmniWorkbench', () => {
     expect(screen.queryByText('Draft ยังไม่ส่งออกไปหาลูกค้า ปุ่มส่งลูกค้าจริงใช้ได้เมื่อเปิด “ส่งจริงเปิด”')).not.toBeInTheDocument()
   })
 
+  it('clears composer text from the small top-right x button instead of a text clear button', async () => {
+    render(<OmniWorkbench />)
+    const draftBox = await screen.findByPlaceholderText(/พิมพ์ข้อความตอบลูกค้า/)
+
+    fireEvent.change(draftBox, { target: { value: 'ข้อความที่ต้องล้าง' } })
+
+    expect(screen.queryByRole('button', { name: 'ล้าง' })).not.toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: 'ล้างข้อความ' }))
+
+    expect(draftBox).toHaveValue('')
+    expect(screen.queryByRole('button', { name: 'ล้างข้อความ' })).not.toBeInTheDocument()
+  })
+
   it('shows the customer send guard in the active chat surface', async () => {
     render(<OmniWorkbench />)
 

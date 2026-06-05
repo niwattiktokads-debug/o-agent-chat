@@ -232,6 +232,13 @@ function ManualReplyComposer({ thread, messagesSignature = '', onSnapshot, sugge
     event.preventDefault()
   }
 
+  function clearComposer() {
+    setText('')
+    setAttachments([])
+    setError('')
+    setStatus('')
+  }
+
   async function sendLive() {
     if (!thread || busy) return
     const cleanText = text.trim()
@@ -282,7 +289,19 @@ function ManualReplyComposer({ thread, messagesSignature = '', onSnapshot, sugge
           ))}
         </div>
       ) : null}
-      <div className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-paper)] shadow-sm focus-within:border-[var(--color-accent)]">
+      <div className="relative rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-paper)] shadow-sm focus-within:border-[var(--color-accent)]">
+        {text.trim() || attachments.length > 0 ? (
+          <button
+            type="button"
+            aria-label="ล้างข้อความ"
+            title="ล้างข้อความ"
+            disabled={busy}
+            onClick={clearComposer}
+            className="absolute right-2 top-2 z-10 grid h-7 w-7 place-items-center rounded-full border border-[var(--color-rule)] bg-[var(--color-panel)] text-base font-bold leading-none text-[var(--color-muted)] shadow-sm hover:bg-[var(--color-panel-2)] hover:text-[var(--color-ink)] disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            ×
+          </button>
+        ) : null}
         <textarea
           rows={3}
           value={text}
@@ -291,7 +310,7 @@ function ManualReplyComposer({ thread, messagesSignature = '', onSnapshot, sugge
             setStatus('')
           }}
           placeholder="พิมพ์ข้อความตอบลูกค้า หรือกด AI ร่างให้"
-          className="min-h-[86px] w-full resize-none rounded-t-[var(--radius-md)] bg-transparent px-4 py-3 text-sm leading-6 text-[var(--color-ink)] outline-none placeholder:text-[var(--color-muted)]"
+          className="min-h-[86px] w-full resize-none rounded-t-[var(--radius-md)] bg-transparent px-4 py-3 pr-12 text-sm leading-6 text-[var(--color-ink)] outline-none placeholder:text-[var(--color-muted)]"
         />
         <input
           ref={fileInputRef}
@@ -320,19 +339,6 @@ function ManualReplyComposer({ thread, messagesSignature = '', onSnapshot, sugge
               className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)]"
             >
               แนบภาพ
-            </button>
-            <button
-              type="button"
-              disabled={busy || (!text.trim() && attachments.length === 0)}
-              onClick={() => {
-                setText('')
-                setAttachments([])
-                setError('')
-                setStatus('')
-              }}
-              className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-4 py-2 text-sm font-semibold text-[var(--color-ink-2)] shadow-sm disabled:opacity-45"
-            >
-              ล้าง
             </button>
           </div>
           <button
