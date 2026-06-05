@@ -2159,7 +2159,7 @@ test('POST /webhook/meta sends by default when OMNI_AI_AUTO_SEND_ON_WEBHOOK is e
   const localEvents = []
   const localHub = { broadcast: (event, payload) => localEvents.push({ event, payload }) }
   mountWebhook(app, localHub, createState(), {
-    omni: createOmniServiceWithCustomerSend(),
+    omni: createOmniService(),
     metaVerifyToken: 'verify-token-test',
     awaitAutoReplies: true,
     sendReply: async (payload) => {
@@ -3166,10 +3166,8 @@ test('POST /webhook/meta does not auto send text-only loops for product image re
   const app = express()
   app.use(express.json())
   const sent = []
-  const localOmni = createOmniService()
-  localOmni.updateSettings({ settings: { ai: { customerSendEnabled: true } }, updatedBy: 'test' })
   mountWebhook(app, { broadcast: () => {} }, createState(), {
-    omni: localOmni,
+    omni: createOmniServiceWithCustomerSend(),
     metaVerifyToken: 'verify-token-test',
     awaitAutoReplies: true,
     sendReply: async (payload) => {

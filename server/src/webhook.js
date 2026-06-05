@@ -579,7 +579,7 @@ async function sendCustomerSilenceFollowUp({
   }
 
   const wsSettings = omni.getSettingsForThread ? omni.getSettingsForThread(threadId) : omni.getSettings()
-  if (wsSettings?.ai?.customerSendEnabled !== true) {
+  if (wsSettings?.ai?.customerSendEnabled !== true && !omniDirectSendAllEnabled()) {
     const draft = omni.recordManualReplyDraft({
       threadId,
       authorName: 'Anna Lynn AI',
@@ -716,7 +716,7 @@ async function draftThreadReply({ omni, ai, threadId, send = false, sendReply = 
   }
 
   if (!send) return recordVisibleDraft('draft_only')
-  if (wsSettings?.ai?.customerSendEnabled !== true) {
+  if (wsSettings?.ai?.customerSendEnabled !== true && !omniDirectSendAllEnabled()) {
     return recordVisibleDraft('customer_send_guard_enabled')
   }
   if (decision.intent === 'productImage' && !decisionAttachments.length && !decisionCarousel.length && !omniDirectSendAllEnabled()) {
