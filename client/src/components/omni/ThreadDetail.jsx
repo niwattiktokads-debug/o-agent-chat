@@ -31,7 +31,7 @@ export default function ThreadDetail({ snapshot, thread, onSnapshot, suggestedDr
               <CustomerAvatar name={customer?.displayName || 'Facebook Customer'} avatarUrl={customerAvatarUrl(customer)} size="lg" />
               <div className="min-w-0">
                 <h1 className="truncate text-base font-bold text-[var(--color-ink)]">{customer?.displayName || 'Facebook Customer'}</h1>
-                <p className="mt-1 text-xs text-[var(--color-muted)]">{page?.name || thread.pageId} · {thread.platform} · {statusLabel(thread.status)}</p>
+                <p className="mt-1 text-xs text-[var(--color-muted)]">{page?.name || thread.pageId} · {thread.platform} · {statusLabel(thread.status, thread)}</p>
               </div>
             </div>
           </div>

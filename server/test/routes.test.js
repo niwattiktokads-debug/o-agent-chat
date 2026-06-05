@@ -918,6 +918,60 @@ test('POST /api/omni/settings gates AI draft routes when disabled', async () => 
   }
 })
 
+test('POST /api/omni/threads/:threadId/ai-draft rejects EasyStore system events', async () => {
+  const localApp = express()
+  localApp.use(express.json())
+  const localOmni = createOmniService()
+  localOmni.syncEasyStoreWebhookEvents({
+    source: 'easystore_webhook',
+    topic: 'order/update',
+    customers: [{ id: 'es_customer_501', displayName: 'Anna Buyer' }],
+    threads: [{
+      id: 'es_order_1014',
+      providerThreadId: '1014',
+      pageId: 'page_easystore_annalynna',
+      platform: 'easystore',
+      kind: 'order_event',
+      customerId: 'es_customer_501',
+      status: 'open',
+      intent: 'orderStatus',
+      risk: 'medium',
+      updatedAt: '2026-06-05T06:25:34.000Z',
+    }],
+    messages: [{
+      id: 'es_msg_1014',
+      threadId: 'es_order_1014',
+      direction: 'system',
+      authorName: 'EasyStore',
+      text: 'EasyStore order/update ##1014 · financial=paid',
+      createdAt: '2026-06-05T06:25:34.000Z',
+      sourceRef: 'easystore_webhook:order/update:1014',
+    }],
+    orders: [],
+    inventorySnapshots: [],
+  })
+  let aiDraftCalls = 0
+  mountRoutes(localApp, { broadcast: () => {} }, createState(), {
+    omni: localOmni,
+    ai: { draft: async () => { aiDraftCalls += 1; return { ok: true } } },
+  })
+  const localServer = localApp.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const response = await fetch(`http://localhost:${localPort}/api/omni/threads/es_order_1014/ai-draft`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    const body = await response.json()
+    assert.equal(response.status, 409)
+    assert.equal(body.error, 'system_event_no_ai_reply')
+    assert.equal(aiDraftCalls, 0)
+  } finally {
+    localServer.close()
+  }
+})
+
 test('Post Selling Session capture reads comments, maps product code, links ZORT product read-only, and creates order draft', async () => {
   const localApp = express()
   localApp.use(express.json())

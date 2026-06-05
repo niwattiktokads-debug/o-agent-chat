@@ -6,7 +6,12 @@ export function filterThreads(threads, filters = {}) {
     .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
 }
 
-export function statusLabel(status) {
+export function statusLabel(status, thread = null) {
+  if (thread?.platform === 'easystore' || thread?.kind === 'order_event' || thread?.kind === 'product_event') {
+    if (thread?.kind === 'product_event' || thread?.intent === 'product') return 'สินค้าอัปเดต'
+    if (thread?.kind === 'customer_event') return 'ลูกค้าอัปเดต'
+    return 'ออเดอร์อัปเดต'
+  }
   const labels = {
     open: 'ต้องตอบ',
     draft_ready: 'AI ร่างแล้ว',

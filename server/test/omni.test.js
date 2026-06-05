@@ -462,6 +462,7 @@ test('normalizes EasyStore order webhook payload into Omni order thread rows', (
   assert.equal(normalized.threads[0].id, 'es_order_11001')
   assert.equal(normalized.threads[0].pageId, 'page_easystore_annalynna')
   assert.equal(normalized.threads[0].platform, 'easystore')
+  assert.equal(normalized.threads[0].kind, 'order_event')
   assert.equal(normalized.threads[0].status, 'open')
   assert.equal(normalized.messages[0].direction, 'system')
   assert.equal(normalized.messages[0].providerMessageId, 'order/paid:11001')
@@ -482,6 +483,7 @@ test('normalizes EasyStore product webhook payload into product thread and inven
   }, { topic: 'product/update', shopDomain: 'annalynna.easy.co' })
 
   assert.equal(normalized.threads[0].id, 'es_product_77')
+  assert.equal(normalized.threads[0].kind, 'product_event')
   assert.equal(normalized.threads[0].intent, 'product')
   assert.equal(normalized.messages[0].direction, 'system')
   assert.equal(normalized.inventorySnapshots[0].id, 'es_stock_77_88')

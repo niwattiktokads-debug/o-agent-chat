@@ -55,7 +55,7 @@ function ThreadRow({ thread, snapshot, active, onSelect }) {
       </div>
       <p className="mt-2 line-clamp-2 text-sm leading-5 text-[var(--color-ink-2)]">{preview}</p>
       <div className="mt-3 flex items-center justify-between gap-2">
-        <span className="rounded-[var(--radius-pill)] bg-[var(--color-panel-2)] px-2 py-1 text-[11px] font-semibold text-[var(--color-ink-2)]">{statusLabel(thread.status)}</span>
+        <span className="rounded-[var(--radius-pill)] bg-[var(--color-panel-2)] px-2 py-1 text-[11px] font-semibold text-[var(--color-ink-2)]">{statusLabel(thread.status, thread)}</span>
         <span className="text-[11px] text-[var(--color-muted)]">{thread.intent} · {thread.risk}</span>
       </div>
     </button>

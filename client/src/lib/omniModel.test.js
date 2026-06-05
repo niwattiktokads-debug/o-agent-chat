@@ -12,6 +12,8 @@ describe('omniModel', () => {
 
   it('returns human status labels', () => {
     expect(statusLabel('needs_approval')).toBe('รออนุมัติ')
+    expect(statusLabel('open', { platform: 'easystore', kind: 'order_event' })).toBe('ออเดอร์อัปเดต')
+    expect(statusLabel('open', { platform: 'easystore', kind: 'product_event' })).toBe('สินค้าอัปเดต')
     expect(statusLabel('unknown')).toBe('unknown')
   })
 
