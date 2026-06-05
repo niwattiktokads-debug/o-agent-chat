@@ -277,13 +277,14 @@ function AiApprovalQueueAlert({ approvals = [], snapshot = {}, onOpen }) {
     <div role="status" className="flex justify-end border-b border-[var(--color-rule)] bg-[var(--color-panel)] px-5 py-2">
       <button
         type="button"
-        aria-label={`เปิดเคสที่รออนุมัติ ${customerName}`}
+        aria-label={`ตรวจเคสที่รออนุมัติ ${customerName}`}
         title={detail}
         className="inline-flex max-w-full items-center gap-2 rounded-[var(--radius-pill)] border border-[var(--color-warn)] bg-[var(--color-warn-soft)] px-3 py-1 text-xs font-black text-[var(--color-warn)] shadow-sm hover:bg-[var(--color-panel)]"
         onClick={() => onOpen?.(first.thread)}
       >
         <span>{label}</span>
         <span className="max-w-[220px] truncate font-semibold opacity-85">{detail}</span>
+        <span className="rounded-[var(--radius-pill)] bg-[var(--color-panel)] px-2 py-0.5">ตรวจเคส</span>
       </button>
     </div>
   )

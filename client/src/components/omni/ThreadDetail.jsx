@@ -4,8 +4,10 @@ import { createAiDraft, saveOmniSettings, sendManualReply } from '../../lib/omni
 
 export default function ThreadDetail({ snapshot, thread, onSnapshot, suggestedDraft, workspaceId }) {
   const endRef = useRef(null)
+  const suggestedDraftIdRef = useRef('')
   const [guardBusy, setGuardBusy] = useState(false)
   const [guardError, setGuardError] = useState('')
+  const [messageDraft, setMessageDraft] = useState(null)
   const customer = customerForThread(snapshot?.customers, thread)
   const page = pageForThread(snapshot?.pages, thread)
   const messages = (snapshot?.messages || [])
@@ -37,11 +39,30 @@ export default function ThreadDetail({ snapshot, thread, onSnapshot, suggestedDr
     }
   }
 
+  function useDraftMessage(message) {
+    setMessageDraft({
+      id: `message_${message.id}_${Date.now()}`,
+      threadId: thread.id,
+      text: message.text || '',
+      attachments: Array.isArray(message.attachments) ? message.attachments : [],
+    })
+  }
+
   useEffect(() => {
     if (typeof endRef.current?.scrollIntoView === 'function') {
       endRef.current.scrollIntoView({ block: 'end' })
     }
   }, [messages.length, thread?.id])
+
+  useEffect(() => {
+    setMessageDraft(null)
+  }, [thread?.id])
+
+  useEffect(() => {
+    if (!suggestedDraft?.id || suggestedDraft.id === suggestedDraftIdRef.current) return
+    suggestedDraftIdRef.current = suggestedDraft.id
+    setMessageDraft(null)
+  }, [suggestedDraft?.id])
 
   if (!thread) return <div className="p-5 text-[var(--color-muted)]">No thread selected</div>
 
@@ -80,7 +101,16 @@ export default function ThreadDetail({ snapshot, thread, onSnapshot, suggestedDr
       </div>
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[var(--color-paper)] p-5">
         {messages.map((message) => (
-          <MessageBubble key={message.id} message={message} pageName={page?.name} customerName={customer?.displayName} />
+          <MessageBubble
+            key={message.id}
+            message={message}
+            pageName={page?.name}
+            customerName={customer?.displayName}
+            customerSendEnabled={customerSendEnabled}
+            onToggleCustomerSend={toggleCustomerSend}
+            onUseDraft={useDraftMessage}
+            guardBusy={guardBusy}
+          />
         ))}
         <div ref={endRef} />
       </div>
@@ -88,7 +118,7 @@ export default function ThreadDetail({ snapshot, thread, onSnapshot, suggestedDr
         thread={thread}
         messagesSignature={messages.map((message) => `${message.id}:${message.createdAt || ''}:${message.sourceRef || ''}`).join('|')}
         onSnapshot={onSnapshot}
-        suggestedDraft={suggestedDraft}
+        suggestedDraft={messageDraft || suggestedDraft}
         customerSendEnabled={customerSendEnabled}
         onToggleCustomerSend={toggleCustomerSend}
         guardBusy={guardBusy}
@@ -111,7 +141,7 @@ function CustomerAvatar({ name, avatarUrl, size = 'md' }) {
   )
 }
 
-function MessageBubble({ message, pageName, customerName }) {
+function MessageBubble({ message, pageName, customerName, customerSendEnabled = false, onToggleCustomerSend, onUseDraft, guardBusy = false }) {
   const outbound = message.direction === 'outbound'
   const draftOnly = outbound && message.deliveryStatus === 'draft_only'
   const author = outbound ? (message.authorName || pageName || 'Page') : (message.authorName === 'Facebook Customer' ? customerName || message.authorName : message.authorName)
@@ -124,7 +154,30 @@ function MessageBubble({ message, pageName, customerName }) {
           <span className="rounded-[var(--radius-pill)] bg-[var(--color-panel-2)] px-1.5 py-0.5 text-[10px]">{draftOnly ? 'AI draft-only' : sourceLabel(message.sourceRef || '')}</span>
         </div>
         <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-[var(--color-ink)]">{message.text || '[attachment]'}</p>
-        {draftOnly ? <div className="mt-2 rounded-[var(--radius-sm)] border border-[var(--color-warn)] bg-[var(--color-panel)] px-2 py-1 text-[11px] font-bold text-[var(--color-warn)]">ยังไม่ส่งลูกค้า · ต้องเปิด “ส่งจริงเปิด” แล้วกดส่งเอง</div> : null}
+        {draftOnly ? (
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-sm)] border border-[var(--color-warn)] bg-[var(--color-panel)] px-2 py-1 text-[11px] font-bold text-[var(--color-warn)]">
+            <span>ยังไม่ส่งลูกค้า</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className="rounded-[var(--radius-sm)] border border-[var(--color-warn)] bg-[var(--color-warn-soft)] px-2 py-1 text-[11px] font-black text-[var(--color-warn)] hover:bg-[var(--color-panel)]"
+                onClick={() => onUseDraft?.(message)}
+              >
+                ใช้ร่างนี้
+              </button>
+              {!customerSendEnabled ? (
+                <button
+                  type="button"
+                  disabled={guardBusy}
+                  className="rounded-[var(--radius-sm)] border border-[var(--color-live)] bg-[var(--color-live-soft)] px-2 py-1 text-[11px] font-black text-[var(--color-live)] hover:bg-[var(--color-panel)] disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={onToggleCustomerSend}
+                >
+                  เปิดส่งจริง
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
         {Array.isArray(message.attachments) && message.attachments.length > 0 ? (
           <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
             {message.attachments.map((attachment) => (

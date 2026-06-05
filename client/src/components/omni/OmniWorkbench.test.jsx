@@ -649,6 +649,36 @@ describe('OmniWorkbench', () => {
     expect(await screen.findByText('Draft only: ลูกค้ายังไม่เห็นข้อความจนกว่าจะเปิดส่งจริง')).toBeInTheDocument()
   })
 
+  it('puts visible actions on an AI draft-only bubble before customer send', async () => {
+    render(<OmniWorkbench />)
+    const draftBox = await screen.findByPlaceholderText(/พิมพ์ข้อความตอบลูกค้า/)
+
+    act(() => {
+      omniMock.subscribers.at(-1)?.({
+        pages: [{ id: 'page_annalynn', name: 'Anna Lynn', status: 'active' }],
+        platformAccounts: [{ id: 'acct_fb_annalynn', pageId: 'page_annalynn', platform: 'facebook' }],
+        threads: [{ id: 'thread_1', customerId: 'cust_1', pageId: 'page_annalynn', platform: 'facebook', status: 'draft_ready', intent: 'productImage', risk: 'medium' }],
+        messages: [
+          { id: 'msg_1', threadId: 'thread_1', direction: 'inbound', authorName: 'Facebook Customer', text: 'สนใจสินค้า', createdAt: '2026-06-05T12:20:00.000Z' },
+          { id: 'draft_ai_1', threadId: 'thread_1', direction: 'outbound', authorName: 'Anna Lynn AI', text: 'ขอบคุณที่สนใจ Amanda Jumpsuit ค่ะ', sourceRef: 'ai_reply_draft', deliveryStatus: 'draft_only', createdAt: '2026-06-05T12:21:00.000Z' },
+        ],
+        customers: [{ id: 'cust_1', displayName: 'Facebook Customer' }],
+        orders: [],
+        aiDecisions: [],
+        paymentRequests: [],
+        connectorHealth: [],
+        settings: { ai: { customerSendEnabled: false } },
+      })
+    })
+
+    expect(await screen.findByText('ยังไม่ส่งลูกค้า')).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: 'ใช้ร่างนี้' }))
+    expect(draftBox).toHaveValue('ขอบคุณที่สนใจ Amanda Jumpsuit ค่ะ')
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'เปิดส่งจริง' })[0])
+    expect(await screen.findByRole('switch', { name: /ส่งจริงเปิด/ })).toBeInTheDocument()
+  })
+
   it('sends a manual reply with one click after customer send is enabled', async () => {
     render(<OmniWorkbench />)
     const draftBox = await screen.findByPlaceholderText(/พิมพ์ข้อความตอบลูกค้า/)
@@ -1008,7 +1038,7 @@ describe('OmniWorkbench', () => {
     })
 
     expect(await screen.findByText('AI รออนุมัติ 1')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /เปิดเคสที่รออนุมัติ ลูกค้า A/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /ตรวจเคสที่รออนุมัติ ลูกค้า A/ })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /เปิดเคส ลูกค้า A/ })).not.toBeInTheDocument()
     expect(screen.getAllByText('ต้องอนุมัติ AI').length).toBeGreaterThan(0)
     await waitFor(() => {
@@ -1037,7 +1067,7 @@ describe('OmniWorkbench', () => {
     })
 
     expect(await screen.findByText('AI รออนุมัติ 1')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /เปิดเคสที่รออนุมัติ ลูกค้า A/ }))
+    fireEvent.click(screen.getByRole('button', { name: /ตรวจเคสที่รออนุมัติ ลูกค้า A/ }))
 
     expect(await screen.findByText('กล่องรวม')).toBeInTheDocument()
     expect(screen.getAllByText('ต้องอนุมัติ AI').length).toBeGreaterThan(0)
