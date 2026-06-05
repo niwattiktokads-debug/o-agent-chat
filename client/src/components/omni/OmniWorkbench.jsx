@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { fetchOmniSnapshot, loginOmniAccess, subscribeOmniSnapshots } from '../../lib/omniApi.js'
 import { autoSendStatus, filterThreads } from '../../lib/omniModel.js'
 import PageRail from './PageRail.jsx'
@@ -14,6 +14,16 @@ export const OMNI_OPERATION_MODES = [
   { id: 'report', label: 'รายงาน', shortLabel: 'Report' },
 ]
 
+const NOTIFICATION_SOUND_KEY = 'omni.notificationSoundEnabled'
+
+function initialNotificationSoundEnabled() {
+  try {
+    return window.localStorage?.getItem(NOTIFICATION_SOUND_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
 export default function OmniWorkbench({
   operationMode: controlledOperationMode,
   onOperationModeChange,
@@ -28,6 +38,10 @@ export default function OmniWorkbench({
   const [threadId, setThreadId] = useState(null)
   const [composerDraft, setComposerDraft] = useState(null)
   const [localOperationMode, setLocalOperationMode] = useState('chat')
+  const [notificationSoundEnabled, setNotificationSoundEnabled] = useState(initialNotificationSoundEnabled)
+  const audioContextRef = useRef(null)
+  const knownInboundMessageIdsRef = useRef(new Set())
+  const hasSeenInitialSnapshotRef = useRef(false)
   const operationMode = controlledOperationMode || localOperationMode
   const gridClass = operationMode === 'chat'
     ? showOperationRail
@@ -44,6 +58,51 @@ export default function OmniWorkbench({
     }
     setLocalOperationMode(nextMode)
   }
+
+  const playNotificationSound = useCallback(() => {
+    const AudioContextCtor = window.AudioContext || window.webkitAudioContext
+    if (!AudioContextCtor) return
+    const context = audioContextRef.current || new AudioContextCtor()
+    audioContextRef.current = context
+    context.resume?.()
+    const oscillator = context.createOscillator()
+    const gain = context.createGain()
+    oscillator.type = 'sine'
+    oscillator.frequency.value = 880
+    gain.gain.setValueAtTime(0.0001, context.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.18, context.currentTime + 0.02)
+    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.22)
+    oscillator.connect(gain)
+    gain.connect(context.destination)
+    oscillator.start(context.currentTime)
+    oscillator.stop(context.currentTime + 0.24)
+  }, [])
+
+  function toggleNotificationSound() {
+    setNotificationSoundEnabled((current) => {
+      const next = !current
+      try {
+        window.localStorage?.setItem(NOTIFICATION_SOUND_KEY, next ? '1' : '0')
+      } catch {
+        // Local storage can be unavailable in private or embedded browsers.
+      }
+      return next
+    })
+  }
+
+  useEffect(() => {
+    if (!snapshot) return
+    const inboundIds = new Set((snapshot.messages || [])
+      .filter((message) => message.direction === 'inbound')
+      .map((message) => message.id)
+      .filter(Boolean))
+    const hasNewInbound = [...inboundIds].some((id) => !knownInboundMessageIdsRef.current.has(id))
+    if (hasSeenInitialSnapshotRef.current && notificationSoundEnabled && hasNewInbound) {
+      playNotificationSound()
+    }
+    knownInboundMessageIdsRef.current = inboundIds
+    hasSeenInitialSnapshotRef.current = true
+  }, [notificationSoundEnabled, playNotificationSound, snapshot])
 
   const loadSnapshot = useCallback(async () => {
     setLoadError('')
@@ -142,6 +201,19 @@ export default function OmniWorkbench({
               <span className="rounded-[var(--radius-pill)] bg-[var(--color-live-soft)] px-2 py-1 font-semibold text-[var(--color-live)]">Webhook live</span>
               <span className="rounded-[var(--radius-pill)] bg-[var(--color-ai-soft)] px-2 py-1 font-semibold text-[var(--color-ai)]">AI auto-reply {activeAutoReplyPages}/{snapshot.pages.length}</span>
               <span className={`rounded-[var(--radius-pill)] px-2 py-1 font-semibold ${autoSend.active ? 'bg-[var(--color-live-soft)] text-[var(--color-live)]' : 'bg-[var(--color-warn-soft)] text-[var(--color-warn)]'}`}>{autoSend.label}</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={notificationSoundEnabled}
+                onClick={toggleNotificationSound}
+                className={`flex min-w-[104px] items-center justify-between gap-2 rounded-[var(--radius-pill)] border px-2 py-1 font-semibold transition ${notificationSoundEnabled ? 'border-[var(--color-live)] bg-[var(--color-live-soft)] text-[var(--color-live)]' : 'border-[var(--color-rule)] bg-[var(--color-panel-2)] text-[var(--color-ink-2)]'}`}
+                title={notificationSoundEnabled ? 'ปิดเสียงแจ้งเตือนข้อความเข้าใหม่' : 'เปิดเสียงแจ้งเตือนข้อความเข้าใหม่'}
+              >
+                <span>{notificationSoundEnabled ? 'เสียงเปิด' : 'เสียงปิด'}</span>
+                <span className={`relative h-4 w-7 rounded-full ${notificationSoundEnabled ? 'bg-[var(--color-live)]' : 'bg-[var(--color-muted)]'}`}>
+                  <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition ${notificationSoundEnabled ? 'left-3.5' : 'left-0.5'}`} />
+                </span>
+              </button>
             </div>
           </div>
         </header>

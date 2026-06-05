@@ -1,7 +1,11 @@
 import React from 'react'
-import { describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import OmniWorkbench from './OmniWorkbench.jsx'
+
+const omniMock = vi.hoisted(() => ({
+  subscribers: [],
+}))
 
 vi.mock('../../lib/omniApi.js', () => ({
   fetchOmniSnapshot: async () => ({
@@ -26,7 +30,12 @@ vi.mock('../../lib/omniApi.js', () => ({
     paymentRequests: [{ id: 'pay_1', threadId: 'thread_1', provider: 'promptpay', status: 'draft', amount: 729, currency: 'THB', approvalRequired: true }],
     connectorHealth: [{ id: 'health_meta', provider: 'meta', status: 'healthy' }],
   }),
-  subscribeOmniSnapshots: () => () => {},
+  subscribeOmniSnapshots: (callback) => {
+    omniMock.subscribers.push(callback)
+    return () => {
+      omniMock.subscribers = omniMock.subscribers.filter((item) => item !== callback)
+    }
+  },
   fetchConnectorHealth: async () => [{ provider: 'meta', status: 'healthy' }],
   fetchPaymentProviderHealth: async () => ({
     provider: 'meta_pay_kgp',
@@ -436,6 +445,12 @@ vi.mock('../../lib/omniApi.js', () => ({
 }))
 
 describe('OmniWorkbench', () => {
+  beforeEach(() => {
+    omniMock.subscribers = []
+    localStorage.clear()
+    vi.restoreAllMocks()
+  })
+
   it('renders inbox, AI panel, order desk, and payment desk without system tools in context', async () => {
     render(<OmniWorkbench />)
     expect(await screen.findByText('กล่องรวม')).toBeInTheDocument()
@@ -696,5 +711,85 @@ describe('OmniWorkbench', () => {
       expect(draftBox.value).toContain('สรุปยอดชำระค่ะ')
     })
     expect(draftBox.value).toContain('ยอดชำระ: THB 729')
+  })
+
+  it('plays notification sound for new inbound messages only while sound is enabled', async () => {
+    const oscillatorStart = vi.fn()
+    const oscillatorStop = vi.fn()
+    const connect = vi.fn()
+    const audioContext = {
+      currentTime: 10,
+      createOscillator: () => ({
+        type: '',
+        frequency: { value: 0 },
+        connect,
+        start: oscillatorStart,
+        stop: oscillatorStop,
+      }),
+      createGain: () => ({
+        gain: {
+          setValueAtTime: vi.fn(),
+          exponentialRampToValueAtTime: vi.fn(),
+        },
+        connect,
+      }),
+      destination: {},
+      resume: vi.fn(),
+    }
+    vi.stubGlobal('AudioContext', vi.fn(function FakeAudioContext() {
+      return audioContext
+    }))
+
+    render(<OmniWorkbench />)
+    const soundSwitch = await screen.findByRole('switch', { name: /เสียงปิด/ })
+
+    expect(oscillatorStart).not.toHaveBeenCalled()
+    fireEvent.click(soundSwitch)
+    expect(await screen.findByRole('switch', { name: /เสียงเปิด/ })).toBeInTheDocument()
+
+    act(() => {
+      omniMock.subscribers.at(-1)?.({
+        pages: [{ id: 'page_mankynd', name: 'MAN KYND', status: 'active' }],
+        platformAccounts: [{ id: 'acct_fb_mankynd', pageId: 'page_mankynd', platform: 'facebook' }],
+        threads: [{ id: 'thread_1', customerId: 'cust_1', pageId: 'page_mankynd', platform: 'facebook', status: 'open', intent: 'stock', risk: 'low', unreadCount: 2 }],
+        messages: [
+          { id: 'msg_1', threadId: 'thread_1', direction: 'inbound', authorName: 'ลูกค้า A', text: 'มีไซซ์ M สีดำไหม' },
+          { id: 'msg_2', threadId: 'thread_1', direction: 'inbound', authorName: 'ลูกค้า A', text: 'ยังอยู่ไหม' },
+        ],
+        customers: [{ id: 'cust_1', displayName: 'ลูกค้า A' }],
+        orders: [],
+        aiDecisions: [],
+        paymentRequests: [],
+        connectorHealth: [],
+      })
+    })
+
+    await waitFor(() => {
+      expect(oscillatorStart).toHaveBeenCalledTimes(1)
+    })
+
+    fireEvent.click(screen.getByRole('switch', { name: /เสียงเปิด/ }))
+    expect(await screen.findByRole('switch', { name: /เสียงปิด/ })).toBeInTheDocument()
+
+    act(() => {
+      omniMock.subscribers.at(-1)?.({
+        pages: [{ id: 'page_mankynd', name: 'MAN KYND', status: 'active' }],
+        platformAccounts: [{ id: 'acct_fb_mankynd', pageId: 'page_mankynd', platform: 'facebook' }],
+        threads: [{ id: 'thread_1', customerId: 'cust_1', pageId: 'page_mankynd', platform: 'facebook', status: 'open', intent: 'stock', risk: 'low', unreadCount: 3 }],
+        messages: [
+          { id: 'msg_1', threadId: 'thread_1', direction: 'inbound', authorName: 'ลูกค้า A', text: 'มีไซซ์ M สีดำไหม' },
+          { id: 'msg_2', threadId: 'thread_1', direction: 'inbound', authorName: 'ลูกค้า A', text: 'ยังอยู่ไหม' },
+          { id: 'msg_3', threadId: 'thread_1', direction: 'inbound', authorName: 'ลูกค้า A', text: 'ตอบหน่อย' },
+        ],
+        customers: [{ id: 'cust_1', displayName: 'ลูกค้า A' }],
+        orders: [],
+        aiDecisions: [],
+        paymentRequests: [],
+        connectorHealth: [],
+      })
+    })
+
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(oscillatorStart).toHaveBeenCalledTimes(1)
   })
 })
