@@ -22,6 +22,9 @@ export default function ContextPanel({ snapshot, thread, onSnapshot, workspaceId
   const [richMessageText, setRichMessageText] = useState('')
   const [richMessageBusy, setRichMessageBusy] = useState(false)
   const [richMessageStatus, setRichMessageStatus] = useState('')
+  const [sizeChartImageUrl, setSizeChartImageUrl] = useState('')
+  const [salesAssetsBusy, setSalesAssetsBusy] = useState(false)
+  const [salesAssetsStatus, setSalesAssetsStatus] = useState('')
 
   useEffect(() => {
     if (snapshot?.settings) setSettings(snapshot.settings)
@@ -30,6 +33,10 @@ export default function ContextPanel({ snapshot, thread, onSnapshot, workspaceId
   useEffect(() => {
     setRichMessageText(settings?.ai?.richMessage?.text || '')
   }, [settings?.ai?.richMessage?.text])
+
+  useEffect(() => {
+    setSizeChartImageUrl(settings?.ai?.salesAssets?.sizeChartImageUrl || '')
+  }, [settings?.ai?.salesAssets?.sizeChartImageUrl])
 
   useEffect(() => {
     let ignore = false
@@ -93,6 +100,37 @@ export default function ContextPanel({ snapshot, thread, onSnapshot, workspaceId
       setGuardError(error.message || 'rich_message_update_failed')
     } finally {
       setRichMessageBusy(false)
+    }
+  }
+
+  async function saveSalesAssets(enabled = true) {
+    if (!settings || salesAssetsBusy) return
+    const url = sizeChartImageUrl.trim()
+    setSalesAssetsBusy(true)
+    setSalesAssetsStatus('')
+    setGuardError('')
+    const nextSettings = {
+      ...settings,
+      ai: {
+        ...(settings.ai || {}),
+        salesAssets: {
+          ...(settings.ai?.salesAssets || {}),
+          enabled,
+          sizeChartImageUrl: enabled ? url : '',
+        },
+      },
+    }
+    try {
+      const result = await saveOmniSettings(nextSettings, { workspaceId: workspaceId || undefined })
+      setSettings(result.settings || nextSettings)
+      setSizeChartImageUrl(result.settings?.ai?.salesAssets?.sizeChartImageUrl || nextSettings.ai.salesAssets.sizeChartImageUrl)
+      const nextSnapshot = result.snapshot || (snapshot ? { ...snapshot, settings: result.settings || nextSettings } : null)
+      if (nextSnapshot) onSnapshot?.(nextSnapshot)
+      setSalesAssetsStatus(nextSettings.ai.salesAssets.enabled && nextSettings.ai.salesAssets.sizeChartImageUrl ? 'บันทึกรูปตารางไซซ์แล้ว' : 'ปิดรูปตารางไซซ์แล้ว')
+    } catch (error) {
+      setGuardError(error.message || 'sales_assets_update_failed')
+    } finally {
+      setSalesAssetsBusy(false)
     }
   }
 
@@ -178,6 +216,44 @@ export default function ContextPanel({ snapshot, thread, onSnapshot, workspaceId
                   ปิดหัวข้อด่วน
                 </button>
                 {richMessageStatus ? <span className="text-xs font-bold text-[var(--color-live)]">{richMessageStatus}</span> : null}
+              </div>
+            </div>
+            <div className="mt-3 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-bold text-[var(--color-ink)]">Carousel assets</h2>
+                  <p className="mt-1 text-xs font-semibold text-[var(--color-muted)]">รูปที่ AI แนบทันทีเมื่อรู้สินค้า/ไซซ์</p>
+                </div>
+                <span className={`rounded-[var(--radius-pill)] px-2 py-1 text-[11px] font-bold ${settings?.ai?.salesAssets?.enabled && settings?.ai?.salesAssets?.sizeChartImageUrl ? 'bg-[var(--color-live-soft)] text-[var(--color-live)]' : 'bg-[var(--color-panel)] text-[var(--color-muted)]'}`}>
+                  {settings?.ai?.salesAssets?.enabled && settings?.ai?.salesAssets?.sizeChartImageUrl ? 'เปิด' : 'ปิด'}
+                </span>
+              </div>
+              <label htmlFor="ai-size-chart-url" className="mt-3 block text-xs font-bold text-[var(--color-ink-2)]">ลิงก์รูปตารางไซซ์</label>
+              <input
+                id="ai-size-chart-url"
+                value={sizeChartImageUrl}
+                onChange={(event) => setSizeChartImageUrl(event.target.value)}
+                placeholder="https://..."
+                className="mt-2 w-full rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] p-3 text-sm font-semibold text-[var(--color-ink)] outline-none focus:border-[var(--color-accent)]"
+              />
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={!settings || salesAssetsBusy}
+                  onClick={() => saveSalesAssets(true)}
+                  className="rounded-[var(--radius-md)] bg-[var(--color-accent)] px-3 py-1.5 text-xs font-bold text-[var(--color-accent-ink)] disabled:opacity-50"
+                >
+                  {salesAssetsBusy ? 'กำลังบันทึก' : 'บันทึกรูปตารางไซซ์'}
+                </button>
+                <button
+                  type="button"
+                  disabled={!settings || salesAssetsBusy || !settings?.ai?.salesAssets?.sizeChartImageUrl}
+                  onClick={() => saveSalesAssets(false)}
+                  className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-1.5 text-xs font-bold text-[var(--color-ink-2)] disabled:opacity-50"
+                >
+                  ปิดรูปตารางไซซ์
+                </button>
+                {salesAssetsStatus ? <span className="text-xs font-bold text-[var(--color-live)]">{salesAssetsStatus}</span> : null}
               </div>
             </div>
           </section>

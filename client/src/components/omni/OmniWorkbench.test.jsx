@@ -314,7 +314,7 @@ vi.mock('../../lib/omniApi.js', () => ({
     report: { timezone: 'Asia/Bangkok' },
     orderDraft: { enabled: true, approvalRequired: true, createZortOrderOnApprove: true },
     orderAddressIntake: { enabled: true, createConfirmationDraft: true },
-    ai: { enabled: true, customerSendEnabled: false },
+    ai: { enabled: true, customerSendEnabled: false, salesAssets: { enabled: true, sizeChartImageUrl: '' } },
   }),
   saveOmniSettings: async (settings) => ({
     ok: true,
@@ -676,6 +676,17 @@ describe('OmniWorkbench', () => {
 
     expect(await screen.findByText('บันทึกหัวข้อด่วนแล้ว')).toBeInTheDocument()
     expect(richMessageInput).toHaveValue('6.6 ออกตัวแรงลดยกล้อ')
+  })
+
+  it('lets the operator save a size chart image URL for AI carousel replies', async () => {
+    render(<OmniWorkbench />)
+
+    const sizeChartInput = await screen.findByLabelText('ลิงก์รูปตารางไซซ์')
+    fireEvent.change(sizeChartInput, { target: { value: 'https://cdn.example/size-chart.jpg' } })
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึกรูปตารางไซซ์' }))
+
+    expect(await screen.findByText('บันทึกรูปตารางไซซ์แล้ว')).toBeInTheDocument()
+    expect(sizeChartInput).toHaveValue('https://cdn.example/size-chart.jpg')
   })
 
   it('shows sales context and places a suggested product image into the draft composer', async () => {
