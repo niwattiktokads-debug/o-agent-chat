@@ -13,6 +13,10 @@ const PAGE_AGENT_FALLBACKS = {
   page_mankynd: 'แอดมิน MAN KYND',
   page_des: 'แอดมินเพจเดส',
 }
+const PRODUCT_LOOKUP_GENERIC_TERMS = new Set([
+  'มี', 'ไหม', 'มั้ย', 'ของ', 'สินค้า', 'ราคา', 'เท่าไหร่', 'บาท', 'พร้อมส่ง', 'ส่ง', 'รูป', 'ภาพ', 'ขอดู',
+  'สนใจ', 'ตัวนี้', 'รุ่น', 'สี', 'ไซซ์', 'ไซส์', 'size', 'stock', 'price', 'photo', 'image',
+])
 
 function latestInboundMessage(thread, snapshot) {
   return (snapshot.messages || [])
@@ -135,6 +139,20 @@ function searchTerms(value) {
     .filter((term) => term.length >= 2)
 }
 
+function productIdentityTerms(value) {
+  const raw = String(value || '')
+  const latinTerms = [...new Set((raw.match(/[a-z][a-z0-9_-]{2,}/gi) || [])
+    .map(normalizeSearchText)
+    .filter((term) => term && !PRODUCT_LOOKUP_GENERIC_TERMS.has(term))
+    .filter((term) => !/^(s|m|l|xl|xxl|2xl|3xl|4xl|5xl)$/i.test(term))
+    .filter((term) => !detectColor(term)))]
+  if (latinTerms.length) return latinTerms
+  return [...new Set(searchTerms(raw)
+    .filter((term) => term && !PRODUCT_LOOKUP_GENERIC_TERMS.has(term))
+    .filter((term) => !/^(s|m|l|xl|xxl|2xl|3xl|4xl|5xl)$/i.test(term))
+    .filter((term) => !detectColor(term)))]
+}
+
 function moneyText(value) {
   const amount = Number(value)
   if (!Number.isFinite(amount) || amount <= 0) return ''
@@ -208,19 +226,20 @@ function shouldLookupEasyStoreLive(intent, productFacts) {
 
 function easyStoreSearchKeyword(thread, snapshot, originContext = null) {
   const latestInbound = latestInboundMessage(thread, snapshot)
+  const recentProductText = recentMessagesForThread(thread, snapshot)
+    .filter((message) => message.direction === 'inbound')
+    .map((message) => message.text)
+    .join(' ')
   const raw = [
     latestInbound?.text,
+    recentProductText,
     originProductLabel(originContext || {}),
     originContext?.productHint?.text,
     originContext?.live?.productName,
     originContext?.live?.sku,
   ].filter(Boolean).join(' ')
-  const generic = new Set([
-    'มี', 'ไหม', 'มั้ย', 'ของ', 'สินค้า', 'ราคา', 'เท่าไหร่', 'บาท', 'พร้อมส่ง', 'ส่ง', 'รูป', 'ภาพ', 'ขอดู',
-    'สนใจ', 'ตัวนี้', 'รุ่น', 'สี', 'ไซซ์', 'ไซส์', 'size', 'stock', 'price', 'photo', 'image',
-  ])
   const terms = searchTerms(raw)
-    .filter((term) => !generic.has(term))
+    .filter((term) => !PRODUCT_LOOKUP_GENERIC_TERMS.has(term))
     .filter((term) => !/^(s|m|l|xl|xxl|2xl|3xl|4xl|5xl)$/i.test(term))
   const keyword = terms.slice(0, 8).join(' ').trim()
   return keyword || ''
@@ -268,6 +287,16 @@ function scoreEasyStoreLiveProduct(row, { terms = [], color = '', size = '' } = 
   return score
 }
 
+function productMatchesIdentity(row, terms = []) {
+  if (!terms.length) return true
+  const haystack = [
+    row.sku,
+    row.productName,
+    row.productId,
+  ].map(normalizeSearchText).filter(Boolean).join(' ')
+  return terms.some((term) => haystack.includes(term))
+}
+
 async function productFactsFromEasyStoreLive({ easyStore, thread, snapshot, originContext, intent }) {
   if (!easyStore || typeof easyStore.searchProducts !== 'function' || !shouldLookupEasyStoreLive(intent, null)) return null
   const keyword = easyStoreSearchKeyword(thread, snapshot, originContext)
@@ -286,19 +315,31 @@ async function productFactsFromEasyStoreLive({ easyStore, thread, snapshot, orig
   if (!variants.length) return null
 
   const latestInbound = latestInboundMessage(thread, snapshot)
+  const recentInboundText = recentMessagesForThread(thread, snapshot)
+    .filter((message) => message.direction === 'inbound')
+    .map((message) => message.text)
+    .join(' ')
   const rawQuery = [
     latestInbound?.text,
+    recentInboundText,
     originProductLabel(originContext || {}),
     originContext?.productHint?.text,
     originContext?.live?.productName,
     originContext?.live?.sku,
   ].filter(Boolean).join(' ')
+  const requiredIdentityTerms = productIdentityTerms(rawQuery)
+  if (requiredIdentityTerms.length && !variants.some((row) => productMatchesIdentity(row, requiredIdentityTerms))) {
+    return { conflict: true, reason: 'easystore_live_product_conflict' }
+  }
+  const candidateVariants = requiredIdentityTerms.length
+    ? variants.filter((row) => productMatchesIdentity(row, requiredIdentityTerms))
+    : variants
   const scoreContext = {
     terms: searchTerms(rawQuery),
     color: detectColor(rawQuery),
     size: detectSize(rawQuery),
   }
-  const scored = variants
+  const scored = candidateVariants
     .map((row) => ({ row, score: scoreEasyStoreLiveProduct(row, scoreContext) }))
     .sort((a, b) => b.score - a.score || Number(b.row.available || 0) - Number(a.row.available || 0))
   if (!scored.length || scored[0].score <= 0) return null
@@ -329,30 +370,36 @@ async function productFactsFromEasyStoreLive({ easyStore, thread, snapshot, orig
 
 function productFactsText(productFacts) {
   if (!productFacts) return ''
+  const availableTotal = Number(productFacts.availableTotal || 0)
   const variantText = (productFacts.variants || [])
     .map((variant) => `${variant.sku || 'SKU'} คงเหลือ ${variant.available} ชิ้น${variant.price ? ` ราคา ${moneyText(variant.price)} บาท` : ''}`)
     .join(' · ')
   return [
     `สินค้า: ${productFacts.productName}`,
-    `พร้อมส่งรวม ${productFacts.availableTotal} ชิ้น`,
+    availableTotal > 0 ? `พร้อมส่งรวม ${availableTotal} ชิ้น` : 'สต็อกคงเหลือรวม 0 ชิ้น',
     productFacts.price ? `ราคาเริ่มต้น ${moneyText(productFacts.price)} บาท` : '',
     variantText ? `ตัวเลือก: ${variantText}` : '',
     productFacts.checkedAt ? `เช็กล่าสุด ${productFacts.checkedAt}` : '',
   ].filter(Boolean).join('\n')
 }
 
-function draftFromProductFacts(intent, productFacts) {
+function draftFromProductFacts(intent, productFacts, slots = {}) {
   if (!productFacts || !['stock', 'price'].includes(intent)) return ''
   const price = productFacts.price ? ` ราคาเริ่มต้น ${moneyText(productFacts.price)} บาท` : ''
   const available = Number(productFacts.availableTotal || 0)
-  const availableText = available > 0 ? `พร้อมส่งรวม ${available} ชิ้น` : 'ตอนนี้ยังไม่พบสต็อกพร้อมส่ง'
+  const availableText = available > 0 ? `พร้อมส่งรวม ${available} ชิ้น` : 'ตอนนี้ยังไม่พบสต็อกคงเหลือ'
+  const detail = [
+    productFacts.productName,
+    slots.color ? `สี${slots.color}` : '',
+    slots.size ? `ไซซ์ ${slots.size}` : '',
+  ].filter(Boolean).join(' ')
   const variantText = (productFacts.variants || [])
     .filter((variant) => variant.available > 0)
     .slice(0, 3)
     .map((variant) => `${variant.sku} ${variant.available} ชิ้น`)
     .join(', ')
   const optionText = variantText ? ` ตัวเลือกที่มี: ${variantText}` : ''
-  return `เช็กให้แล้วค่ะ ${productFacts.productName} ${availableText}${price}.${optionText} ถ้าต้องการตัวนี้ แจ้งสี/ไซซ์ที่ต้องการหรือให้แอดมินปิดออเดอร์ต่อในแชทได้เลยค่ะ`
+  return `เช็กให้แล้วค่ะ ${detail} ${availableText}${price}.${optionText} ถ้าต้องการตัวนี้ แจ้งสี/ไซซ์ที่ต้องการหรือให้แอดมินปิดออเดอร์ต่อในแชทได้เลยค่ะ`
 }
 
 function salesWorkflowDraft({ intent, originContext = null, productFacts = null, slots = {} }) {
@@ -365,10 +412,10 @@ function salesWorkflowDraft({ intent, originContext = null, productFacts = null,
 
   if (intent === 'stock') {
     if (hasSize && !hasColor) {
-      return `${size} ได้ค่ะ สนใจสีไหนคะ เดี๋ยวส่งภาพสีให้ดูพร้อมเช็กสต็อก ${productText} ให้เลยค่ะ`
+      return `${size} ได้ค่ะ สนใจสีไหนคะ จะได้เช็กสต็อก ${productText} ให้ตรงตัวค่ะ`
     }
     if (hasColor && !hasSize) {
-      return `สี${color} ได้ค่ะ เดี๋ยวส่งภาพสีนี้ให้ดูนะคะ สนใจไซซ์ไหนคะ จะได้เช็กสต็อกให้ตรงตัวค่ะ`
+      return `สี${color} ได้ค่ะ สนใจไซซ์ไหนคะ จะได้เช็กสต็อกให้ตรงตัวค่ะ`
     }
   }
 
@@ -379,7 +426,7 @@ function salesWorkflowDraft({ intent, originContext = null, productFacts = null,
       return `${productText} สี${color} ไซซ์ ${size}${price}${stock}`
     }
     const price = productFacts?.price ? `ราคาเริ่มต้น ${moneyText(productFacts.price)} บาทค่ะ` : 'เดี๋ยวเช็กราคาให้ค่ะ'
-    return `${productText} ${price} เดี๋ยวส่งภาพสินค้าให้ดูนะคะ สนใจสีหรือไซซ์ไหน เดี๋ยวเช็กพร้อมส่งให้ค่ะ`
+    return `${productText} ${price} สนใจสีหรือไซซ์ไหนคะ เดี๋ยวเช็กสต็อกให้ตรงตัวค่ะ`
   }
 
   if (intent === 'sizeAdvice') {
@@ -412,10 +459,10 @@ function salesWorkflowDraft({ intent, originContext = null, productFacts = null,
 }
 
 function draftForIntent(intent, originContext = null, productFacts = null, slots = {}) {
-  const productDraft = draftFromProductFacts(intent, productFacts)
+  const productDraft = draftFromProductFacts(intent, productFacts, slots)
   const workflowDraft = salesWorkflowDraft({ intent, originContext, productFacts, slots })
-  if (workflowDraft) return workflowDraft
   if (productDraft) return productDraft
+  if (workflowDraft) return workflowDraft
   const productLabel = originProductLabel(originContext || {})
   const isLive = originContext?.sourceType === 'live'
   if (intent === 'productImage') {
@@ -643,7 +690,11 @@ function hasStockAssertion(text) {
   return /(มีสินค้า|สินค้าพร้อม|พร้อมส่ง|ยังมี|มีของ|มีค่ะ|มีครับ)/i.test(String(text || ''))
 }
 
-function guardedDraftText(text, fallback, { trustedContext = '' } = {}) {
+function hasImagePromise(text) {
+  return /(เดี๋ยว|จะ|ขอ)?\s*(ส่ง|แนบ).*(รูป|ภาพ|photo|image|product card)|(รูป|ภาพ).*(ให้ดู)/i.test(String(text || ''))
+}
+
+function guardedDraftText(text, fallback, { trustedContext = '', productFacts = null } = {}) {
   const draft = String(text || '').replace(/\s+/g, ' ').trim()
   if (draft.length < 4) return fallback
   if (/^here is\b/i.test(draft) || /^```/.test(draft) || /"draftText"\s*:/.test(draft)) return fallback
@@ -651,6 +702,8 @@ function guardedDraftText(text, fallback, { trustedContext = '' } = {}) {
   if (/(และ|หรือ|กับ|ของ|ให้|ว่า|น้อง)$/i.test(draft)) return fallback
   if (hasTrustedPrice(draft) && !hasTrustedPrice(trustedContext)) return fallback
   if (hasStockAssertion(draft) && !/(พร้อมส่ง|มีสินค้า|stock|available|คงเหลือ|สต็อก)/i.test(trustedContext)) return fallback
+  if (Number(productFacts?.availableTotal || 0) <= 0 && hasStockAssertion(draft)) return fallback
+  if (hasImagePromise(draft) && !/(imageUrl|image_url|product card|attachment|แนบรูปจริง)/i.test(trustedContext)) return fallback
   return draft.slice(0, MAX_DRAFT_CHARS)
 }
 
@@ -800,7 +853,10 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
       productFactsText(baseDecision.productFacts),
       ...relevantKnowledge(baseDecision.intent, snapshot, { workspaceId: _oaiWsId }).map((source) => source.content || ''),
     ].join('\n')
-    const draftText = guardedDraftText(parsed?.draftText || text, baseDecision.draftText, { trustedContext })
+    const draftText = guardedDraftText(parsed?.draftText || text, baseDecision.draftText, {
+      trustedContext,
+      productFacts: baseDecision.productFacts,
+    })
     return {
       ...baseDecision,
       provider: 'openai',
@@ -872,7 +928,10 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
       ...relevantKnowledge(baseDecision.intent, snapshot, { workspaceId: _gemWsId }).map((source) => source.content || ''),
     ].join('\n')
     const draftText = finishedCleanly
-      ? guardedDraftText(parsed?.draftText || text, baseDecision.draftText, { trustedContext })
+      ? guardedDraftText(parsed?.draftText || text, baseDecision.draftText, {
+        trustedContext,
+        productFacts: baseDecision.productFacts,
+      })
       : baseDecision.draftText
 
     return {
@@ -901,15 +960,18 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
       const originContext = compactOriginContext(thread, recentMessagesForThread(thread, snapshot))
       let productFacts = productFactsForThread(thread, snapshot, originContext)
       let productFactsReason = productFacts ? 'product_inventory_fact_match' : ''
+      let liveLookupHoldReason = ''
       if (shouldLookupEasyStoreLive(intent, productFacts)) {
         const liveProductFacts = await productFactsFromEasyStoreLive({ easyStore, thread, snapshot, originContext, intent })
-        if (liveProductFacts) {
+        if (liveProductFacts?.conflict) {
+          liveLookupHoldReason = liveProductFacts.reason || 'easystore_live_product_conflict'
+        } else if (liveProductFacts) {
           productFacts = liveProductFacts
           productFactsReason = 'easystore_live_product_fact_match'
         }
       }
       const slots = latestSalesSlots(thread, snapshot, originContext)
-      const holdReason = shouldHoldForHumanReview({ intent, inboundText: inbound?.text, productFacts })
+      const holdReason = liveLookupHoldReason || shouldHoldForHumanReview({ intent, inboundText: inbound?.text, productFacts })
       const decisionAllowed = allowed && !holdReason
       const productSourceIds = productFacts
         ? (productFacts.variants || []).map((variant) => variant.id).filter(Boolean)
@@ -925,7 +987,9 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
         action: decisionAllowed ? 'draft_ready' : 'needs_approval',
         confidence: holdReason ? 0.58 : (intent === 'faq' ? 0.72 : 0.82),
         allowed: decisionAllowed,
-        draftText: draftForIntent(intent, originContext, productFacts, slots),
+        draftText: holdReason === 'easystore_live_product_conflict'
+          ? 'เดี๋ยวขอให้แอดมินตรวจรุ่นและสต็อกจาก EasyStore ให้ชัดก่อนนะคะ เพื่อไม่ให้แจ้งผิดรุ่นค่ะ'
+          : draftForIntent(intent, originContext, productFacts, slots),
         reason: productFacts
           ? productFactsReason
           : (holdReason || (allowed ? 'policy_allows_low_risk_intent' : 'guard_requires_human_or_more_data')),

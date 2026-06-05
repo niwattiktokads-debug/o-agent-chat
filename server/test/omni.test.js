@@ -1842,6 +1842,136 @@ test('AI reply engine answers from live EasyStore lookup when inventory snapshot
   assert.equal(decision.productFacts.source, 'easystore_live')
 })
 
+test('AI reply engine holds live EasyStore results that conflict with the product discussed in chat', async () => {
+  const seed = createOmniSeed()
+  seed.customers.push({ id: 'cust_molly_yellow_conflict', displayName: 'Molly Conflict Customer', matchConfidence: 1 })
+  seed.threads.push({
+    id: 'thread_molly_yellow_conflict',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'cust_molly_yellow_conflict',
+    status: 'open',
+    intent: 'unknown',
+    risk: 'low',
+    unreadCount: 1,
+    messageCount: 3,
+    updatedAt: '2026-06-05T04:08:22.441Z',
+  })
+  seed.messages.push(
+    {
+      id: 'msg_molly_context',
+      threadId: 'thread_molly_yellow_conflict',
+      direction: 'inbound',
+      authorName: 'Molly Conflict Customer',
+      text: 'รุ่นmollyนั',
+      createdAt: '2026-06-05T02:34:45.590Z',
+      providerMessageId: 'mid_molly_context',
+    },
+    {
+      id: 'msg_molly_context_reply',
+      threadId: 'thread_molly_yellow_conflict',
+      direction: 'outbound',
+      authorName: 'Anna Lynn AI',
+      text: 'รับทราบค่ะ รุ่น Molly รบกวนแจ้งสีและไซซ์ที่ต้องการด้วยนะคะ',
+      createdAt: '2026-06-05T02:34:48.311Z',
+      providerMessageId: 'mid_molly_context_reply',
+    },
+    {
+      id: 'msg_molly_yellow',
+      threadId: 'thread_molly_yellow_conflict',
+      direction: 'inbound',
+      authorName: 'Molly Conflict Customer',
+      text: 'มีเหลืองมีไหม',
+      createdAt: '2026-06-05T04:08:22.441Z',
+      providerMessageId: 'mid_molly_yellow',
+    },
+  )
+  const easyStore = {
+    async searchProducts() {
+      return {
+        ok: true,
+        products: [{
+          id: 'es_stock_16462394_76013298',
+          productId: '16462394',
+          variantId: '76013298',
+          sku: 'lorสีเหลืองM',
+          productName: 'Lorra เดรสเชิ้ต Polo คอปก แขนสั้น กระดุมหน้า 5 เม็ด',
+          color: 'เหลือง',
+          size: 'M',
+          sellPrice: 1290,
+          stock: 0,
+        }],
+      }
+    },
+  }
+  const service = createOmniService(seed)
+  const thread = service.getThread('thread_molly_yellow_conflict')
+  const ai = createAiReplyEngine({ provider: 'local_rules', model: 'test', easyStore })
+  const decision = await ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
+
+  assert.equal(decision.intent, 'stock')
+  assert.equal(decision.allowed, false)
+  assert.equal(decision.action, 'needs_approval')
+  assert.equal(decision.reason, 'easystore_live_product_conflict')
+  assert.equal(decision.productFacts, null)
+  assert.match(decision.draftText, /แอดมินตรวจ|ตรวจรุ่น|ตรวจสต็อก/)
+  assert.doesNotMatch(decision.draftText, /Lorra|พร้อมส่ง|ส่งภาพ/)
+})
+
+test('AI reply engine does not claim ready stock when live EasyStore stock is zero', async () => {
+  const seed = createOmniSeed()
+  seed.customers.push({ id: 'cust_molly_yellow_zero', displayName: 'Molly Zero Customer', matchConfidence: 1 })
+  seed.threads.push({
+    id: 'thread_molly_yellow_zero',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'cust_molly_yellow_zero',
+    status: 'open',
+    intent: 'unknown',
+    risk: 'low',
+    unreadCount: 1,
+    messageCount: 1,
+    updatedAt: '2026-06-05T04:09:22.441Z',
+  })
+  seed.messages.push({
+    id: 'msg_molly_yellow_zero',
+    threadId: 'thread_molly_yellow_zero',
+    direction: 'inbound',
+    authorName: 'Molly Zero Customer',
+    text: 'Molly สีเหลืองมีไหม',
+    createdAt: '2026-06-05T04:09:22.441Z',
+    providerMessageId: 'mid_molly_yellow_zero',
+  })
+  const easyStore = {
+    async searchProducts() {
+      return {
+        ok: true,
+        products: [{
+          id: 'es_live_molly_yellow_m',
+          productId: '16469999',
+          variantId: '76019998',
+          sku: 'MOLLY-YELLOW-M',
+          productName: 'Molly Dress',
+          color: 'เหลือง',
+          size: 'M',
+          sellPrice: 790,
+          stock: 0,
+        }],
+      }
+    },
+  }
+  const service = createOmniService(seed)
+  const thread = service.getThread('thread_molly_yellow_zero')
+  const ai = createAiReplyEngine({ provider: 'local_rules', model: 'test', easyStore })
+  const decision = await ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
+
+  assert.equal(decision.reason, 'easystore_live_product_fact_match')
+  assert.equal(decision.productFacts.availableTotal, 0)
+  assert.match(decision.draftText, /ยังไม่พบสต็อกคงเหลือ|หมด/)
+  assert.doesNotMatch(decision.draftText, /มีพร้อมส่ง|พร้อมส่งค่ะ|มีสินค้า|ยังมี/)
+  assert.doesNotMatch(decision.draftText, /ส่งภาพ/)
+})
+
 test('AI reply engine scores live EasyStore results instead of trusting the first product', async () => {
   const seed = createOmniSeed()
   seed.customers.push({ id: 'cust_lorra_live_score', displayName: 'Lorra Customer', matchConfidence: 1 })
@@ -2105,7 +2235,7 @@ test('AI reply engine applies sales workflow for size-only product questions', a
   assert.equal(decision.intent, 'stock')
   assert.match(decision.draftText, /XL/)
   assert.match(decision.draftText, /สนใจสีไหน/)
-  assert.match(decision.draftText, /ส่งภาพสี/)
+  assert.doesNotMatch(decision.draftText, /ส่งภาพ|แนบภาพ/)
   assert.doesNotMatch(decision.draftText, /รบกวนแจ้งอก|เอว|สะโพก/)
 })
 
@@ -2146,7 +2276,7 @@ test('AI reply engine applies sales workflow for color-only product questions', 
 
   assert.equal(decision.intent, 'stock')
   assert.match(decision.draftText, /สีดำ/)
-  assert.match(decision.draftText, /ส่งภาพ/)
+  assert.doesNotMatch(decision.draftText, /ส่งภาพ|แนบภาพ/)
   assert.match(decision.draftText, /สนใจไซซ์ไหน/)
 })
 
