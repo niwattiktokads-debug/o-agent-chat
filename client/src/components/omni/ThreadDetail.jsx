@@ -1,9 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { autoSendStatus, customerAvatarUrl, customerForThread, formatShortTime, initialsForName, pageForThread, sourceLabel, statusLabel } from '../../lib/omniModel.js'
-import { sendManualReply } from '../../lib/omniApi.js'
+import { saveOmniSettings, sendManualReply } from '../../lib/omniApi.js'
 
-export default function ThreadDetail({ snapshot, thread, onSnapshot, suggestedDraft }) {
+export default function ThreadDetail({ snapshot, thread, onSnapshot, suggestedDraft, workspaceId }) {
   const endRef = useRef(null)
+  const [guardBusy, setGuardBusy] = useState(false)
+  const [guardError, setGuardError] = useState('')
   const customer = customerForThread(snapshot?.customers, thread)
   const page = pageForThread(snapshot?.pages, thread)
   const messages = (snapshot?.messages || [])
@@ -13,6 +15,28 @@ export default function ThreadDetail({ snapshot, thread, onSnapshot, suggestedDr
   const autoSend = autoSendStatus(snapshot || {}, thread)
   const settings = snapshot?.settings || snapshot?.omniSettings?.find?.((item) => item.id === 'default')?.settings || {}
   const customerSendEnabled = settings?.ai?.customerSendEnabled === true
+
+  async function toggleCustomerSend() {
+    if (guardBusy) return
+    setGuardBusy(true)
+    setGuardError('')
+    const nextSettings = {
+      ...settings,
+      ai: {
+        ...(settings.ai || {}),
+        customerSendEnabled: settings.ai?.customerSendEnabled !== true,
+      },
+    }
+    try {
+      const result = await saveOmniSettings(nextSettings, { workspaceId: workspaceId || undefined })
+      const nextSnapshot = result.snapshot || (snapshot ? { ...snapshot, settings: result.settings || nextSettings } : null)
+      if (nextSnapshot) onSnapshot?.(nextSnapshot)
+    } catch (error) {
+      setGuardError(error.message || 'customer_send_guard_update_failed')
+    } finally {
+      setGuardBusy(false)
+    }
+  }
 
   useEffect(() => {
     if (typeof endRef.current?.scrollIntoView === 'function') {
@@ -35,12 +59,28 @@ export default function ThreadDetail({ snapshot, thread, onSnapshot, suggestedDr
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2 text-xs">
+          <div className="flex flex-wrap items-center justify-end gap-2 text-xs">
             <span className="rounded-[var(--radius-pill)] bg-[var(--color-live-soft)] px-2 py-1 font-semibold text-[var(--color-live)]">Webhook live</span>
             <span className="rounded-[var(--radius-pill)] bg-[var(--color-ai-soft)] px-2 py-1 font-semibold text-[var(--color-ai)]">AI draft on</span>
             <span className={`rounded-[var(--radius-pill)] px-2 py-1 font-semibold ${autoSend.active ? 'bg-[var(--color-live-soft)] text-[var(--color-live)]' : 'bg-[var(--color-warn-soft)] text-[var(--color-warn)]'}`}>{autoSend.label}</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={customerSendEnabled}
+              aria-label={`ส่งลูกค้าจริง ${customerSendEnabled ? 'ส่งจริงเปิด' : 'Draft only'}`}
+              disabled={guardBusy}
+              onClick={toggleCustomerSend}
+              className={`flex min-w-[150px] items-center justify-between gap-2 rounded-[var(--radius-md)] border px-2 py-1 font-bold transition disabled:cursor-not-allowed disabled:opacity-55 ${customerSendEnabled ? 'border-[var(--color-live)] bg-[var(--color-live-soft)] text-[var(--color-live)]' : 'border-[var(--color-warn)] bg-[var(--color-warn-soft)] text-[var(--color-warn)]'}`}
+              title={customerSendEnabled ? 'ปิดส่งลูกค้าจริงอัตโนมัติ' : 'เปิดส่งลูกค้าจริงอัตโนมัติ'}
+            >
+              <span>{customerSendEnabled ? 'ส่งจริงเปิด' : 'Draft only'}</span>
+              <span className={`relative h-5 w-9 rounded-full ${customerSendEnabled ? 'bg-[var(--color-live)]' : 'bg-[var(--color-warn)]'}`}>
+                <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition ${customerSendEnabled ? 'left-4' : 'left-0.5'}`} />
+              </span>
+            </button>
           </div>
         </div>
+        {guardError ? <div className="mt-2 rounded-[var(--radius-sm)] border border-[var(--color-danger)] bg-[var(--color-danger-soft)] px-2 py-1 text-[11px] font-semibold text-[var(--color-danger)]">{guardError}</div> : null}
       </div>
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[var(--color-paper)] p-5">
         {messages.map((message) => (
@@ -54,6 +94,8 @@ export default function ThreadDetail({ snapshot, thread, onSnapshot, suggestedDr
         onSnapshot={onSnapshot}
         suggestedDraft={suggestedDraft}
         customerSendEnabled={customerSendEnabled}
+        onToggleCustomerSend={toggleCustomerSend}
+        guardBusy={guardBusy}
       />
     </>
   )
@@ -75,16 +117,18 @@ function CustomerAvatar({ name, avatarUrl, size = 'md' }) {
 
 function MessageBubble({ message, pageName, customerName }) {
   const outbound = message.direction === 'outbound'
+  const draftOnly = outbound && message.deliveryStatus === 'draft_only'
   const author = outbound ? (message.authorName || pageName || 'Page') : (message.authorName === 'Facebook Customer' ? customerName || message.authorName : message.authorName)
   return (
     <article className={`flex ${outbound ? 'justify-end' : 'justify-start'}`}>
-      <div className={`max-w-[78%] rounded-[var(--radius-md)] border px-3 py-2 shadow-sm ${outbound ? 'border-[var(--color-accent)] bg-[var(--color-accent-soft)]' : 'border-[var(--color-rule)] bg-[var(--color-panel)]'}`}>
+      <div className={`max-w-[78%] rounded-[var(--radius-md)] border px-3 py-2 shadow-sm ${outbound ? (draftOnly ? 'border-[var(--color-warn)] bg-[var(--color-warn-soft)]' : 'border-[var(--color-accent)] bg-[var(--color-accent-soft)]') : 'border-[var(--color-rule)] bg-[var(--color-panel)]'}`}>
         <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold text-[var(--color-muted)]">
           <span>{author || 'Customer'}</span>
           <span className="tabular-nums">{formatShortTime(message.createdAt)}</span>
-          <span className="rounded-[var(--radius-pill)] bg-[var(--color-panel-2)] px-1.5 py-0.5 text-[10px]">{sourceLabel(message.sourceRef || '')}</span>
+          <span className="rounded-[var(--radius-pill)] bg-[var(--color-panel-2)] px-1.5 py-0.5 text-[10px]">{draftOnly ? 'AI draft-only' : sourceLabel(message.sourceRef || '')}</span>
         </div>
         <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-[var(--color-ink)]">{message.text || '[attachment]'}</p>
+        {draftOnly ? <div className="mt-2 rounded-[var(--radius-sm)] border border-[var(--color-warn)] bg-[var(--color-panel)] px-2 py-1 text-[11px] font-bold text-[var(--color-warn)]">ยังไม่ส่งลูกค้า · ต้องเปิด “ส่งจริงเปิด” แล้วกดส่งเอง</div> : null}
         {Array.isArray(message.attachments) && message.attachments.length > 0 ? (
           <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
             {message.attachments.map((attachment) => (
@@ -102,7 +146,7 @@ function MessageBubble({ message, pageName, customerName }) {
   )
 }
 
-function ManualReplyComposer({ thread, messagesSignature = '', onSnapshot, suggestedDraft, customerSendEnabled = false }) {
+function ManualReplyComposer({ thread, messagesSignature = '', onSnapshot, suggestedDraft, customerSendEnabled = false, onToggleCustomerSend, guardBusy = false }) {
   const [text, setText] = useState('')
   const [attachments, setAttachments] = useState([])
   const [busy, setBusy] = useState(false)
@@ -261,6 +305,19 @@ function ManualReplyComposer({ thread, messagesSignature = '', onSnapshot, sugge
         </div>
       </div>
       {error ? <p className="mt-2 text-xs text-rose-600">{error}</p> : null}
+      {!customerSendEnabled ? (
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-md)] border border-[var(--color-warn)] bg-[var(--color-warn-soft)] px-3 py-2 text-xs font-semibold text-[var(--color-warn)]">
+          <span>ตอนนี้ AI ทำได้แค่ draft ลูกค้ายังไม่เห็นข้อความตอบ</span>
+          <button
+            type="button"
+            disabled={guardBusy}
+            onClick={onToggleCustomerSend}
+            className="rounded-[var(--radius-md)] border border-[var(--color-warn)] bg-[var(--color-panel)] px-3 py-1 text-xs font-bold disabled:opacity-50"
+          >
+            เปิดส่งจริง
+          </button>
+        </div>
+      ) : null}
       <p className="mt-2 text-[11px] text-[var(--color-muted)]">
         ข้อความ รูป ลิงก์ ออเดอร์ และชำระเงินในกล่องนี้คือ draft ที่บอสเห็นก่อนส่งจริง
       </p>

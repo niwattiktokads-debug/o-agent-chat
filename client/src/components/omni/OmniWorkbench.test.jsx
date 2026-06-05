@@ -623,6 +623,13 @@ describe('OmniWorkbench', () => {
     expect(screen.queryByText('Draft ยังไม่ส่งออกไปหาลูกค้า ปุ่มส่งลูกค้าจริงใช้ได้เมื่อเปิด “ส่งจริงเปิด”')).not.toBeInTheDocument()
   })
 
+  it('shows the customer send guard in the active chat surface', async () => {
+    render(<OmniWorkbench />)
+
+    expect(await screen.findByRole('switch', { name: /ส่งลูกค้าจริง Draft only/ })).toBeInTheDocument()
+    expect(await screen.findByText('ตอนนี้ AI ทำได้แค่ draft ลูกค้ายังไม่เห็นข้อความตอบ')).toBeInTheDocument()
+  })
+
   it('sends a manual reply with one click after customer send is enabled', async () => {
     render(<OmniWorkbench />)
     const draftBox = await screen.findByPlaceholderText(/พิมพ์ข้อความตอบลูกค้า/)
