@@ -538,6 +538,36 @@ function recentMessagesForThread(thread, snapshot) {
     .slice(-8)
 }
 
+function normalizeRichMessage(input = {}) {
+  const richMessage = input?.ai?.richMessage || input?.richMessage || {}
+  const text = String(richMessage.text || '').replace(/\s+/g, ' ').trim()
+  return {
+    enabled: richMessage.enabled === true && Boolean(text),
+    text: text.slice(0, 180),
+  }
+}
+
+function shouldApplyRichMessage(thread, snapshot) {
+  return !(snapshot.messages || []).some((message) => (
+    message.threadId === thread.id &&
+    message.direction === 'outbound' &&
+    String(message.sourceRef || '') !== 'ai_follow_up_draft:customer_silence_7s'
+  ))
+}
+
+function richMessageForThread(thread, snapshot) {
+  const richMessage = normalizeRichMessage(snapshot.settings || {})
+  if (!richMessage.enabled || !shouldApplyRichMessage(thread, snapshot)) return null
+  return richMessage
+}
+
+function applyRichMessageToDraft(draftText, richMessage) {
+  const draft = String(draftText || '').trim()
+  if (!richMessage?.enabled) return draft
+  if (draft.includes(richMessage.text)) return draft
+  return `${richMessage.text} ${draft}`.trim().slice(0, MAX_DRAFT_CHARS)
+}
+
 function compactOriginContext(thread, messages = []) {
   const latestWithOrigin = messages
     .slice()
@@ -602,6 +632,7 @@ function buildCustomerReplyPrompt({ thread, snapshot, policy, baseDecision }) {
   const recentMessages = recentMessagesForThread(thread, snapshot)
   const origin = compactOriginContext(thread, recentMessages)
   const productFacts = baseDecision.productFacts || productFactsForThread(thread, snapshot, origin)
+  const richMessage = richMessageForThread(thread, snapshot)
   const messages = recentMessages
     .map((message) => `${message.direction === 'inbound' ? 'ลูกค้า' : 'เพจ'}: ${message.text}`)
     .join('\n')
@@ -632,6 +663,7 @@ function buildCustomerReplyPrompt({ thread, snapshot, policy, baseDecision }) {
       'ถ้าลูกค้าส่งรูป/สลิป/ภาพแล้วระบบไม่มั่นใจว่าเป็นอะไร ให้ส่งแอดมินตรวจและแจ้งเตือนกลุ่มบอสอุ้ยทาง LINE ห้ามเดาเอง',
       'ถ้ามี origin context จากแอด โพสต์ หรือไลฟ์ ให้ถือว่านั่นคือกรอบหลักของคำตอบ และอย่าถามกว้างซ้ำในสิ่งที่ origin ระบุแล้ว',
       'ถ้า origin ระบุสินค้า สี ไซซ์ SKU แคมเปญ โพสต์ หรือไลฟ์ ให้ตอบอิงสิ่งนั้นทันที และขอเพิ่มเฉพาะข้อมูลที่ยังขาดจริง',
+      'ถ้ามีหัวข้อด่วนจากบอส ให้ใส่ใจความนั้นในคำตอบแรกของลูกค้ารายนั้นอย่างเป็นธรรมชาติ และใช้เป็นกรอบแคมเปญหลักในการเสนอขาย',
       'ถ้า origin source_type เป็น live และยังไม่มีสินค้า/SKU ชัดเจน ให้ถามสั้น ๆ ว่าสนใจตัวไหนในไลฟ์ ชื่อ สี ไซซ์ หรือช่วงเวลาที่เห็น ห้ามขอรูปเป็นค่าเริ่มต้น',
       'ห้ามแต่งข้อมูลราคา สต็อก โปรโมชัน เลขพัสดุ วิธีคืนเงิน หรือคำมั่นสัญญาที่ไม่มีในข้อมูล',
       'ถ้าลูกค้าขอดูรูป/ภาพสินค้า แต่ระบบยังไม่มี attachment หรือ product card ในข้อมูล ให้ห้ามสัญญาว่าจะส่งรูปแล้วส่งข้อความเปล่า ให้ส่งต่อแอดมินแนบรูปจริงก่อน',
@@ -652,6 +684,9 @@ function buildCustomerReplyPrompt({ thread, snapshot, policy, baseDecision }) {
       '',
       'บริบทที่มาของลูกค้า:',
       originContextText(origin),
+      '',
+      'หัวข้อด่วนจากบอส:',
+      richMessage?.text || '(ไม่มีหัวข้อด่วน)',
       '',
       'บทสนทนาล่าสุด:',
       messages || '(ไม่มีข้อความ)',
@@ -805,7 +840,7 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
       ...baseDecision,
       provider: payload.provider || provider,
       model: payload.model || model,
-      draftText: String(payload.draftText || baseDecision.draftText || '').trim(),
+      draftText: applyRichMessageToDraft(String(payload.draftText || baseDecision.draftText || '').trim(), baseDecision.richMessage),
       confidence: Number(payload.confidence || baseDecision.confidence || 0.74),
       reason: payload.reason || baseDecision.reason,
     }
@@ -863,10 +898,10 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
       productFactsText(baseDecision.productFacts),
       ...relevantKnowledge(baseDecision.intent, snapshot, { workspaceId: _oaiWsId }).map((source) => source.content || ''),
     ].join('\n')
-    const draftText = guardedDraftText(parsed?.draftText || text, baseDecision.draftText, {
+    const draftText = applyRichMessageToDraft(guardedDraftText(parsed?.draftText || text, baseDecision.draftText, {
       trustedContext,
       productFacts: baseDecision.productFacts,
-    })
+    }), baseDecision.richMessage)
     return {
       ...baseDecision,
       provider: 'openai',
@@ -937,12 +972,12 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
       productFactsText(baseDecision.productFacts),
       ...relevantKnowledge(baseDecision.intent, snapshot, { workspaceId: _gemWsId }).map((source) => source.content || ''),
     ].join('\n')
-    const draftText = finishedCleanly
+    const draftText = applyRichMessageToDraft(finishedCleanly
       ? guardedDraftText(parsed?.draftText || text, baseDecision.draftText, {
         trustedContext,
         productFacts: baseDecision.productFacts,
       })
-      : baseDecision.draftText
+      : baseDecision.draftText, baseDecision.richMessage)
 
     return {
       ...baseDecision,
@@ -986,6 +1021,10 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
       const productSourceIds = productFacts
         ? (productFacts.variants || []).map((variant) => variant.id).filter(Boolean)
         : []
+      const richMessage = richMessageForThread(thread, snapshot)
+      const draftText = holdReason === 'easystore_live_product_conflict'
+        ? 'เดี๋ยวขอให้แอดมินตรวจรุ่นและสต็อกจาก EasyStore ให้ชัดก่อนนะคะ เพื่อไม่ให้แจ้งผิดรุ่นค่ะ'
+        : draftForIntent(intent, originContext, productFacts, slots)
 
       const baseDecision = {
         ok: true,
@@ -997,9 +1036,7 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
         action: decisionAllowed ? 'draft_ready' : 'needs_approval',
         confidence: holdReason ? 0.58 : (intent === 'faq' ? 0.72 : 0.82),
         allowed: decisionAllowed,
-        draftText: holdReason === 'easystore_live_product_conflict'
-          ? 'เดี๋ยวขอให้แอดมินตรวจรุ่นและสต็อกจาก EasyStore ให้ชัดก่อนนะคะ เพื่อไม่ให้แจ้งผิดรุ่นค่ะ'
-          : draftForIntent(intent, originContext, productFacts, slots),
+        draftText: applyRichMessageToDraft(draftText, richMessage),
         reason: productFacts
           ? productFactsReason
           : (holdReason || (allowed ? 'policy_allows_low_risk_intent' : 'guard_requires_human_or_more_data')),
@@ -1008,6 +1045,7 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
         originContext,
         productFacts,
         salesSlots: slots,
+        richMessage: richMessage?.enabled ? richMessage : null,
       }
 
       if (provider === 'local_rules') return baseDecision

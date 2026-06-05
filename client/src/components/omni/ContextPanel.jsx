@@ -19,10 +19,17 @@ export default function ContextPanel({ snapshot, thread, onSnapshot, workspaceId
   const [settings, setSettings] = useState(snapshot?.settings || null)
   const [guardBusy, setGuardBusy] = useState(false)
   const [guardError, setGuardError] = useState('')
+  const [richMessageText, setRichMessageText] = useState('')
+  const [richMessageBusy, setRichMessageBusy] = useState(false)
+  const [richMessageStatus, setRichMessageStatus] = useState('')
 
   useEffect(() => {
     if (snapshot?.settings) setSettings(snapshot.settings)
   }, [snapshot?.settings])
+
+  useEffect(() => {
+    setRichMessageText(settings?.ai?.richMessage?.text || '')
+  }, [settings?.ai?.richMessage?.text])
 
   useEffect(() => {
     let ignore = false
@@ -56,6 +63,36 @@ export default function ContextPanel({ snapshot, thread, onSnapshot, workspaceId
       setGuardError(error.message || 'customer_send_guard_update_failed')
     } finally {
       setGuardBusy(false)
+    }
+  }
+
+  async function saveRichMessage(enabled = true) {
+    if (!settings || richMessageBusy) return
+    const text = richMessageText.replace(/\s+/g, ' ').trim()
+    setRichMessageBusy(true)
+    setRichMessageStatus('')
+    setGuardError('')
+    const nextSettings = {
+      ...settings,
+      ai: {
+        ...(settings.ai || {}),
+        richMessage: {
+          enabled: enabled && Boolean(text),
+          text: enabled ? text : '',
+        },
+      },
+    }
+    try {
+      const result = await saveOmniSettings(nextSettings, { workspaceId: workspaceId || undefined })
+      setSettings(result.settings || nextSettings)
+      setRichMessageText(result.settings?.ai?.richMessage?.text || nextSettings.ai.richMessage.text)
+      const nextSnapshot = result.snapshot || (snapshot ? { ...snapshot, settings: result.settings || nextSettings } : null)
+      if (nextSnapshot) onSnapshot?.(nextSnapshot)
+      setRichMessageStatus(nextSettings.ai.richMessage.enabled ? 'บันทึกหัวข้อด่วนแล้ว' : 'ปิดหัวข้อด่วนแล้ว')
+    } catch (error) {
+      setGuardError(error.message || 'rich_message_update_failed')
+    } finally {
+      setRichMessageBusy(false)
     }
   }
 
@@ -100,7 +137,53 @@ export default function ContextPanel({ snapshot, thread, onSnapshot, workspaceId
           ))}
         </div>
       </div>
-      {tab === 'ai' ? <AiDecisionPanel snapshot={panelSnapshot} thread={thread} onDrafted={handlePanelSnapshot} onUseDraft={onUseDraft} /> : null}
+      {tab === 'ai' ? (
+        <>
+          <section className="border-b border-[var(--color-rule)] p-4">
+            <div className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-bold text-[var(--color-ink)]">Rich message</h2>
+                  <p className="mt-1 text-xs font-semibold text-[var(--color-muted)]">หัวข้อด่วนที่ AI ต้องย้ำในคำตอบแรก</p>
+                </div>
+                <span className={`rounded-[var(--radius-pill)] px-2 py-1 text-[11px] font-bold ${settings?.ai?.richMessage?.enabled ? 'bg-[var(--color-live-soft)] text-[var(--color-live)]' : 'bg-[var(--color-panel)] text-[var(--color-muted)]'}`}>
+                  {settings?.ai?.richMessage?.enabled ? 'เปิด' : 'ปิด'}
+                </span>
+              </div>
+              <label htmlFor="ai-rich-message" className="mt-3 block text-xs font-bold text-[var(--color-ink-2)]">หัวข้อด่วนให้ AI ย้ำครั้งแรก</label>
+              <textarea
+                id="ai-rich-message"
+                value={richMessageText}
+                maxLength={180}
+                rows={3}
+                onChange={(event) => setRichMessageText(event.target.value)}
+                placeholder="เช่น 6.6 ออกตัวแรงลดยกล้อ"
+                className="mt-2 min-h-[86px] w-full resize-none rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] p-3 text-sm font-semibold text-[var(--color-ink)] outline-none focus:border-[var(--color-accent)]"
+              />
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={!settings || richMessageBusy}
+                  onClick={() => saveRichMessage(true)}
+                  className="rounded-[var(--radius-md)] bg-[var(--color-accent)] px-3 py-1.5 text-xs font-bold text-[var(--color-accent-ink)] disabled:opacity-50"
+                >
+                  {richMessageBusy ? 'กำลังบันทึก' : 'บันทึกหัวข้อด่วน'}
+                </button>
+                <button
+                  type="button"
+                  disabled={!settings || richMessageBusy || !settings?.ai?.richMessage?.enabled}
+                  onClick={() => saveRichMessage(false)}
+                  className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-1.5 text-xs font-bold text-[var(--color-ink-2)] disabled:opacity-50"
+                >
+                  ปิดหัวข้อด่วน
+                </button>
+                {richMessageStatus ? <span className="text-xs font-bold text-[var(--color-live)]">{richMessageStatus}</span> : null}
+              </div>
+            </div>
+          </section>
+          <AiDecisionPanel snapshot={panelSnapshot} thread={thread} onDrafted={handlePanelSnapshot} onUseDraft={onUseDraft} />
+        </>
+      ) : null}
       {tab === 'sales' ? <SalesContextPanel thread={thread} onUseDraft={onUseDraft} /> : null}
       {tab === 'profiles' ? <ProfilePanel snapshot={panelSnapshot} thread={thread} /> : null}
       {tab === 'orders' ? <OrderDesk snapshot={panelSnapshot} thread={thread} onSnapshot={handlePanelSnapshot} workspaceId={workspaceId} onUseDraft={onUseDraft} /> : null}

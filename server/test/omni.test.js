@@ -910,6 +910,56 @@ test('AI reply engine prioritizes Boss sales workflow knowledge when it matches 
   assert.equal(decision.sourceIds.includes('ks_annalynn_sales_workflow_v1'), true)
 })
 
+test('AI reply engine adds rich message campaign brief to the first customer reply only', async () => {
+  const seed = createOmniSeed()
+  seed.omniSettings[0].settings.ai.richMessage = {
+    enabled: true,
+    text: '6.6 ออกตัวแรงลดยกล้อ',
+  }
+  seed.customers.push({ id: 'cust_rich_campaign', displayName: 'Campaign Customer', matchConfidence: 1 })
+  seed.threads.push({
+    id: 'thread_rich_campaign',
+    pageId: 'page_annalynn',
+    platform: 'facebook_comment',
+    customerId: 'cust_rich_campaign',
+    status: 'open',
+    intent: 'unknown',
+    risk: 'low',
+    unreadCount: 1,
+    messageCount: 1,
+    updatedAt: '2026-06-05T05:05:00.000Z',
+  })
+  seed.messages.push({
+    id: 'msg_rich_campaign',
+    threadId: 'thread_rich_campaign',
+    direction: 'inbound',
+    authorName: 'Campaign Customer',
+    text: 'ราคาเท่าไหร่',
+    createdAt: '2026-06-05T05:05:00.000Z',
+  })
+  const service = createOmniService(seed)
+  const thread = service.getThread('thread_rich_campaign')
+  const ai = createAiReplyEngine({ provider: 'local_rules', model: 'test' })
+  const snapshot = service.snapshot()
+  snapshot.settings = service.getSettingsForThread(thread.id)
+
+  const firstDecision = await ai.draft({ thread, snapshot, policy: service.getPolicyForThread(thread) })
+
+  assert.match(firstDecision.draftText, /6\.6 ออกตัวแรงลดยกล้อ/)
+
+  snapshot.messages.push({
+    id: 'msg_rich_campaign_outbound',
+    threadId: 'thread_rich_campaign',
+    direction: 'outbound',
+    authorName: 'Anna Lynn AI',
+    text: firstDecision.draftText,
+    createdAt: '2026-06-05T05:05:05.000Z',
+  })
+  const secondDecision = await ai.draft({ thread, snapshot, policy: service.getPolicyForThread(thread) })
+
+  assert.doesNotMatch(secondDecision.draftText, /6\.6 ออกตัวแรงลดยกล้อ/)
+})
+
 test('retention route dry-runs chat cleanup by default', async () => {
   const seed = createOmniSeed()
   seed.messages = [

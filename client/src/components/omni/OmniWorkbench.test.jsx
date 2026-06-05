@@ -667,6 +667,17 @@ describe('OmniWorkbench', () => {
     expect(await screen.findByRole('button', { name: 'วางในช่องตอบ' })).toBeInTheDocument()
   })
 
+  it('lets the operator save a rich message campaign brief from the AI context tab', async () => {
+    render(<OmniWorkbench />)
+
+    const richMessageInput = await screen.findByLabelText('หัวข้อด่วนให้ AI ย้ำครั้งแรก')
+    fireEvent.change(richMessageInput, { target: { value: '6.6 ออกตัวแรงลดยกล้อ' } })
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึกหัวข้อด่วน' }))
+
+    expect(await screen.findByText('บันทึกหัวข้อด่วนแล้ว')).toBeInTheDocument()
+    expect(richMessageInput).toHaveValue('6.6 ออกตัวแรงลดยกล้อ')
+  })
+
   it('shows sales context and places a suggested product image into the draft composer', async () => {
     render(<OmniWorkbench />)
     const draftBox = await screen.findByPlaceholderText(/พิมพ์ข้อความตอบลูกค้า/)

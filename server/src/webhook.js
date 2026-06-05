@@ -568,7 +568,7 @@ async function draftThreadReply({ omni, ai, threadId, send = false, sendReply = 
   if (wsSettings?.ai?.enabled === false) {
     return { ok: true, threadId, sent: false, sendSkipped: 'ai_disabled_for_workspace' }
   }
-  const snapshot = omni.snapshot()
+  const snapshot = { ...omni.snapshot(), settings: wsSettings }
   const policy = omni.getPolicyForThread(thread)
   let decision = recoverAllowedFallbackDecision(await ai.draft({ thread, snapshot, policy }))
   if (!decision.ok) return decision

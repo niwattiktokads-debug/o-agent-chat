@@ -455,7 +455,7 @@ export function mountRoutes(app, hub, room, options = {}) {
     if (!thread) return res.status(404).json({ ok: false, error: 'thread_not_found' })
     const settings = omni.getSettingsForThread(req.params.threadId)
     if (settings.ai?.enabled === false) return res.status(409).json({ ok: false, error: 'ai_disabled' })
-    const snapshot = omni.snapshot()
+    const snapshot = { ...omni.snapshot(), settings }
     const policy = omni.getPolicyForThread(thread)
     const decision = await ai.draft({ thread, snapshot, policy })
     if (!decision.ok) return res.status(400).json(decision)
