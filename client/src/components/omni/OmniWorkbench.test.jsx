@@ -15,9 +15,12 @@ vi.mock('../../lib/omniApi.js', () => ({
       { id: 'acct_tt_shop', pageId: 'page_annalynn_tiktok', platform: 'tiktok' },
       { id: 'acct_fb_vz', pageId: 'page_fb_112154661515664', platform: 'facebook' },
     ],
-    threads: [{ id: 'thread_1', pageId: 'page_mankynd', platform: 'facebook', status: 'draft_ready', intent: 'stock', risk: 'low' }],
+    threads: [{ id: 'thread_1', customerId: 'cust_1', pageId: 'page_mankynd', platform: 'facebook', status: 'draft_ready', intent: 'stock', risk: 'low' }],
     messages: [{ id: 'msg_1', threadId: 'thread_1', direction: 'inbound', authorName: 'ลูกค้า A', text: 'มีไซซ์ M สีดำไหม' }],
-    customers: [{ id: 'cust_1', displayName: 'ลูกค้า A' }],
+    customers: [
+      { id: 'cust_1', displayName: 'ลูกค้า A', providerCustomerId: 'fb_customer_a' },
+      { id: 'cust_other', displayName: 'ลูกค้า B', providerCustomerId: 'fb_customer_b' },
+    ],
     orders: [{ id: 'tt_order_1', customerId: 'tt_customer_1', platform: 'tiktok', providerOrderId: '1', status: 'AWAITING_COLLECTION', total: 841.5, currency: 'THB' }],
     aiDecisions: [{ id: 'decision_1', threadId: 'thread_1', confidence: 0.94, action: 'draft_ready' }],
     paymentRequests: [{ id: 'pay_1', threadId: 'thread_1', provider: 'promptpay', status: 'draft', amount: 729, currency: 'THB', approvalRequired: true }],
@@ -47,7 +50,7 @@ vi.mock('../../lib/omniApi.js', () => ({
     snapshot: {
       pages: [{ id: 'page_mankynd', name: 'MAN KYND', status: 'active' }],
       platformAccounts: [{ id: 'acct_fb_mankynd', pageId: 'page_mankynd', platform: 'facebook' }],
-      threads: [{ id: 'thread_1', pageId: 'page_mankynd', platform: 'facebook', status: 'draft_ready', intent: 'stock', risk: 'low' }],
+      threads: [{ id: 'thread_1', customerId: 'cust_1', pageId: 'page_mankynd', platform: 'facebook', status: 'draft_ready', intent: 'stock', risk: 'low' }],
       messages: [{ id: 'msg_1', threadId: 'thread_1', direction: 'inbound', authorName: 'ลูกค้า A', text: 'มีไซซ์ M สีดำไหม' }],
       customers: [{ id: 'cust_1', displayName: 'ลูกค้า A' }],
       orders: [],
@@ -107,7 +110,7 @@ vi.mock('../../lib/omniApi.js', () => ({
     snapshot: {
       pages: [{ id: 'page_mankynd', name: 'MAN KYND', status: 'active' }],
       platformAccounts: [{ id: 'acct_fb_mankynd', pageId: 'page_mankynd', platform: 'facebook' }],
-      threads: [{ id: 'thread_1', pageId: 'page_mankynd', platform: 'facebook', status: 'draft_ready', intent: 'stock', risk: 'low' }],
+      threads: [{ id: 'thread_1', customerId: 'cust_1', pageId: 'page_mankynd', platform: 'facebook', status: 'draft_ready', intent: 'stock', risk: 'low' }],
       messages: [{ id: 'msg_1', threadId: 'thread_1', direction: 'inbound', authorName: 'ลูกค้า A', text: 'มีไซซ์ M สีดำไหม' }],
       customers: [{ id: 'cust_1', displayName: 'ลูกค้า A' }],
       orders: [],
@@ -118,7 +121,7 @@ vi.mock('../../lib/omniApi.js', () => ({
   }),
   fetchSalesContext: async () => ({
     ok: true,
-    thread: { id: 'thread_1', pageId: 'page_mankynd', platform: 'facebook', status: 'draft_ready' },
+    thread: { id: 'thread_1', customerId: 'cust_1', pageId: 'page_mankynd', platform: 'facebook', status: 'draft_ready' },
     customer: {
       match: { safeToUsePrivateData: true, confidence: 0.98, basis: ['same_customer_id'], linkedOrderCount: 1 },
       memory: {
@@ -160,7 +163,7 @@ vi.mock('../../lib/omniApi.js', () => ({
     snapshot: {
       pages: [{ id: 'page_mankynd', name: 'MAN KYND', status: 'active' }],
       platformAccounts: [{ id: 'acct_fb_mankynd', pageId: 'page_mankynd', platform: 'facebook' }],
-      threads: [{ id: 'thread_1', pageId: 'page_mankynd', platform: 'facebook', status: 'draft_ready', intent: 'stock', risk: 'low' }],
+      threads: [{ id: 'thread_1', customerId: 'cust_1', pageId: 'page_mankynd', platform: 'facebook', status: 'draft_ready', intent: 'stock', risk: 'low' }],
       messages: [
         { id: 'msg_1', threadId: 'thread_1', direction: 'inbound', authorName: 'ลูกค้า A', text: 'มีไซซ์ M สีดำไหม' },
         { id: 'draft_1', threadId: 'thread_1', direction: 'outbound', authorName: draft.authorName, text: draft.text, sourceRef: 'manual_draft', createdAt: '2026-05-24T00:00:00.000Z' },
@@ -188,7 +191,7 @@ vi.mock('../../lib/omniApi.js', () => ({
     snapshot: {
       pages: [{ id: 'page_mankynd', name: 'MAN KYND', status: 'active' }],
       platformAccounts: [{ id: 'acct_fb_mankynd', pageId: 'page_mankynd', platform: 'facebook' }],
-      threads: [{ id: 'thread_1', pageId: 'page_mankynd', platform: 'facebook', status: 'auto_sent', intent: 'stock', risk: 'low' }],
+      threads: [{ id: 'thread_1', customerId: 'cust_1', pageId: 'page_mankynd', platform: 'facebook', status: 'auto_sent', intent: 'stock', risk: 'low' }],
       messages: [
         { id: 'msg_1', threadId: 'thread_1', direction: 'inbound', authorName: 'ลูกค้า A', text: 'มีไซซ์ M สีดำไหม' },
         { id: 'sent_1', threadId: 'thread_1', direction: 'outbound', authorName: draft.authorName, text: draft.text, attachments: draft.attachments || [], sourceRef: 'manual_send:man_kynd', createdAt: '2026-05-24T00:01:00.000Z' },
@@ -217,7 +220,7 @@ vi.mock('../../lib/omniApi.js', () => ({
     snapshot: {
       pages: [{ id: 'page_mankynd', name: 'MAN KYND', status: 'active' }],
       platformAccounts: [{ id: 'acct_fb_mankynd', pageId: 'page_mankynd', platform: 'facebook' }],
-      threads: [{ id: 'thread_1', pageId: 'page_mankynd', platform: 'facebook', status: 'draft_ready', intent: 'stock', risk: 'low' }],
+      threads: [{ id: 'thread_1', customerId: 'cust_1', pageId: 'page_mankynd', platform: 'facebook', status: 'draft_ready', intent: 'stock', risk: 'low' }],
       messages: [
         { id: 'msg_1', threadId: 'thread_1', direction: 'inbound', authorName: 'ลูกค้า A', text: 'มีไซซ์ M สีดำไหม' },
         {
@@ -244,7 +247,7 @@ vi.mock('../../lib/omniApi.js', () => ({
     snapshot: {
       pages: [{ id: pageId, name: 'MAN KYND', status: 'active', autoReplyEnabled: enabled }],
       platformAccounts: [{ id: 'acct_fb_mankynd', pageId, platform: 'facebook' }],
-      threads: [{ id: 'thread_1', pageId, platform: 'facebook', status: 'draft_ready', intent: 'stock', risk: 'low' }],
+      threads: [{ id: 'thread_1', customerId: 'cust_1', pageId, platform: 'facebook', status: 'draft_ready', intent: 'stock', risk: 'low' }],
       messages: [{ id: 'msg_1', threadId: 'thread_1', direction: 'inbound', authorName: 'ลูกค้า A', text: 'มีไซซ์ M สีดำไหม' }],
       customers: [{ id: 'cust_1', displayName: 'ลูกค้า A' }],
       orders: [],
@@ -264,7 +267,7 @@ vi.mock('../../lib/omniApi.js', () => ({
     snapshot: {
       pages: [{ id: 'page_mankynd', name: 'MAN KYND', status: 'active' }],
       platformAccounts: [{ id: 'acct_fb_mankynd', pageId: 'page_mankynd', platform: 'facebook' }],
-      threads: [{ id: 'thread_1', pageId: 'page_mankynd', platform: 'facebook', status: 'draft_ready', intent: 'stock', risk: 'low' }],
+      threads: [{ id: 'thread_1', customerId: 'cust_1', pageId: 'page_mankynd', platform: 'facebook', status: 'draft_ready', intent: 'stock', risk: 'low' }],
       messages: [{ id: 'msg_1', threadId: 'thread_1', direction: 'inbound', authorName: 'ลูกค้า A', text: 'มีไซซ์ M สีดำไหม' }],
       customers: [{ id: 'cust_1', displayName: 'ลูกค้า A' }],
       orders: [{ id: 'order_draft_1', customerId: 'cust_1', platform: 'facebook', status: 'draft', totalAmount: 1180, items: [{ sku: 'BLACK-M', quantity: 2 }] }],
@@ -372,7 +375,7 @@ vi.mock('../../lib/omniApi.js', () => ({
     snapshot: {
       pages: [{ id: 'page_mankynd', name: 'MAN KYND', status: 'active' }],
       platformAccounts: [{ id: 'acct_fb_mankynd', pageId: 'page_mankynd', platform: 'facebook' }],
-      threads: [{ id: 'thread_1', pageId: 'page_mankynd', platform: 'facebook', status: 'draft_ready', intent: 'stock', risk: 'low' }],
+      threads: [{ id: 'thread_1', customerId: 'cust_1', pageId: 'page_mankynd', platform: 'facebook', status: 'draft_ready', intent: 'stock', risk: 'low' }],
       messages: [
         { id: 'msg_1', threadId: 'thread_1', direction: 'inbound', authorName: 'ลูกค้า A', text: 'มีไซซ์ M สีดำไหม' },
         { id: 'draft_address_confirm', threadId: 'thread_1', direction: 'outbound', authorName: 'AI', text: 'รบกวนตรวจสอบที่อยู่จัดส่งนี้ให้หน่อยค่ะ', sourceRef: 'ai_address_confirmation_draft' },
@@ -401,7 +404,7 @@ vi.mock('../../lib/omniApi.js', () => ({
     snapshot: {
       pages: [{ id: 'page_mankynd', name: 'MAN KYND', status: 'active' }],
       platformAccounts: [{ id: 'acct_fb_mankynd', pageId: 'page_mankynd', platform: 'facebook' }],
-      threads: [{ id: 'thread_1', pageId: 'page_mankynd', platform: 'facebook', status: 'draft_ready', intent: 'stock', risk: 'low' }],
+      threads: [{ id: 'thread_1', customerId: 'cust_1', pageId: 'page_mankynd', platform: 'facebook', status: 'draft_ready', intent: 'stock', risk: 'low' }],
       messages: [{ id: 'msg_1', threadId: 'thread_1', direction: 'inbound', authorName: 'ลูกค้า A', text: 'มีไซซ์ M สีดำไหม' }],
       customers: [{ id: 'cust_1', displayName: 'ลูกค้า A' }],
       orders: [{ id: 'order_draft_1', customerId: 'cust_1', platform: 'omni', status: 'draft', totalAmount: 590, items: [{ sku: 'BLACK-M', quantity: 1 }] }],
@@ -441,6 +444,19 @@ describe('OmniWorkbench', () => {
     expect(screen.queryByText('Connector Health')).not.toBeInTheDocument()
     expect(screen.queryByText('TikTok Order Sync')).not.toBeInTheDocument()
     expect(screen.queryByText('Facebook Live Preview')).not.toBeInTheDocument()
+  })
+
+  it('shows only the active chat customer in the profile tab', async () => {
+    render(<OmniWorkbench />)
+
+    expect(await screen.findByText('กล่องรวม')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'โปรไฟล์' }))
+
+    expect(await screen.findByText('โปรไฟล์ลูกค้าปัจจุบัน')).toBeInTheDocument()
+    expect((await screen.findAllByText('ลูกค้า A')).length).toBeGreaterThan(0)
+    expect(await screen.findByText('fb_customer_a')).toBeInTheDocument()
+    expect(screen.queryByText('ลูกค้า B')).not.toBeInTheDocument()
+    expect(screen.queryByText('โปรไฟล์เพจ')).not.toBeInTheDocument()
   })
 
   it('lets the operator switch through ZORT-style chat, post, live, and report workflows', async () => {
