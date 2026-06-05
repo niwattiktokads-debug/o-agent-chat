@@ -2,6 +2,7 @@ import React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import OmniWorkbench from './OmniWorkbench.jsx'
+import { searchEasyStoreProducts } from '../../lib/omniApi.js'
 
 const omniMock = vi.hoisted(() => ({
   subscribers: [],
@@ -324,7 +325,7 @@ vi.mock('../../lib/omniApi.js', () => ({
     ok: true,
     products: [{ id: '637', sku: 'BLACK-M', name: 'Black Shirt M', sellPrice: 590, availableStock: 7 }],
   }),
-  searchEasyStoreProducts: async () => ({
+  searchEasyStoreProducts: vi.fn(async () => ({
     ok: true,
     products: [{
       id: '76013285',
@@ -340,7 +341,7 @@ vi.mock('../../lib/omniApi.js', () => ({
       sellPrice: 690,
       availableStock: 13,
     }],
-  }),
+  })),
   lookupThaiAddressByPostcode: async () => ({
     ok: true,
     postalCode: '10110',
@@ -448,6 +449,7 @@ describe('OmniWorkbench', () => {
   beforeEach(() => {
     omniMock.subscribers = []
     localStorage.clear()
+    vi.clearAllMocks()
     vi.restoreAllMocks()
   })
 
@@ -791,6 +793,37 @@ describe('OmniWorkbench', () => {
     expect(gridToggle).toHaveAttribute('aria-pressed', 'true')
     expect(lineToggle).toHaveAttribute('aria-pressed', 'false')
     expect(await screen.findByRole('grid', { name: 'รายการสินค้า EasyStore' })).toHaveAttribute('data-view', 'grid')
+  })
+
+  it('allows SKU search while the default EasyStore preload is still pending', async () => {
+    searchEasyStoreProducts
+      .mockImplementationOnce(() => new Promise(() => {}))
+      .mockImplementationOnce(async () => ({
+        ok: true,
+        products: [{
+          id: '76019999',
+          productId: '16469999',
+          variantId: '76019999',
+          sku: 'amdสีน้ำตาลเข้ม99',
+          name: 'Amanda Jumpsuit น้ำตาล',
+          productName: 'Amanda Jumpsuit',
+          imageUrl: 'https://cdn.example/amanda.jpg',
+          availableStock: 9,
+        }],
+      }))
+
+    render(<OmniWorkbench />)
+    fireEvent.click(await screen.findByRole('button', { name: 'สินค้า' }))
+
+    const input = await screen.findByLabelText('ค้นสินค้า EasyStore')
+    fireEvent.change(input, { target: { value: 'amdสีน้ำตาลเข้ม99' } })
+    fireEvent.click(screen.getByRole('button', { name: 'ค้น EasyStore' }))
+
+    await waitFor(() => {
+      expect(searchEasyStoreProducts).toHaveBeenCalledWith('amdสีน้ำตาลเข้ม99', 12)
+    })
+    expect(await screen.findByText(/พบสินค้า 1 รายการ/)).toBeInTheDocument()
+    expect(await screen.findByText('SKU: amdสีน้ำตาลเข้ม99')).toBeInTheDocument()
   })
 
   it('creates an EasyStore product draft from the selected thread without sending', async () => {

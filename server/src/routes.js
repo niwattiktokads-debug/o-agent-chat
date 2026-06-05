@@ -783,6 +783,7 @@ export function mountRoutes(app, hub, room, options = {}) {
     try {
       const result = await easyStore.searchProducts({
         keyword: String(req.query.q || req.query.keyword || ''),
+        sku: String(req.query.sku || ''),
         limit: normalizePageSize(req.query.limit),
       })
       res.json(result)

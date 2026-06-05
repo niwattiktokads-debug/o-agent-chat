@@ -1233,6 +1233,31 @@ test('Order draft can search EasyStore products and create an EasyStore order af
   }
 })
 
+test('EasyStore product API forwards SKU searches separately from broad keyword search', async () => {
+  const localApp = express()
+  localApp.use(express.json())
+  const calls = []
+  const fakeEasyStore = {
+    searchProducts: async ({ keyword, sku, limit }) => {
+      calls.push({ keyword, sku, limit })
+      return { ok: true, products: [{ id: '76019999', sku, name: 'Amanda Jumpsuit', availableStock: 9 }] }
+    },
+  }
+  mountRoutes(localApp, { broadcast: () => {} }, createState(), { easyStore: fakeEasyStore })
+  const localServer = localApp.listen(0)
+  try {
+    const localPort = localServer.address().port
+    const response = await fetch(`http://localhost:${localPort}/api/omni/easystore/products?sku=${encodeURIComponent('amdสีน้ำตาลเข้ม99')}&q=Amanda&limit=6`)
+    const body = await response.json()
+
+    assert.equal(response.status, 200)
+    assert.equal(body.products[0].sku, 'amdสีน้ำตาลเข้ม99')
+    assert.deepEqual(calls[0], { keyword: 'Amanda', sku: 'amdสีน้ำตาลเข้ม99', limit: 6 })
+  } finally {
+    localServer.close()
+  }
+})
+
 test('Order draft approval blocks ZORT create until Thai shipping address is complete', async () => {
   const localApp = express()
   localApp.use(express.json())

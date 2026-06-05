@@ -208,6 +208,7 @@ export async function searchZortProducts(query, limit = 8) {
 
 export async function searchEasyStoreProducts(query, limit = 8) {
   const params = new URLSearchParams({ q: query, limit: String(limit) })
+  if (String(query || '').trim()) params.set('sku', String(query).trim())
   return getJson(`/api/omni/easystore/products?${params.toString()}`)
 }
 

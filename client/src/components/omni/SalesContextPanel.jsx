@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { fetchSalesContext, searchEasyStoreProducts } from '../../lib/omniApi.js'
 
 function money(value) {
@@ -69,7 +69,9 @@ export default function SalesContextPanel({ thread, onUseDraft }) {
   const [productQuery, setProductQuery] = useState('')
   const [products, setProducts] = useState([])
   const [productBusy, setProductBusy] = useState(false)
+  const [productPreloadBusy, setProductPreloadBusy] = useState(false)
   const [productStatus, setProductStatus] = useState('')
+  const productRequestId = useRef(0)
 
   useEffect(() => {
     let ignore = false
@@ -97,19 +99,22 @@ export default function SalesContextPanel({ thread, onUseDraft }) {
     setProductStatus('')
     setProductSection('list')
     if (!thread?.id) return () => { ignore = true }
-    setProductBusy(true)
+    setProductBusy(false)
+    setProductPreloadBusy(true)
+    const requestId = productRequestId.current + 1
+    productRequestId.current = requestId
     searchEasyStoreProducts('', 8)
       .then((result) => {
-        if (ignore) return
+        if (ignore || requestId !== productRequestId.current) return
         const rows = result.products || []
         setProducts(rows)
         setProductStatus(rows.length ? `โหลดสินค้า EasyStore ${rows.length} รายการ` : 'ยังไม่มีสินค้า EasyStore')
       })
       .catch((err) => {
-        if (!ignore) setProductStatus(err.message || 'easystore_product_search_failed')
+        if (!ignore && requestId === productRequestId.current) setProductStatus(err.message || 'easystore_product_search_failed')
       })
       .finally(() => {
-        if (!ignore) setProductBusy(false)
+        if (!ignore && requestId === productRequestId.current) setProductPreloadBusy(false)
       })
     return () => { ignore = true }
   }, [thread?.id])
@@ -117,17 +122,21 @@ export default function SalesContextPanel({ thread, onUseDraft }) {
   async function searchProducts(event) {
     event?.preventDefault()
     if (productBusy) return
+    const requestId = productRequestId.current + 1
+    productRequestId.current = requestId
+    setProductPreloadBusy(false)
     setProductBusy(true)
     setProductStatus('กำลังค้นสินค้า EasyStore')
     try {
       const result = await searchEasyStoreProducts(productQuery.trim(), 12)
+      if (requestId !== productRequestId.current) return
       const rows = result.products || []
       setProducts(rows)
       setProductStatus(rows.length ? `พบสินค้า ${rows.length} รายการ` : 'ไม่พบสินค้า EasyStore')
     } catch (err) {
-      setProductStatus(err.message || 'easystore_product_search_failed')
+      if (requestId === productRequestId.current) setProductStatus(err.message || 'easystore_product_search_failed')
     } finally {
-      setProductBusy(false)
+      if (requestId === productRequestId.current) setProductBusy(false)
     }
   }
 
@@ -305,7 +314,7 @@ export default function SalesContextPanel({ thread, onUseDraft }) {
                   </button>
                 </div>
               )) : (
-                <div className="col-span-2 rounded-[var(--radius-sm)] border border-dashed border-[var(--color-rule)] px-3 py-6 text-center text-xs text-[var(--color-muted)]">ค้นหาเพื่อดึงสินค้า EasyStore จริง</div>
+                <div className="col-span-2 rounded-[var(--radius-sm)] border border-dashed border-[var(--color-rule)] px-3 py-6 text-center text-xs text-[var(--color-muted)]">{productPreloadBusy ? 'กำลังโหลดสินค้า EasyStore' : 'ค้นหาเพื่อดึงสินค้า EasyStore จริง'}</div>
               )}
             </div>
           </>

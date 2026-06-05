@@ -33,6 +33,14 @@ function cleanText(value) {
     .trim()
 }
 
+function normalizeSearchText(value) {
+  return cleanText(value).toLowerCase()
+}
+
+function normalizeSkuText(value) {
+  return normalizeSearchText(value).replace(/\s+/g, '')
+}
+
 function numberOrNull(value) {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : null
@@ -332,6 +340,38 @@ function normalizeProductSearchRows(products = [], { shopBase } = {}) {
   return rows
 }
 
+function scoreProductSearchRow(row = {}, { keyword = '', sku = '' } = {}) {
+  const cleanKeyword = normalizeSearchText(keyword)
+  const cleanSku = normalizeSkuText(sku)
+  const rowSku = normalizeSkuText(row.sku)
+  const rowText = normalizeSearchText([row.name, row.productName, row.productId, row.variantId].filter(Boolean).join(' '))
+  const rowSkuText = normalizeSkuText([row.sku, row.productId, row.variantId].filter(Boolean).join(' '))
+  let score = 0
+
+  if (cleanSku) {
+    if (rowSku === cleanSku) score += 100
+    else if (rowSku.startsWith(cleanSku) || cleanSku.startsWith(rowSku)) score += 85
+    else if (rowSkuText.includes(cleanSku) || cleanSku.includes(rowSku)) score += 70
+  }
+  if (cleanKeyword) {
+    const compactKeyword = normalizeSkuText(cleanKeyword)
+    if (rowSku === compactKeyword) score += 80
+    else if (rowSkuText.includes(compactKeyword) || compactKeyword.includes(rowSku)) score += 55
+    if (rowText.includes(cleanKeyword)) score += 35
+  }
+  return score
+}
+
+function rankProductSearchRows(rows = [], search = {}) {
+  const hasSearch = Boolean(normalizeSearchText(search.keyword) || normalizeSkuText(search.sku))
+  if (!hasSearch) return rows
+  return rows
+    .map((row, index) => ({ row, index, score: scoreProductSearchRow(row, search) }))
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .map((item) => item.row)
+}
+
 function orderShippingAddress(order = {}) {
   const shippingAddress = order.shippingAddress || {}
   const formattedAddress = cleanText(shippingAddress.formattedAddress || [
@@ -440,16 +480,28 @@ export function createEasyStoreRuntime({
       }
     },
     listProducts,
-    async searchProducts({ keyword = '', limit = 10 } = {}) {
-      const cleanKeyword = cleanText(keyword).toLowerCase()
-      const payload = await listProducts({ limit: Math.max(Number(limit || 10), 50), page: 1 })
-      const rows = normalizeProductSearchRows(payload.products, { shopBase })
-      const filtered = cleanKeyword
-        ? rows.filter((row) => [row.name, row.sku, row.productId, row.variantId].filter(Boolean).join(' ').toLowerCase().includes(cleanKeyword))
-        : rows
+    async searchProducts({ keyword = '', sku = '', limit = 10 } = {}) {
+      const cleanKeyword = normalizeSearchText(keyword)
+      const cleanSku = normalizeSkuText(sku)
+      const requestedLimit = Number(limit || 10)
+      const pageLimit = Math.max(Math.min(requestedLimit, 50), 50)
+      const maxPages = Math.max(1, Number(env.EASY_STORE_PRODUCT_SEARCH_MAX_PAGES || 8))
+      const hasSearch = Boolean(cleanKeyword || cleanSku)
+      const rows = []
+
+      for (let page = 1; page <= (hasSearch ? maxPages : 1); page += 1) {
+        const payload = await listProducts({ limit: pageLimit, page })
+        rows.push(...normalizeProductSearchRows(payload.products, { shopBase }))
+        if (!hasSearch || payload.products.length < pageLimit) break
+        const ranked = rankProductSearchRows(rows, { keyword, sku })
+        const exactSkuMatches = cleanSku ? ranked.filter((row) => normalizeSkuText(row.sku) === cleanSku) : []
+        if (exactSkuMatches.length >= requestedLimit) break
+      }
+
+      const filtered = rankProductSearchRows(rows, { keyword, sku })
       return {
         ok: true,
-        products: filtered.slice(0, Number(limit || 10)),
+        products: filtered.slice(0, requestedLimit),
         count: filtered.length,
       }
     },

@@ -212,6 +212,43 @@ test('EasyStore product search returns image, sku, color, size, and stock rows',
   assert.equal(result.products[0].availableStock, 13)
 })
 
+test('EasyStore SKU search scans beyond the first product page and prioritizes SKU matches', async () => {
+  const calls = []
+  const runtime = createEasyStoreRuntime({
+    env: {
+      EASY_STORE_SHOP: 'annalynna.easy.co',
+      EASY_STORE_ACCESS_TOKEN: 'access_token_1',
+      EASY_STORE_CLIENT_ID: 'app_1',
+      EASY_STORE_CLIENT_SECRET: 'secret_1',
+    },
+    fetchImpl: async (url) => {
+      calls.push(url)
+      const page = new URL(url).searchParams.get('page')
+      const products = page === '2'
+        ? [{
+            id: 16469999,
+            title: 'Amanda Jumpsuit',
+            variants: [{ id: 76019999, sku: 'amdสีน้ำตาลเข้ม99', title: 'น้ำตาล / 99', inventory_quantity: 9 }],
+          }]
+        : Array.from({ length: 50 }, (_, index) => ({
+            id: 16462000 + index,
+            title: `หน้าแรก ${index}`,
+            variants: [{ id: 76012000 + index, sku: `FIRST-${index}`, title: `ตัวเลือก ${index}`, inventory_quantity: 1 }],
+          }))
+      return new Response(JSON.stringify({ products }), { status: 200 })
+    },
+  })
+
+  const result = await runtime.searchProducts({ sku: 'amdสีน้ำตาลเข้ม99', limit: 3 })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.products[0].sku, 'amdสีน้ำตาลเข้ม99')
+  assert.equal(result.count, 1)
+  assert.equal(calls.length, 2)
+  assert.match(calls[0], /page=1&limit=50/)
+  assert.match(calls[1], /page=2&limit=50/)
+})
+
 test('EasyStore product list helper uses raw JSON endpoint for fallback search', async () => {
   const calls = []
   const runtime = createEasyStoreRuntime({
