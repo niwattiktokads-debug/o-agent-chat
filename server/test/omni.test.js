@@ -3801,6 +3801,247 @@ test('AI reply engine injects visible Train AI reply style rules into provider p
   }
 })
 
+test('AI reply engine prioritizes ad/campaign-linked knowledge source when drafting', async () => {
+  const previousKey = process.env.OPENAI_API_KEY
+  process.env.OPENAI_API_KEY = 'test-openai-key'
+  const calls = []
+  const seed = createOmniSeed()
+  seed.customers.push({ id: 'cust_ad_priority', displayName: 'Ad Priority Customer', matchConfidence: 1 })
+  seed.threads.push({
+    id: 'thread_ad_priority',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'cust_ad_priority',
+    status: 'open',
+    intent: 'unknown',
+    risk: 'low',
+    unreadCount: 1,
+    messageCount: 1,
+    updatedAt: '2026-06-07T00:00:00.000Z',
+    originContext: {
+      channel: 'facebook_messenger',
+      sourceType: 'ad',
+      ad: {
+        id: 'ad_seed_black_m',
+        title: 'เสื้อคอลล่าสไตล์เก่า',
+        campaignName: 'Anna Lynn Launch',
+        campaignId: 'cmp_101',
+      },
+      replyFrame: 'ลูกค้ามาจากแอดสินค้าเสื้อสีดำไซซ์ M ให้ตอบอิงสินค้าตัวนี้ก่อน',
+    },
+  })
+  seed.messages.push({
+    id: 'msg_ad_priority',
+    threadId: 'thread_ad_priority',
+    direction: 'inbound',
+    authorName: 'Ad Priority Customer',
+    text: 'มีข้อมูลช่วยเลือกสินค้าหรือยัง',
+    createdAt: '2026-06-07T00:00:00.000Z',
+    providerMessageId: 'mid_ad_priority',
+    sourceRef: 'meta_thread:thread_ad_priority',
+    originContext: {
+      channel: 'facebook_messenger',
+      sourceType: 'ad',
+      ad: {
+        id: 'ad_seed_black_m',
+        campaignName: 'Anna Lynn Launch',
+      },
+    },
+  })
+  seed.knowledgeSources.push(
+    {
+      id: 'ks_general_policy',
+      workspaceId: 'ws_oagent',
+      title: 'General FAQ',
+      type: 'manual',
+      scope: 'all_pages',
+      status: 'ready',
+      content: 'คำถามทั่วไป: สอบถามข้อมูลนโยบายและคำแนะนำได้',
+      tags: ['faq', 'policy'],
+      updatedAt: '2026-06-06T07:00:00.000Z',
+      createdAt: '2026-06-06T07:00:00.000Z',
+    },
+    {
+      id: 'ks_ad_seed_black_m',
+      workspaceId: 'ws_oagent',
+      title: 'Campaign Launch Priority Pack',
+      type: 'manual',
+      scope: 'page_annalynn',
+      status: 'ready',
+      content: 'แคมเปญ Anna Lynn Launch: โปรเฉพาะตัวนี้มีตัวเลือกเสื้อดำไซซ์ M',
+      tags: ['ad:ad_seed_black_m', 'campaign:Anna Lynn Launch', 'campaign_id:cmp_101', 'campaign:cmp_101'],
+      updatedAt: '2026-06-07T00:30:00.000Z',
+      createdAt: '2026-06-07T00:30:00.000Z',
+    },
+  )
+
+  const service = createOmniService(seed)
+  const thread = service.getThread('thread_ad_priority')
+  const ai = createAiReplyEngine({
+    provider: 'openai',
+    model: 'gpt-4.1-mini',
+    fetchImpl: async (url, options) => {
+      calls.push({ url, body: JSON.parse(options.body) })
+      return {
+        ok: true,
+        json: async () => ({
+          choices: [{
+            message: {
+              content: JSON.stringify({
+                draftText: 'ได้ค่ะ เดี๋ยวช่วยเช็กให้ก่อนเลยนะคะ',
+                confidence: 0.82,
+                reason: 'ad_priority_test',
+              }),
+            },
+          }],
+        }),
+      }
+    },
+  })
+
+  try {
+    await ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
+
+    assert.equal(calls.length, 1)
+    const userPrompt = calls[0].body.messages.find((message) => message.role === 'user').content
+    const firstKnowledgeLine = (userPrompt.match(/\[1\].*/g) || [])[0] || ''
+    assert.match(firstKnowledgeLine, /Campaign Launch Priority Pack/)
+    assert.match(firstKnowledgeLine, /Campaign Launch Priority Pack/)
+    assert.match(userPrompt, /ad_seed_black_m/)
+  } finally {
+    if (previousKey === undefined) delete process.env.OPENAI_API_KEY
+    else process.env.OPENAI_API_KEY = previousKey
+  }
+})
+
+test('OpenAI draft enforces ad-source framing before generic fallback text', async () => {
+  const previousKey = process.env.OPENAI_API_KEY
+  process.env.OPENAI_API_KEY = 'test-openai-key'
+  const calls = []
+  const seed = createOmniSeed()
+  seed.threads.push({
+    id: 'thread_ad_enforced',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'cust_thread1',
+    status: 'open',
+    intent: 'unknown',
+    risk: 'low',
+    unreadCount: 1,
+    messageCount: 1,
+    updatedAt: '2026-06-07T01:20:00.000Z',
+    originContext: {
+      channel: 'facebook_messenger',
+      sourceType: 'ad',
+      ad: {
+        id: 'ad_force_prefix',
+        title: 'เดรสแอฟริกา',
+        campaignName: 'Force Prefix Campaign',
+      },
+      replyFrame: 'ลูกค้ามาจากแอดเดรสแอฟริกา',
+    },
+  })
+  seed.messages.push({
+    id: 'msg_ad_enforced',
+    threadId: 'thread_ad_enforced',
+    direction: 'inbound',
+    authorName: 'ลูกค้า',
+    text: 'มีไหมคะ',
+    createdAt: '2026-06-07T01:20:00.000Z',
+    sourceRef: 'meta_thread:thread_ad_enforced',
+    originContext: {
+      channel: 'facebook_messenger',
+      sourceType: 'ad',
+      ad: { id: 'ad_force_prefix', campaignName: 'Force Prefix Campaign', campaignId: 'cmp_force' },
+    },
+  })
+
+  const service = createOmniService(seed)
+  const thread = service.getThread('thread_ad_enforced')
+  const ai = createAiReplyEngine({
+    provider: 'openai',
+    model: 'gpt-4.1-mini',
+    fetchImpl: async (url, options) => {
+      calls.push({ url, body: JSON.parse(options.body) })
+      return {
+        ok: true,
+        json: async () => ({
+          choices: [{
+            message: {
+              content: JSON.stringify({
+                draftText: 'ได้ครับ มีข้อมูลครบและพร้อมแนะนำสินค้า',
+                confidence: 0.82,
+                reason: 'openai_generic_without_ad_context',
+              }),
+            },
+          }],
+        }),
+      }
+    },
+  })
+
+  try {
+    const decision = await ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
+    assert.equal(decision.ok, true)
+    assert.equal(decision.action, 'draft_ready')
+    assert.match(decision.draftText, /ลูกค้ามาจากแคมเปญ|force prefix campaign/i)
+    const userPrompt = calls[0].body.messages.find((message) => message.role === 'user').content
+    assert.match(userPrompt, /ad_force_prefix/)
+  } finally {
+    if (previousKey === undefined) delete process.env.OPENAI_API_KEY
+    else process.env.OPENAI_API_KEY = previousKey
+  }
+})
+
+test('Local rules draft keeps ad-source framing for ad inbound threads', async () => {
+  const seed = createOmniSeed()
+  seed.customers.push({ id: 'cust_ad_local_rules', displayName: 'Local Rules Ad Customer', matchConfidence: 1 })
+  seed.threads.push({
+    id: 'thread_ad_local_rules',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'cust_ad_local_rules',
+    status: 'open',
+    intent: 'unknown',
+    risk: 'low',
+    unreadCount: 1,
+    messageCount: 1,
+    updatedAt: '2026-06-07T04:10:00.000Z',
+    originContext: {
+      channel: 'facebook_messenger',
+      sourceType: 'ad',
+      ad: {
+        id: 'ad_local_rules',
+        title: 'เสื้อผ้าเวที',
+        campaignName: 'Local Rules Campaign',
+      },
+      replyFrame: 'ลูกค้ามาจากแอดเสื้อผ้าเวที ให้ตอบอิงโปรโมชั่นจากแคมเปญนี้ก่อน',
+    },
+  })
+  seed.messages.push({
+    id: 'msg_ad_local_rules',
+    threadId: 'thread_ad_local_rules',
+    direction: 'inbound',
+    authorName: 'Local Rules Ad Customer',
+    text: 'มีไหมคะ',
+    createdAt: '2026-06-07T04:10:00.000Z',
+    sourceRef: 'meta_thread:thread_ad_local_rules',
+    originContext: {
+      channel: 'facebook_messenger',
+      sourceType: 'ad',
+      ad: { id: 'ad_local_rules', campaignName: 'Local Rules Campaign' },
+    },
+  })
+
+  const service = createOmniService(seed)
+  const thread = service.getThread('thread_ad_local_rules')
+  const ai = createAiReplyEngine({ provider: 'local_rules', model: 'test' })
+  const decision = await ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
+
+  assert.match(decision.draftText, /ลูกค้ามาจากแอด|แคมเปญ/i)
+  assert.equal(decision.action, 'draft_ready')
+})
+
 test('AI reply engine calls Gemini natively for Vercel drafts', async () => {
   const previousKey = process.env.GOOGLE_API_KEY
   process.env.GOOGLE_API_KEY = 'test-gemini-key'
@@ -3833,7 +4074,8 @@ test('AI reply engine calls Gemini natively for Vercel drafts', async () => {
     assert.equal(decision.model, 'gemini-3-flash-preview')
     assert.equal(decision.intent, 'stock')
     assert.equal(decision.allowed, true)
-    assert.equal(decision.draftText, 'ได้ค่ะ เดี๋ยวช่วยเช็กสีและไซซ์จากสินค้าที่สนใจให้ก่อนนะคะ ถ้าต้องการไซซ์ M สีดำ เดี๋ยวแอดมินช่วยตรวจสต็อกและราคาที่ถูกต้องให้ค่ะ')
+    assert.match(decision.draftText, /ได้ค่ะ เดี๋ยวช่วยเช็กสีและไซซ์จากสินค้าที่สนใจให้ก่อนนะคะ ถ้าต้องการไซซ์ M สีดำ เดี๋ยวแอดมินช่วยตรวจสต็อกและราคาที่ถูกต้องให้ค่ะ/)
+    assert.match(decision.draftText, /ลูกค้ามาจากแอด|แคมเปญ/i)
     assert.match(calls[0].url, /generativelanguage.googleapis.com/)
     assert.match(calls[0].body.systemInstruction.parts[0].text, /ห้ามแต่งข้อมูล/)
     assert.match(calls[0].body.systemInstruction.parts[0].text, /ช่วยลูกค้าให้ครบก่อน/)

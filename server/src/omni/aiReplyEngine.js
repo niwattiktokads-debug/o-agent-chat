@@ -21,6 +21,130 @@ const PRODUCT_LOOKUP_GENERIC_TERMS = new Set([
 const DEFAULT_LOW_RISK_AUTOSEND_INTENTS = new Set(['faq', 'stock', 'price', 'orderStatus', 'sizeAdvice', 'shipping'])
 const PLUS_SIZE_LABEL_SET = new Set(PLUS_SIZE_LABELS)
 
+function normalizeTagValue(value = '') {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function originCampaignHintSignals(originContext = null) {
+  const origin = originContext || {}
+  const ad = origin.ad || {}
+  const post = origin.post || {}
+  const hints = []
+  if (origin.sourceType === 'ad' || origin.sourceType === 'post' || origin.sourceType === 'post_comment' || origin.sourceType === 'video_comment') {
+    if (ad.id) {
+      hints.push(`ad:${normalizeTagValue(ad.id)}`)
+      hints.push(`ad_id:${normalizeTagValue(ad.id)}`)
+      hints.push(normalizeTagValue(ad.id))
+    }
+    if (ad.campaignId) {
+      hints.push(`campaign:${normalizeTagValue(ad.campaignId)}`)
+      hints.push(`campaign_id:${normalizeTagValue(ad.campaignId)}`)
+      hints.push(normalizeTagValue(ad.campaignId))
+    }
+    if (ad.campaignName) {
+      hints.push(`campaign:${normalizeTagValue(ad.campaignName)}`)
+      hints.push(normalizeTagValue(ad.campaignName))
+    }
+    if (origin.ref) {
+      hints.push(`ref:${normalizeTagValue(origin.ref)}`)
+      hints.push(normalizeTagValue(origin.ref))
+    }
+    if (post.id) {
+      hints.push(`post:${normalizeTagValue(post.id)}`)
+      hints.push(`post_id:${normalizeTagValue(post.id)}`)
+      hints.push(normalizeTagValue(post.id))
+    }
+    if (origin.sourceType === 'ad' && ad.title) hints.push(normalizeTagValue(ad.title))
+    if (origin.sourceType !== 'ad' && post.title) hints.push(normalizeTagValue(post.title))
+  }
+  if (origin.sourceType === 'live') {
+    const live = origin.live || {}
+    if (live.id) {
+      hints.push(`live:${normalizeTagValue(live.id)}`)
+      hints.push(`live_id:${normalizeTagValue(live.id)}`)
+      hints.push(normalizeTagValue(live.id))
+    }
+    if (live.productId) {
+      hints.push(`product:${normalizeTagValue(live.productId)}`)
+      hints.push(`product_id:${normalizeTagValue(live.productId)}`)
+      hints.push(normalizeTagValue(live.productId))
+    }
+    if (live.sku) {
+      hints.push(`sku:${normalizeTagValue(live.sku)}`)
+      hints.push(`variant:${normalizeTagValue(live.sku)}`)
+      hints.push(normalizeTagValue(live.sku))
+    }
+  }
+  return [...new Set(hints)].filter(Boolean)
+}
+
+function sourceMatchesOrigin(source = {}, signals = []) {
+  if (!signals.length || !source) return 0
+  const title = normalizeTagValue(source.title)
+  const content = normalizeTagValue(source.content)
+  const tags = Array.isArray(source.tags)
+    ? source.tags.map((tag) => normalizeTagValue(tag)).filter(Boolean)
+    : []
+  const haystack = [title, content, ...tags]
+  let score = 0
+
+  for (const rawSignal of signals) {
+    const signal = normalizeTagValue(rawSignal)
+    if (!signal) continue
+    for (const token of haystack) {
+      if (!token) continue
+      if (tagMatchesToken(token, signal)) {
+        score += 30
+      }
+    }
+  }
+
+  return score
+}
+
+function tagMatchesToken(tag = '', signal = '') {
+  if (!tag || !signal) return false
+  const normalizedTag = normalizeTagValue(tag)
+  const normalizedSignal = normalizeTagValue(signal)
+  if (normalizedTag === normalizedSignal) return true
+  if (normalizedTag.startsWith(`${normalizedSignal}:`)) return true
+  if (normalizedSignal.startsWith(`${normalizedTag}:`)) return true
+  if (normalizedTag.includes(normalizedSignal)) return true
+  if (normalizedSignal.includes(normalizedTag)) return true
+  return false
+}
+
+function originAwareDraftHint(originContext = null) {
+  if (!originContext?.sourceType) return ''
+  if (originContext.sourceType !== 'ad') return ''
+  const adTitle = normalizeTagValue(originContext.ad?.title || '')
+  const campaignName = normalizeTagValue(originContext.ad?.campaignName || '')
+  const productLabel = originProductLabel(originContext)
+  if (campaignName && adTitle) return `ลูกค้ามาจากแอด ${adTitle} (แคมเปญ ${campaignName}) ครับ เดี๋ยวเช็กสินค้าที่ถามตามนี้ก่อนนะคะ`
+  if (campaignName) return `ลูกค้ามาจากแคมเปญ ${campaignName} ครับ เดี๋ยวเช็กสินค้าตามนี้ก่อนนะคะ`
+  if (adTitle) return `ลูกค้ามาจากแอด ${adTitle} ครับ เดี๋ยวเช็กให้อย่างตรงจุดก่อนนะคะ`
+  if (productLabel) return `ลูกค้ามาจากแอดนี้ เดี๋ยวช่วยเช็ก ${productLabel} ให้ตรงตัวค่ะ`
+  return 'ลูกค้ามาจากแอดนี้ เดี๋ยวเช็กสินค้าให้ก่อนเลยนะคะ'
+}
+
+function combineWithOriginHint(draftText = '', originContext = null) {
+  const normalized = String(draftText || '').trim()
+  if (!normalized || !originContext?.sourceType) return normalized
+  if (originContext.sourceType !== 'ad') return normalized
+  if (originContext.ad?.title || originContext.ad?.campaignName) {
+    if (/(จากแอด|แคมเปญ|สินค้าตามนี้|เดี๋ยวเช็ก)/i.test(normalized)) return normalized
+    return `${originAwareDraftHint(originContext)} ${normalized}`
+  }
+  return normalized
+}
+
+function ensureAdOriginDraft(draftText = '', originContext = null) {
+  return combineWithOriginHint(String(draftText || '').trim(), originContext)
+}
+
 function autoSendAllEnabled() {
   return process.env.OMNI_AI_AUTO_SEND_ALL === '1' || process.env.OMNI_AI_AUTO_SEND_ON_WEBHOOK === '1'
 }
@@ -503,7 +627,7 @@ function salesWorkflowDraft({ intent, originContext = null, productFacts = null,
   }
 
   if (intent === 'orderPurchase') {
-    return `ยินดีค่ะ เดี๋ยวแอดมินเช็กราคาและสต็อกจาก EasyStore อีกครั้งก่อนนะคะ เพื่อไม่ให้แจ้งข้อมูลผิด\n- รอการยืนยันอีกครั้งก่อนสรุปยอดชำระ\n- ส่งสลิปหรือข้อมูลการโอนเมื่อแอดมินคอนเฟิร์มแล้วได้เลยค่ะ`
+    return `ยินดีค่ะ เดี๋ยวแอดมินเช็กราคาและสต็อกอีกครั้งก่อนนะคะ เพื่อไม่ให้แจ้งข้อมูลผิด\n- รอการยืนยันอีกครั้งก่อนสรุปยอดชำระ\n- ส่งสลิปหรือข้อมูลการโอนเมื่อแอดมินคอนเฟิร์มแล้วได้เลยค่ะ`
   }
 
   if (intent === 'paymentProof') {
@@ -528,28 +652,29 @@ function salesWorkflowDraft({ intent, originContext = null, productFacts = null,
 function draftForIntent(intent, originContext = null, productFacts = null, slots = {}) {
   const productDraft = draftFromProductFacts(intent, productFacts, slots)
   const workflowDraft = salesWorkflowDraft({ intent, originContext, productFacts, slots })
-  if (productDraft) return productDraft
-  if (workflowDraft) return workflowDraft
+  const maybeApplyOriginHint = (draftText) => combineWithOriginHint(draftText, originContext)
+  if (productDraft) return maybeApplyOriginHint(productDraft)
+  if (workflowDraft) return maybeApplyOriginHint(workflowDraft)
   const productLabel = originProductLabel(originContext || {})
   const isLive = originContext?.sourceType === 'live'
   if (intent === 'productImage') {
-    if (productLabel) return `ลูกค้าขอดูภาพ ${productLabel} ควรให้แอดมินแนบรูปสินค้าจริงหรือ product card ก่อนตอบกลับค่ะ`
-    return 'ลูกค้าขอดูภาพสินค้า ควรให้แอดมินแนบรูปสินค้าจริงหรือ product card ก่อนตอบกลับค่ะ'
+    if (productLabel) return maybeApplyOriginHint(`ลูกค้าขอดูภาพ ${productLabel} ควรให้แอดมินแนบรูปสินค้าจริงหรือ product card ก่อนตอบกลับค่ะ`)
+    return maybeApplyOriginHint('ลูกค้าขอดูภาพสินค้า ควรให้แอดมินแนบรูปสินค้าจริงหรือ product card ก่อนตอบกลับค่ะ')
   }
   if (intent === 'stock') {
-    if (productLabel) return `ได้ค่ะ เดี๋ยวช่วยเช็กสต็อก ${productLabel} ให้ตรงตัวค่ะ รบกวนแจ้งสีหรือไซซ์ที่ต้องการเพิ่มได้เลยนะคะ`
-    if (isLive) return 'สนใจตัวไหนในไลฟ์คะ บอกชื่อ สี ไซซ์ หรือช่วงเวลาที่เห็นได้เลยค่ะ เดี๋ยวช่วยเช็กให้ตรงตัวค่ะ'
-    return 'ได้ค่ะ เดี๋ยวช่วยเช็กสต็อก สี และไซซ์ให้ก่อนนะคะ รบกวนบอกสี/ไซซ์ที่ต้องการ หรือส่งรูปสินค้าที่สนใจมาได้เลยค่ะ'
+    if (productLabel) return maybeApplyOriginHint(`ได้ค่ะ เดี๋ยวช่วยเช็กสต็อก ${productLabel} ให้ตรงตัวค่ะ รบกวนแจ้งสีหรือไซซ์ที่ต้องการเพิ่มได้เลยนะคะ`)
+    if (isLive) return maybeApplyOriginHint('สนใจตัวไหนในไลฟ์คะ บอกชื่อ สี ไซซ์ หรือช่วงเวลาที่เห็นได้เลยค่ะ เดี๋ยวช่วยเช็กให้ตรงตัวค่ะ')
+    return maybeApplyOriginHint('ได้ค่ะ เดี๋ยวช่วยเช็กสต็อก สี และไซซ์ให้ก่อนนะคะ รบกวนบอกสี/ไซซ์ที่ต้องการ หรือส่งรูปสินค้าที่สนใจมาได้เลยค่ะ')
   }
   if (intent === 'price') {
-    if (productLabel) return `ได้ค่ะ เดี๋ยวช่วยเช็กราคา โปร และค่าส่งสำหรับ ${productLabel} ให้ถูกต้องค่ะ รบกวนแจ้งสีหรือไซซ์ที่สนใจได้เลยนะคะ`
-    if (isLive) return 'สนใจตัวไหนในไลฟ์คะ บอกชื่อ สี ไซซ์ หรือช่วงเวลาที่เห็นได้เลยค่ะ เดี๋ยวช่วยเช็กราคาและโปรให้ตรงตัวค่ะ'
-    return 'ได้ค่ะ เดี๋ยวสรุปราคา โปร และค่าส่งที่ใช้ได้ให้ชัดเจนนะคะ ถ้าสนใจรุ่นไหนเป็นพิเศษ ส่งชื่อรุ่นหรือรูปมาได้เลยค่ะ'
+    if (productLabel) return maybeApplyOriginHint(`ได้ค่ะ เดี๋ยวช่วยเช็กราคา โปร และค่าส่งสำหรับ ${productLabel} ให้ถูกต้องค่ะ รบกวนแจ้งสีหรือไซซ์ที่สนใจได้เลยนะคะ`)
+    if (isLive) return maybeApplyOriginHint('สนใจตัวไหนในไลฟ์คะ บอกชื่อ สี ไซซ์ หรือช่วงเวลาที่เห็นได้เลยค่ะ เดี๋ยวช่วยเช็กราคาและโปรให้ตรงตัวค่ะ')
+    return maybeApplyOriginHint('ได้ค่ะ เดี๋ยวสรุปราคา โปร และค่าส่งที่ใช้ได้ให้ชัดเจนนะคะ ถ้าสนใจรุ่นไหนเป็นพิเศษ ส่งชื่อรุ่นหรือรูปมาได้เลยค่ะ')
   }
-  if (intent === 'orderStatus') return 'ได้ค่ะ เดี๋ยวช่วยเช็กสถานะคำสั่งซื้อให้ก่อนนะคะ เพื่อความถูกต้อง รบกวนส่งเลขออเดอร์ใน inbox แล้วแอดมินจะแจ้งสถานะกลับไปค่ะ'
-  if (intent === 'refund') return 'รับทราบค่ะ เคสคืนเงิน ยกเลิก หรือเคลม ต้องให้แอดมินตรวจสอบรายละเอียดก่อนนะคะ เดี๋ยวส่งเรื่องให้ตรวจและจะแจ้งขั้นตอนที่ถูกต้องกลับไปค่ะ'
-  if (intent === 'humanReview') return 'ขอหยุดให้แอดมินตรวจคำตอบก่อนนะคะ เพื่อไม่ให้ตอบข้อมูลผิดซ้ำค่ะ'
-  return 'รับทราบค่ะ เดี๋ยวช่วยดูรายละเอียดให้ครบก่อนนะคะ ถ้ามีรุ่น สี ไซซ์ หรือเลขออเดอร์ที่เกี่ยวข้อง ส่งเพิ่มมาได้เลยค่ะ'
+  if (intent === 'orderStatus') return maybeApplyOriginHint('ได้ค่ะ เดี๋ยวช่วยเช็กสถานะคำสั่งซื้อให้ก่อนนะคะ เพื่อความถูกต้อง รบกวนส่งเลขออเดอร์ใน inbox แล้วแอดมินจะแจ้งสถานะกลับไปค่ะ')
+  if (intent === 'refund') return maybeApplyOriginHint('รับทราบค่ะ เคสคืนเงิน ยกเลิก หรือเคลม ต้องให้แอดมินตรวจสอบรายละเอียดก่อนนะคะ เดี๋ยวส่งเรื่องให้ตรวจและจะแจ้งขั้นตอนที่ถูกต้องกลับไปค่ะ')
+  if (intent === 'humanReview') return maybeApplyOriginHint('ขอหยุดให้แอดมินตรวจคำตอบก่อนนะคะ เพื่อไม่ให้ตอบข้อมูลผิดซ้ำค่ะ')
+  return maybeApplyOriginHint('รับทราบค่ะ เดี๋ยวช่วยดูรายละเอียดให้ครบก่อนนะคะ ถ้ามีรุ่น สี ไซซ์ หรือเลขออเดอร์ที่เกี่ยวข้อง ส่งเพิ่มมาได้เลยค่ะ')
 }
 
 const KNOWLEDGE_STOP_WORDS = new Set([
@@ -585,7 +710,7 @@ function queryTokensForKnowledge(queryText = '') {
     .slice(0, 48)
 }
 
-function relevantKnowledge(intent, snapshot, { workspaceId, queryText = '' } = {}) {
+function relevantKnowledge(intent, snapshot, { workspaceId, queryText = '', originContext = null } = {}) {
   const termsByIntent = {
     stock: ['สินค้า', 'stock', 'product', 'faq'],
     price: ['ราคา', 'โปร', 'price', 'product'],
@@ -601,6 +726,7 @@ function relevantKnowledge(intent, snapshot, { workspaceId, queryText = '' } = {
   }
   const terms = termsByIntent[intent] || termsByIntent.faq
   const queryTokens = queryTokensForKnowledge(queryText)
+  const originSignals = originCampaignHintSignals(originContext)
   return (snapshot.knowledgeSources || [])
     .filter((source) => source.status === 'ready')
     .filter((source) => {
@@ -612,7 +738,9 @@ function relevantKnowledge(intent, snapshot, { workspaceId, queryText = '' } = {
     })
     .filter((source) => {
       const haystack = [source.title, source.content, ...(source.tags || [])].join(' ').toLowerCase()
-      return terms.some((term) => haystack.includes(term.toLowerCase()))
+      const matchesIntentSignal = terms.some((term) => haystack.includes(term.toLowerCase()))
+      const isOriginLinked = originSignals.length > 0 && sourceMatchesOrigin(source, originSignals)
+      return matchesIntentSignal || isOriginLinked
     })
     .map((source) => {
       const title = String(source.title || '').toLowerCase()
@@ -626,7 +754,8 @@ function relevantKnowledge(intent, snapshot, { workspaceId, queryText = '' } = {
         if (content.includes(token)) return total + 3
         return total
       }, 0)
-      const score = intentScore + queryScore
+      const originScore = originSignals.length ? originSignals.reduce((total, signal) => total + (sourceMatchesOrigin(source, [signal]) ? 8 : 0), 0) : 0
+      const score = intentScore + queryScore + originScore
       return { source, score }
     })
     .sort((a, b) => {
@@ -938,15 +1067,19 @@ function buildCustomerReplyPrompt({ thread, snapshot, policy, baseDecision }) {
   const threadPage = (snapshot.pages || []).find((p) => p.id === thread.pageId)
   const workspaceId = threadPage?.workspaceId || undefined
   const recentMessages = recentMessagesForThread(thread, snapshot)
-  const origin = compactOriginContext(thread, recentMessages)
+  const originContext = compactOriginContext(thread, recentMessages)
   const knowledgeQueryText = [
     recentMessages.map((message) => message.text || '').join(' '),
-    originContextText(origin),
+    originContextText(originContext),
     baseDecision.knowledgeQueryText || '',
   ].join(' ')
-  const knowledge = relevantKnowledge(baseDecision.intent, snapshot, { workspaceId, queryText: knowledgeQueryText })
+  const knowledge = relevantKnowledge(baseDecision.intent, snapshot, {
+    workspaceId,
+    queryText: knowledgeQueryText,
+    originContext,
+  })
   const aiReplyStyleText = aiReplyStyleTextForPrompt(snapshot, workspaceId)
-  const productFacts = baseDecision.productFacts || productFactsForThread(thread, snapshot, origin)
+  const productFacts = baseDecision.productFacts || productFactsForThread(thread, snapshot, originContext)
   const richMessage = richMessageForThread(thread, snapshot)
   const messages = recentMessages
     .map((message) => `${message.direction === 'inbound' ? 'ลูกค้า' : 'เพจ'}: ${message.text}`)
@@ -1011,7 +1144,7 @@ function buildCustomerReplyPrompt({ thread, snapshot, policy, baseDecision }) {
       `policy_auto_send: ${JSON.stringify(policy?.autoSend || {})}`,
       '',
       'บริบทที่มาของลูกค้า:',
-      originContextText(origin),
+      originContextText(originContext),
       '',
       'หัวข้อด่วนจากบอส:',
       richMessage?.text || '(ไม่มีหัวข้อด่วน)',
@@ -1165,15 +1298,18 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
       }
     }
     if (!payload.ok) return { ...baseDecision, ok: false, error: payload.error || 'ai_helper_failed' }
+    const draftText = ensureAdOriginDraft(
+      applyRichMessageToDraft(
+        appendPaymentLinkToDraft(String(payload.draftText || baseDecision.draftText || '').trim(), baseDecision.paymentLink, baseDecision.intent),
+        baseDecision.richMessage,
+      ),
+      baseDecision.originContext,
+    )
     return enforceSizeChartDraft({
       ...baseDecision,
       provider: payload.provider || provider,
       model: payload.model || model,
-      draftText: applyRichMessageToDraft(appendPaymentLinkToDraft(
-        String(payload.draftText || baseDecision.draftText || '').trim(),
-        baseDecision.paymentLink,
-        baseDecision.intent,
-      ), baseDecision.richMessage),
+      draftText,
       confidence: Number(payload.confidence || baseDecision.confidence || 0.74),
       reason: payload.reason || baseDecision.reason,
     })
@@ -1230,17 +1366,22 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
       JSON.stringify(baseDecision.originContext || {}),
       JSON.stringify(baseDecision.salesSlots || {}),
       productFactsText(baseDecision.productFacts),
-      ...relevantKnowledge(baseDecision.intent, snapshot, { workspaceId: _oaiWsId, queryText: baseDecision.knowledgeQueryText }).map((source, index) => knowledgeTextForPrompt(source, index)),
+      ...relevantKnowledge(baseDecision.intent, snapshot, {
+        workspaceId: _oaiWsId,
+        queryText: baseDecision.knowledgeQueryText,
+        originContext: baseDecision.originContext,
+      }).map((source, index) => knowledgeTextForPrompt(source, index)),
     ].join('\n')
     const draftText = applyRichMessageToDraft(appendPaymentLinkToDraft(guardedDraftText(parsed?.draftText || text, baseDecision.draftText, {
       trustedContext,
       productFacts: baseDecision.productFacts,
     }), baseDecision.paymentLink, baseDecision.intent), baseDecision.richMessage)
+    const finalDraftText = ensureAdOriginDraft(draftText, baseDecision.originContext)
     return enforceSizeChartDraft({
       ...baseDecision,
       provider: 'openai',
       model,
-      draftText,
+      draftText: finalDraftText,
       confidence: Math.max(0, Math.min(1, Number(parsed?.confidence || baseDecision.confidence || 0.74))),
       reason: parsed?.reason || 'openai_guarded_text_draft',
     })
@@ -1305,7 +1446,11 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
       JSON.stringify(baseDecision.originContext || {}),
       JSON.stringify(baseDecision.salesSlots || {}),
       productFactsText(baseDecision.productFacts),
-      ...relevantKnowledge(baseDecision.intent, snapshot, { workspaceId: _gemWsId, queryText: baseDecision.knowledgeQueryText }).map((source, index) => knowledgeTextForPrompt(source, index)),
+      ...relevantKnowledge(baseDecision.intent, snapshot, {
+        workspaceId: _gemWsId,
+        queryText: baseDecision.knowledgeQueryText,
+        originContext: baseDecision.originContext,
+      }).map((source, index) => knowledgeTextForPrompt(source, index)),
     ].join('\n')
     const draftText = applyRichMessageToDraft(appendPaymentLinkToDraft(finishedCleanly
       ? guardedDraftText(parsed?.draftText || text, baseDecision.draftText, {
@@ -1313,12 +1458,13 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
         productFacts: baseDecision.productFacts,
       })
       : baseDecision.draftText, baseDecision.paymentLink, baseDecision.intent), baseDecision.richMessage)
+    const finalDraftText = ensureAdOriginDraft(draftText, baseDecision.originContext)
 
     return enforceSizeChartDraft({
       ...baseDecision,
       provider: 'gemini',
       model,
-      draftText,
+      draftText: finalDraftText,
       confidence: Math.max(0, Math.min(1, Number(parsed?.confidence || baseDecision.confidence || 0.74))),
       reason: finishedCleanly ? (parsed?.reason || 'gemini_guarded_text_draft') : `gemini_fallback_${candidate.finishReason}`,
     })
@@ -1343,7 +1489,11 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
         inbound?.text,
         originContextText(originContext),
       ].filter(Boolean).join(' ')
-      const knowledge = relevantKnowledge(intent, snapshot, { workspaceId, queryText: knowledgeQueryText })
+  const knowledge = relevantKnowledge(intent, snapshot, {
+    workspaceId,
+    queryText: knowledgeQueryText,
+    originContext,
+  })
       const inventoryProductFacts = productFactsForThread(thread, snapshot, originContext)
       let productFacts = inventoryProductFacts
       let productFactsReason = productFacts ? 'product_inventory_fact_match' : ''
@@ -1368,9 +1518,9 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
       const draftText = includeSizeChart
         ? sizeChartDraftText()
         : holdReason === 'easystore_live_product_conflict'
-        ? 'เดี๋ยวขอให้แอดมินตรวจรุ่นและสต็อกจาก EasyStore ให้ชัดก่อนนะคะ เพื่อไม่ให้แจ้งผิดรุ่นค่ะ'
+        ? 'เดี๋ยวขอให้แอดมินตรวจรุ่นและสต็อกให้ชัดก่อนนะคะ เพื่อไม่ให้แจ้งผิดรุ่นค่ะ'
         : holdReason === 'easystore_live_lookup_required'
-          ? 'เดี๋ยวขอให้แอดมินเช็กราคาและสต็อกจาก EasyStore อีกครั้งก่อนนะคะ เพื่อไม่ให้แจ้งข้อมูลผิดค่ะ'
+          ? 'เดี๋ยวขอให้แอดมินเช็กราคาอีกครั้งก่อนนะคะ เพื่อไม่ให้แจ้งข้อมูลผิดค่ะ'
           : draftForIntent(intent, originContext, productFacts, slots)
       const paymentLink = latestPaymentLinkForThread(thread, snapshot)
       const salesAttachments = buildSalesAttachments({
@@ -1390,7 +1540,10 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
         action: decisionAllowed ? 'draft_ready' : 'needs_approval',
         confidence: holdReason ? 0.58 : (intent === 'faq' ? 0.72 : 0.82),
         allowed: decisionAllowed,
-        draftText: applyRichMessageToDraft(appendPaymentLinkToDraft(draftText, paymentLink, intent), richMessage),
+        draftText: ensureAdOriginDraft(
+          applyRichMessageToDraft(appendPaymentLinkToDraft(draftText, paymentLink, intent), richMessage),
+          originContext,
+        ),
         reason: productFacts
           ? productFactsReason
           : (holdReason || (allowed ? 'policy_allows_low_risk_intent' : 'guard_requires_human_or_more_data')),
