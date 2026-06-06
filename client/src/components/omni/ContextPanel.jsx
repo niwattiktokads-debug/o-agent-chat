@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { fetchOmniSettings, saveOmniSettings } from '../../lib/omniApi.js'
+import { fetchEasyStoreProductPreview, fetchOmniSettings, saveOmniSettings, searchEasyStoreProducts } from '../../lib/omniApi.js'
 import OrderDesk from './OrderDesk.jsx'
 import PaymentDesk from './PaymentDesk.jsx'
 import ProfilePanel from './ProfilePanel.jsx'
@@ -13,6 +13,28 @@ const TABS = [
   { id: 'payment', label: 'ชำระเงิน' },
 ]
 
+function easyStoreProductId(product = {}) {
+  return product.productId || product.id || product.variantId || product.sku || ''
+}
+
+function easyStoreProductTitle(product = {}) {
+  return product.productName || product.title || product.name || product.sku || product.productId || product.id || 'สินค้า EasyStore'
+}
+
+function uniqueEasyStoreProducts(products = []) {
+  const rows = new Map()
+  for (const product of products || []) {
+    const id = easyStoreProductId(product)
+    if (!id || rows.has(String(id))) continue
+    rows.set(String(id), product)
+  }
+  return Array.from(rows.values())
+}
+
+function easyStoreImageLabel(image = {}, index = 0) {
+  return image.alt || image.title || `รูปสินค้า ${index + 1}`
+}
+
 export default function ContextPanel({ snapshot, thread, onSnapshot, workspaceId, onUseDraft }) {
   const [tab, setTab] = useState('ai')
   const [settings, setSettings] = useState(snapshot?.settings || null)
@@ -23,6 +45,13 @@ export default function ContextPanel({ snapshot, thread, onSnapshot, workspaceId
   const [sizeChartImageUrl, setSizeChartImageUrl] = useState('')
   const [salesAssetsBusy, setSalesAssetsBusy] = useState(false)
   const [salesAssetsStatus, setSalesAssetsStatus] = useState('')
+  const [sizeChartPickerOpen, setSizeChartPickerOpen] = useState(false)
+  const [sizeChartQuery, setSizeChartQuery] = useState('')
+  const [sizeChartProducts, setSizeChartProducts] = useState([])
+  const [sizeChartProduct, setSizeChartProduct] = useState(null)
+  const [sizeChartImages, setSizeChartImages] = useState([])
+  const [sizeChartPickerBusy, setSizeChartPickerBusy] = useState(false)
+  const [sizeChartPickerStatus, setSizeChartPickerStatus] = useState('')
 
   useEffect(() => {
     if (snapshot?.settings) setSettings(snapshot.settings)
@@ -78,9 +107,9 @@ export default function ContextPanel({ snapshot, thread, onSnapshot, workspaceId
     }
   }
 
-  async function saveSalesAssets(enabled = true) {
+  async function saveSalesAssets(enabled = true, overrideUrl = null, successMessage = '') {
     if (!settings || salesAssetsBusy) return
-    const url = sizeChartImageUrl.trim()
+    const url = String(overrideUrl ?? sizeChartImageUrl).trim()
     setSalesAssetsBusy(true)
     setSalesAssetsStatus('')
     setGuardError('')
@@ -101,11 +130,72 @@ export default function ContextPanel({ snapshot, thread, onSnapshot, workspaceId
       setSizeChartImageUrl(result.settings?.ai?.salesAssets?.sizeChartImageUrl || nextSettings.ai.salesAssets.sizeChartImageUrl)
       const nextSnapshot = result.snapshot || (snapshot ? { ...snapshot, settings: result.settings || nextSettings } : null)
       if (nextSnapshot) onSnapshot?.(nextSnapshot)
-      setSalesAssetsStatus(nextSettings.ai.salesAssets.enabled && nextSettings.ai.salesAssets.sizeChartImageUrl ? 'บันทึกรูปตารางไซซ์แล้ว' : 'ปิดรูปตารางไซซ์แล้ว')
+      setSalesAssetsStatus(successMessage || (nextSettings.ai.salesAssets.enabled && nextSettings.ai.salesAssets.sizeChartImageUrl ? 'บันทึกรูปตารางไซซ์แล้ว' : 'ปิดรูปตารางไซซ์แล้ว'))
+      return true
     } catch (error) {
       setGuardError(error.message || 'sales_assets_update_failed')
+      return false
     } finally {
       setSalesAssetsBusy(false)
+    }
+  }
+
+  async function loadSizeChartImages(product) {
+    const productId = easyStoreProductId(product)
+    if (!productId) return
+    setSizeChartPickerBusy(true)
+    setSizeChartPickerStatus('กำลังโหลดรูปจาก EasyStore')
+    try {
+      const result = await fetchEasyStoreProductPreview(productId)
+      const previewProduct = result.product || {}
+      const images = previewProduct.images || []
+      setSizeChartProduct({ ...product, ...previewProduct })
+      setSizeChartImages(images)
+      setSizeChartPickerStatus(images.length ? `เลือกรูปจาก ${easyStoreProductTitle(previewProduct)}` : 'สินค้านี้ยังไม่มีรูป')
+    } catch (error) {
+      setSizeChartPickerStatus(error.message || 'easystore_product_preview_failed')
+      setSizeChartImages([])
+    } finally {
+      setSizeChartPickerBusy(false)
+    }
+  }
+
+  async function loadSizeChartProducts(event) {
+    event?.preventDefault()
+    if (sizeChartPickerBusy) return
+    setSizeChartPickerBusy(true)
+    setSizeChartPickerStatus('กำลังค้นสินค้า EasyStore')
+    setSizeChartImages([])
+    try {
+      const result = await searchEasyStoreProducts(sizeChartQuery.trim(), 12)
+      const rows = uniqueEasyStoreProducts(result.products || [])
+      setSizeChartProducts(rows)
+      setSizeChartPickerStatus(rows.length ? `พบสินค้า ${rows.length} รายการ` : 'ไม่พบสินค้า EasyStore')
+      if (rows[0]) await loadSizeChartImages(rows[0])
+    } catch (error) {
+      setSizeChartPickerStatus(error.message || 'easystore_products_failed')
+    } finally {
+      setSizeChartPickerBusy(false)
+    }
+  }
+
+  function openSizeChartPicker() {
+    setSizeChartPickerOpen(true)
+    setSizeChartPickerStatus('')
+    if (!sizeChartProducts.length) {
+      window.setTimeout(() => {
+        loadSizeChartProducts()
+      }, 0)
+    }
+  }
+
+  async function useEasyStoreSizeChart(image, index = 0) {
+    if (!image?.url) return
+    setSizeChartImageUrl(image.url)
+    const saved = await saveSalesAssets(true, image.url, 'ใช้รูปจาก EasyStore แล้ว')
+    if (saved) {
+      setSizeChartPickerOpen(false)
+      setSizeChartPickerStatus(`ใช้ ${easyStoreImageLabel(image, index)} เป็นตารางไซซ์แล้ว`)
     }
   }
 
@@ -207,6 +297,14 @@ export default function ContextPanel({ snapshot, thread, onSnapshot, workspaceId
                 </button>
                 <button
                   type="button"
+                  disabled={salesAssetsBusy}
+                  onClick={openSizeChartPicker}
+                  className="rounded-[var(--radius-md)] border border-[var(--color-accent)] bg-[var(--color-panel)] px-3 py-1.5 text-xs font-bold text-[var(--color-accent)] disabled:opacity-50"
+                >
+                  เลือกจาก EasyStore
+                </button>
+                <button
+                  type="button"
                   disabled={!settings || salesAssetsBusy || !settings?.ai?.salesAssets?.sizeChartImageUrl}
                   onClick={() => saveSalesAssets(false)}
                   className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-1.5 text-xs font-bold text-[var(--color-ink-2)] disabled:opacity-50"
@@ -215,8 +313,126 @@ export default function ContextPanel({ snapshot, thread, onSnapshot, workspaceId
                 </button>
                 {salesAssetsStatus ? <span className="text-xs font-bold text-[var(--color-live)]">{salesAssetsStatus}</span> : null}
               </div>
+              {sizeChartImageUrl ? (
+                <div className="mt-3 grid grid-cols-[64px_minmax(0,1fr)] gap-3 rounded-[var(--radius-sm)] border border-[var(--color-rule)] bg-[var(--color-panel)] p-2">
+                  <img src={sizeChartImageUrl} alt="รูปตารางไซซ์ปัจจุบัน" className="aspect-square w-16 rounded-[var(--radius-sm)] object-cover" loading="lazy" />
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold text-[var(--color-ink)]">รูปตารางไซซ์ปัจจุบัน</div>
+                    <div className="mt-1 truncate text-[11px] font-semibold text-[var(--color-muted)]">{sizeChartImageUrl}</div>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </section>
+          {sizeChartPickerOpen ? (
+            <div className="fixed inset-0 z-50 grid place-items-center bg-[#101820]/60 p-3" role="presentation">
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-label="เลือกภาพตารางไซซ์จาก EasyStore"
+                className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-rule)] bg-[var(--color-panel)] shadow-[0_24px_80px_rgba(16,24,32,0.28)]"
+              >
+                <header className="flex items-start justify-between gap-3 border-b border-[var(--color-rule)] px-4 py-3">
+                  <div>
+                    <h2 className="text-base font-black text-[var(--color-ink)]">เลือกภาพตารางไซซ์จาก EasyStore</h2>
+                    <p className="mt-1 text-xs font-semibold text-[var(--color-muted)]">กดรูปที่ถูกต้องเพื่อจำไว้ใน Sales Assets และใช้แนบคำตอบเรื่องไซซ์</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSizeChartPickerOpen(false)}
+                    className="grid h-8 w-8 shrink-0 place-items-center rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] text-sm font-black text-[var(--color-ink-2)]"
+                    aria-label="ปิด popup เลือกรูปตารางไซซ์"
+                  >
+                    ×
+                  </button>
+                </header>
+                <div className="grid min-h-0 flex-1 gap-0 overflow-hidden md:grid-cols-[280px_minmax(0,1fr)]">
+                  <section className="min-h-0 border-b border-[var(--color-rule)] p-4 md:border-b-0 md:border-r">
+                    <form onSubmit={loadSizeChartProducts} className="flex gap-2">
+                      <label htmlFor="size-chart-easystore-search" className="sr-only">ค้นสินค้า EasyStore สำหรับรูปตารางไซซ์</label>
+                      <input
+                        id="size-chart-easystore-search"
+                        value={sizeChartQuery}
+                        onChange={(event) => setSizeChartQuery(event.target.value)}
+                        placeholder="ค้นสินค้า / SKU"
+                        className="min-w-0 flex-1 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] px-3 py-2 text-sm font-semibold text-[var(--color-ink)] outline-none focus:border-[var(--color-accent)]"
+                      />
+                      <button
+                        type="submit"
+                        disabled={sizeChartPickerBusy}
+                        className="rounded-[var(--radius-md)] bg-[var(--color-accent)] px-3 py-2 text-xs font-bold text-[var(--color-accent-ink)] disabled:opacity-50"
+                      >
+                        ค้น
+                      </button>
+                    </form>
+                    <div className="mt-3 text-xs font-bold text-[var(--color-muted)]">{sizeChartPickerStatus || 'เลือกรายการสินค้าเพื่อดูรูปทั้งหมด'}</div>
+                    <div className="mt-3 max-h-[54vh] space-y-2 overflow-y-auto pr-1" aria-label="รายการสินค้า EasyStore สำหรับตารางไซซ์">
+                      {sizeChartProducts.length ? sizeChartProducts.map((product) => {
+                        const id = easyStoreProductId(product)
+                        const active = id && id === easyStoreProductId(sizeChartProduct || {})
+                        return (
+                          <button
+                            key={id}
+                            type="button"
+                            onClick={() => loadSizeChartImages(product)}
+                            className={`grid w-full grid-cols-[48px_minmax(0,1fr)] items-center gap-2 rounded-[var(--radius-md)] border p-2 text-left transition ${active ? 'border-[var(--color-accent)] bg-[var(--color-accent-soft)]' : 'border-[var(--color-rule)] bg-[var(--color-panel-2)] hover:border-[var(--color-accent)]'}`}
+                            aria-label={`เปิดรูปสินค้า ${easyStoreProductTitle(product)}`}
+                          >
+                            {product.imageUrl ? (
+                              <img src={product.imageUrl} alt={easyStoreProductTitle(product)} className="aspect-square w-12 rounded-[var(--radius-sm)] object-cover" loading="lazy" />
+                            ) : (
+                              <div className="grid aspect-square w-12 place-items-center rounded-[var(--radius-sm)] bg-[var(--color-panel)] text-[10px] font-bold text-[var(--color-muted)]">สินค้า</div>
+                            )}
+                            <span className="min-w-0">
+                              <span className="block truncate text-xs font-bold text-[var(--color-ink)]">{easyStoreProductTitle(product)}</span>
+                              <span className="mt-1 block truncate text-[10px] font-semibold text-[var(--color-muted)]">SKU: {product.sku || product.productId || '-'}</span>
+                            </span>
+                          </button>
+                        )
+                      }) : (
+                        <div className="rounded-[var(--radius-md)] border border-dashed border-[var(--color-rule)] px-3 py-6 text-center text-xs font-semibold text-[var(--color-muted)]">
+                          {sizeChartPickerBusy ? 'กำลังโหลดสินค้า EasyStore' : 'ค้นสินค้าเพื่อเลือกรูป'}
+                        </div>
+                      )}
+                    </div>
+                  </section>
+                  <section className="min-h-0 overflow-y-auto p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <h3 className="text-sm font-black text-[var(--color-ink)]">{easyStoreProductTitle(sizeChartProduct || {})}</h3>
+                        <p className="mt-1 text-xs font-semibold text-[var(--color-muted)]">เลือกภาพที่เป็นตารางไซซ์จริงจาก EasyStore</p>
+                      </div>
+                      <span className="rounded-[var(--radius-pill)] bg-[var(--color-panel-2)] px-2 py-1 text-[11px] font-bold text-[var(--color-muted)]">{sizeChartImages.length} รูป</span>
+                    </div>
+                    <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                      {sizeChartImages.length ? sizeChartImages.map((image, index) => (
+                        <div key={image.id || image.url || index} className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)]">
+                          <img src={image.url} alt={easyStoreImageLabel(image, index)} className="aspect-square w-full object-cover" loading="lazy" />
+                          <div className="p-2">
+                            <div className="truncate text-xs font-bold text-[var(--color-ink)]">{easyStoreImageLabel(image, index)}</div>
+                            <div className="mt-1 text-[10px] font-semibold text-[var(--color-muted)]">{[image.width, image.height].filter(Boolean).join('×') || `รูปที่ ${index + 1}`}</div>
+                            <button
+                              type="button"
+                              disabled={salesAssetsBusy}
+                              onClick={() => useEasyStoreSizeChart(image, index)}
+                              aria-label={`ใช้เป็นตารางไซซ์ ${easyStoreImageLabel(image, index)}`}
+                              className="mt-2 w-full rounded-[var(--radius-md)] bg-[var(--color-accent)] px-2 py-1.5 text-xs font-bold text-[var(--color-accent-ink)] disabled:opacity-50"
+                            >
+                              ใช้เป็นตารางไซซ์
+                            </button>
+                          </div>
+                        </div>
+                      )) : (
+                        <div className="col-span-2 rounded-[var(--radius-md)] border border-dashed border-[var(--color-rule)] px-3 py-10 text-center text-xs font-semibold text-[var(--color-muted)] sm:col-span-3">
+                          {sizeChartPickerBusy ? 'กำลังโหลดรูปจาก EasyStore' : 'เลือกรายการสินค้าด้านซ้ายเพื่อดูรูป'}
+                        </div>
+                      )}
+                    </div>
+                  </section>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </>
       ) : null}
       {tab === 'sales' ? <SalesContextPanel thread={thread} onUseDraft={onUseDraft} /> : null}

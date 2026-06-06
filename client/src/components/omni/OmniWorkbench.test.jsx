@@ -259,7 +259,10 @@ vi.mock('../../lib/omniApi.js', () => ({
       title: 'Amanda Jumpsuit',
       price: { formatted: '฿1,290' },
       stock: { totalQuantity: 3, status: 'in_stock' },
-      images: [{ id: 'img_amanda', alt: 'Amanda Jumpsuit', url: 'https://cdn.example/amanda.jpg' }],
+      images: [
+        { id: 'img_amanda', alt: 'Amanda Jumpsuit', url: 'https://cdn.example/amanda.jpg' },
+        { id: 'img_size_chart', alt: 'ตารางไซซ์ Amanda', url: 'https://cdn.example/amanda-size-chart.jpg', width: 900, height: 900 },
+      ],
       links: { storefrontUrl: 'https://annalynna.easy.co/products/amanda-jumpsuit' },
     },
   }),
@@ -831,6 +834,22 @@ describe('OmniWorkbench', () => {
 
     expect(await screen.findByText('บันทึกรูปตารางไซซ์แล้ว')).toBeInTheDocument()
     expect(sizeChartInput).toHaveValue('https://cdn.example/size-chart.jpg')
+  })
+
+  it('lets the operator pick a size chart image from EasyStore in a popup', async () => {
+    render(<OmniWorkbench />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'เลือกจาก EasyStore' }))
+
+    const dialog = await screen.findByRole('dialog', { name: 'เลือกภาพตารางไซซ์จาก EasyStore' })
+    expect((await within(dialog).findAllByText('Lorra เดรสเชิ้ต Polo')).length).toBeGreaterThan(0)
+    expect(await within(dialog).findByAltText('ตารางไซซ์ Amanda')).toBeInTheDocument()
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'ใช้เป็นตารางไซซ์ ตารางไซซ์ Amanda' }))
+
+    expect(await screen.findByText('ใช้รูปจาก EasyStore แล้ว')).toBeInTheDocument()
+    expect(screen.getByLabelText('ลิงก์รูปตารางไซซ์')).toHaveValue('https://cdn.example/amanda-size-chart.jpg')
+    expect(screen.queryByRole('dialog', { name: 'เลือกภาพตารางไซซ์จาก EasyStore' })).not.toBeInTheDocument()
   })
 
   it('shows sales context and places a suggested product image into the draft composer', async () => {
