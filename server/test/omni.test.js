@@ -3106,6 +3106,114 @@ test('AI reply engine asks body measurements for size advice', async () => {
   assert.match(decision.draftText, /สะโพก/)
 })
 
+test('AI reply engine uses plus-size wording after customer size passes plus-size threshold', async () => {
+  const seed = createOmniSeed()
+  seed.customers.push({ id: 'cust_sales_plus_size_advice', displayName: 'Sales Plus Size Advice Customer', matchConfidence: 1 })
+  seed.threads.push({
+    id: 'thread_sales_plus_size_advice',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'cust_sales_plus_size_advice',
+    status: 'open',
+    intent: 'unknown',
+    risk: 'low',
+    unreadCount: 1,
+    messageCount: 1,
+    updatedAt: '2026-06-04T05:26:00.000Z',
+  })
+  seed.messages.push({
+    id: 'msg_sales_plus_size_advice',
+    threadId: 'thread_sales_plus_size_advice',
+    direction: 'inbound',
+    authorName: 'Sales Plus Size Advice Customer',
+    text: 'Lorra ใส่ 2XL ได้ไหม',
+    createdAt: '2026-06-04T05:26:00.000Z',
+    providerMessageId: 'mid_sales_plus_size_advice',
+  })
+  const easyStore = {
+    async searchProducts() {
+      return {
+        ok: true,
+        source: 'easystore_live',
+        products: [{
+          id: 'es_live_lorra_2xl',
+          productId: '16462394',
+          variantId: 'live_lorra_2xl',
+          sku: 'LORRA-RED-2XL',
+          source: 'easystore_live',
+          productName: 'Lorra Dress',
+          color: 'แดง',
+          size: '2XL',
+          sellPrice: 1290,
+          stock: 6,
+        }],
+      }
+    },
+  }
+  const service = createOmniService(seed)
+  const thread = service.getThread('thread_sales_plus_size_advice')
+  const ai = createAiReplyEngine({ provider: 'local_rules', model: 'test', easyStore })
+  const decision = await ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
+
+  assert.equal(decision.intent, 'sizeAdvice')
+  assert.match(decision.draftText, /สาวอวบ/)
+  assert.doesNotMatch(decision.draftText, /รบกวนแจ้งอก เอว สะโพก/)
+})
+
+test('AI reply engine uses plus-size wording after customer measurements pass plus-size threshold', async () => {
+  const seed = createOmniSeed()
+  seed.customers.push({ id: 'cust_sales_plus_measurements', displayName: 'Sales Plus Measurements Customer', matchConfidence: 1 })
+  seed.threads.push({
+    id: 'thread_sales_plus_measurements',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'cust_sales_plus_measurements',
+    status: 'open',
+    intent: 'unknown',
+    risk: 'low',
+    unreadCount: 1,
+    messageCount: 1,
+    updatedAt: '2026-06-04T05:27:00.000Z',
+  })
+  seed.messages.push({
+    id: 'msg_sales_plus_measurements',
+    threadId: 'thread_sales_plus_measurements',
+    direction: 'inbound',
+    authorName: 'Sales Plus Measurements Customer',
+    text: 'อก 44 เอว 40 สะโพก 49 Lorra ใส่ได้ไหม',
+    createdAt: '2026-06-04T05:27:00.000Z',
+    providerMessageId: 'mid_sales_plus_measurements',
+  })
+  const easyStore = {
+    async searchProducts() {
+      return {
+        ok: true,
+        source: 'easystore_live',
+        products: [{
+          id: 'es_live_lorra_measurements',
+          productId: '16462394',
+          variantId: 'live_lorra_measurements',
+          sku: 'LORRA-RED-2XL',
+          source: 'easystore_live',
+          productName: 'Lorra Dress',
+          color: 'แดง',
+          size: '2XL',
+          sellPrice: 1290,
+          stock: 6,
+        }],
+      }
+    },
+  }
+  const service = createOmniService(seed)
+  const thread = service.getThread('thread_sales_plus_measurements')
+  const ai = createAiReplyEngine({ provider: 'local_rules', model: 'test', easyStore })
+  const decision = await ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
+
+  assert.equal(decision.intent, 'sizeAdvice')
+  assert.match(decision.draftText, /สาวอวบ/)
+  assert.doesNotMatch(decision.draftText, /รบกวนแจ้งอก เอว สะโพก/)
+})
+
 test('AI reply engine requests OpenAI structured JSON output for guarded drafts', async () => {
   const previousKey = process.env.OPENAI_API_KEY
   process.env.OPENAI_API_KEY = 'test-openai-key'
@@ -3193,6 +3301,66 @@ test('AI reply engine calls Gemini natively for Vercel drafts', async () => {
     assert.match(calls[0].body.contents[0].parts[0].text, /ad_seed_black_m/)
     assert.match(calls[0].body.contents[0].parts[0].text, /เสื้อสีดำ/)
     assert.equal(calls[0].body.generationConfig.temperature, 0.2)
+  } finally {
+    if (previousKey === undefined) delete process.env.GOOGLE_API_KEY
+    else process.env.GOOGLE_API_KEY = previousKey
+  }
+})
+
+test('AI reply engine falls back when provider uses plus-size wording without customer threshold evidence', async () => {
+  const previousKey = process.env.GOOGLE_API_KEY
+  process.env.GOOGLE_API_KEY = 'test-gemini-key'
+  const seed = createOmniSeed()
+  seed.customers.push({ id: 'cust_provider_plus_guard', displayName: 'Provider Plus Guard Customer', matchConfidence: 1 })
+  seed.threads.push({
+    id: 'thread_provider_plus_guard',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'cust_provider_plus_guard',
+    status: 'open',
+    intent: 'unknown',
+    risk: 'low',
+    unreadCount: 1,
+    messageCount: 1,
+    updatedAt: '2026-06-04T05:28:00.000Z',
+    originContext: { channel: 'facebook', sourceType: 'post', productHint: { text: 'Lorra' } },
+  })
+  seed.messages.push({
+    id: 'msg_provider_plus_guard',
+    threadId: 'thread_provider_plus_guard',
+    direction: 'inbound',
+    authorName: 'Provider Plus Guard Customer',
+    text: 'Lorra ใส่ได้ไหม',
+    createdAt: '2026-06-04T05:28:00.000Z',
+    providerMessageId: 'mid_provider_plus_guard',
+  })
+  const service = createOmniService(seed)
+  const thread = service.getThread('thread_provider_plus_guard')
+  const ai = createAiReplyEngine({
+    provider: 'gemini',
+    model: 'gemini-3-flash-preview',
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({
+        candidates: [{
+          content: {
+            parts: [{ text: 'Lorra รุ่นนี้สาวอวบใส่สวยค่ะ เดี๋ยวช่วยเช็กสีและไซซ์ให้ค่ะ' }],
+          },
+        }],
+      }),
+    }),
+  })
+
+  try {
+    const decision = await ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
+
+    assert.equal(decision.ok, true)
+    assert.equal(decision.provider, 'gemini')
+    assert.equal(decision.intent, 'sizeAdvice')
+    assert.doesNotMatch(decision.draftText, /สาวอวบ|คนอวบ|อวบ/)
+    assert.match(decision.draftText, /อก/)
+    assert.match(decision.draftText, /เอว/)
+    assert.match(decision.draftText, /สะโพก/)
   } finally {
     if (previousKey === undefined) delete process.env.GOOGLE_API_KEY
     else process.env.GOOGLE_API_KEY = previousKey

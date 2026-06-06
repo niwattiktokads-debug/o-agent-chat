@@ -17,6 +17,8 @@ const PRODUCT_LOOKUP_GENERIC_TERMS = new Set([
   'สนใจ', 'ตัวนี้', 'รุ่น', 'สี', 'ไซซ์', 'ไซส์', 'size', 'stock', 'price', 'photo', 'image',
 ])
 const DEFAULT_LOW_RISK_AUTOSEND_INTENTS = new Set(['faq', 'stock', 'price', 'orderStatus', 'sizeAdvice', 'shipping'])
+const PLUS_SIZE_LABELS = new Set(['XXL', '2XL', '3XL', '4XL', '5XL'])
+const PLUS_SIZE_MEASUREMENT_MIN = { bust: 44, waist: 40, hips: 49 }
 
 function autoSendAllEnabled() {
   return process.env.OMNI_AI_AUTO_SEND_ALL === '1' || process.env.OMNI_AI_AUTO_SEND_ON_WEBHOOK === '1'
@@ -54,7 +56,7 @@ function classifyIntent(text) {
   if (isCustomerCorrection(value)) return 'humanReview'
   if (/(สลิป|โอนแล้ว|จ่ายแล้ว|ชำระแล้ว|หลักฐาน|payment proof|paid)/i.test(value)) return 'paymentProof'
   if (/(^|\s)(cf|เอา|รับ|สั่ง|จอง)(\s|$)|สั่งค่ะ|สั่งครับ|เอาค่ะ|เอาครับ|รับค่ะ|รับครับ/i.test(value)) return 'orderPurchase'
-  if (/(ไซซ์ไหนดี|ไซส์ไหนดี|ใส่ได้ไหม|ใส่ได้มั้ย|พอดีไหม|พอดีมั้ย|รอบอก|รอบเอว|สะโพก|size advice|แนะนำไซซ์|แนะนำไซส์)/i.test(value)) return 'sizeAdvice'
+  if (/(ไซซ์ไหนดี|ไซส์ไหนดี|ใส่(?:\s|[^\n]){0,24}ได้(?:ไหม|มั้ย)|พอดีไหม|พอดีมั้ย|รอบอก|รอบเอว|สะโพก|size advice|แนะนำไซซ์|แนะนำไซส์)/i.test(value)) return 'sizeAdvice'
   if (/(ไม่ชอบ|มีแบบอื่น|แบบอื่น|แนะนำ.*แบบ|ตัวอื่น|รุ่นอื่น)/i.test(value)) return 'alternativeProduct'
   if (/(ลดได้ไหม|ลดไหม|ขอลด|ส่วนลด|โปรโมชั่น|มีโปร(?:ไหม|มั้ย|อะไร)?|ของแถม|discount)/i.test(value)) return 'discount'
   if (/(ค่าส่ง|ส่งฟรี|จัดส่ง|ส่งเมื่อไหร่|ส่งวันไหน|shipping|delivery)/i.test(value)) return 'shipping'
@@ -96,6 +98,43 @@ function detectSize(text) {
   return (match?.[1] || match?.[2] || '').toUpperCase()
 }
 
+function isPlusSizeLabel(size) {
+  return PLUS_SIZE_LABELS.has(String(size || '').trim().toUpperCase())
+}
+
+function detectMeasurement(text, pattern) {
+  const match = String(text || '').match(pattern)
+  if (!match) return null
+  const value = Number.parseFloat(match[1])
+  return Number.isFinite(value) ? value : null
+}
+
+function detectBodyMeasurements(text) {
+  const value = String(text || '')
+  return {
+    bust: detectMeasurement(value, /(?:รอบอก|อก|"?bust"?|"?chest"?)\s*[:=]?\s*(\d+(?:\.\d+)?)/i),
+    waist: detectMeasurement(value, /(?:รอบเอว|เอว|"?waist"?)\s*[:=]?\s*(\d+(?:\.\d+)?)/i),
+    hips: detectMeasurement(value, /(?:สะโพก|"?hip"?|"?hips"?)\s*[:=]?\s*(\d+(?:\.\d+)?)/i),
+  }
+}
+
+function hasPlusSizeMeasurements(measurements = {}) {
+  return (
+    Number(measurements.bust || 0) >= PLUS_SIZE_MEASUREMENT_MIN.bust ||
+    Number(measurements.waist || 0) >= PLUS_SIZE_MEASUREMENT_MIN.waist ||
+    Number(measurements.hips || 0) >= PLUS_SIZE_MEASUREMENT_MIN.hips
+  )
+}
+
+function hasPlusSizeWording(text) {
+  return /(สาวอวบ|คนอวบ|อวบ)/i.test(String(text || ''))
+}
+
+function hasPlusSizeEvidence(text) {
+  const value = String(text || '')
+  return isPlusSizeLabel(detectSize(value)) || hasPlusSizeMeasurements(detectBodyMeasurements(value))
+}
+
 function detectColor(text) {
   const match = String(text || '').match(/(ดำ|ขาว|เทา|กรม|น้ำเงิน|ฟ้า|เขียว|แดง|ชมพู|ครีม|เบจ|น้ำตาล|ม่วง|เหลือง|ส้ม|black|white|gray|grey|navy|blue|green|red|pink|cream|beige|brown|purple|yellow|orange)/i)
   if (!match) return ''
@@ -128,6 +167,7 @@ function latestSalesSlots(thread, snapshot, originContext = null) {
     productLabel: originProductLabel(originContext || {}),
     color: originContext?.productHint?.color || originContext?.live?.color || detectColor(recentText),
     size: originContext?.productHint?.size || originContext?.live?.size || detectSize(recentText),
+    measurements: detectBodyMeasurements(recentText),
   }
 }
 
@@ -432,6 +472,7 @@ function salesWorkflowDraft({ intent, originContext = null, productFacts = null,
   const size = slots.size || ''
   const hasColor = Boolean(color)
   const hasSize = Boolean(size)
+  const hasPlusSizeSignal = isPlusSizeLabel(size) || hasPlusSizeMeasurements(slots.measurements)
 
   if (intent === 'stock') {
     if (hasSize && !hasColor) {
@@ -453,6 +494,10 @@ function salesWorkflowDraft({ intent, originContext = null, productFacts = null,
   }
 
   if (intent === 'sizeAdvice') {
+    if (hasPlusSizeSignal) {
+      const signalText = isPlusSizeLabel(size) ? `ไซซ์ ${size}` : 'จากสัดส่วนที่แจ้ง'
+      return `${signalText} เข้าเกณฑ์สาวอวบของร้านค่ะ ${productText} มีไซซ์ใหญ่รองรับ เดี๋ยวช่วยเช็กสีและสต็อกให้ตรงตัวนะคะ`
+    }
     return `รบกวนแจ้งอก เอว สะโพกหน่อยค่ะ เดี๋ยวเทียบไซซ์ ${productText} ให้ว่าใส่ไซซ์ไหนสวยสุดค่ะ`
   }
 
@@ -854,6 +899,7 @@ function buildCustomerReplyPrompt({ thread, snapshot, policy, baseDecision }) {
       'ถ้าลูกค้าถามสี ให้ตอบพร้อมส่ง/แนบภาพสีนั้นตามเครื่องมือ และถามไซซ์ที่ต้องการ ห้ามเช็กทุกไซซ์แบบกว้างก่อน',
       'ถ้าลูกค้าถามไซซ์ ให้เช็กสต็อกไซซ์นั้นก่อน และถามสีที่ต้องการพร้อมเสนอภาพสี ห้ามถามสัดส่วนก่อน ยกเว้นลูกค้าถามว่าไซซ์ไหนดีหรือใส่ได้ไหม',
       'ถ้าลูกค้าถามไซซ์ไหนดีหรือใส่ได้ไหม ให้ถามอก เอว สะโพก เพื่อเทียบไซซ์ ไม่ถามน้ำหนัก/ส่วนสูงเป็นหลัก',
+      'คำว่า "สาวอวบ" ใช้ได้เฉพาะเมื่อลูกค้าแจ้งไซซ์ XXL/2XL ขึ้นไป หรือแจ้งสัดส่วนเข้าเกณฑ์อก 44 เอว 40 สะโพก 49 นิ้วขึ้นไป ถ้ายังไม่มีเกณฑ์ให้ใช้คำกลาง เช่น มีไซซ์ใหญ่รองรับหรือทรงใส่สบาย',
       'ถ้าลูกค้าถามราคาครั้งแรก ให้ตอบราคา พร้อมภาพสินค้า และถามสี/ไซซ์ต่อ ถ้ารู้สีและไซซ์แล้ว ให้ตอบราคาและพร้อมส่งจากข้อมูลจริง',
       'ถ้าลูกค้าพูดว่าเอา สั่ง CF หรือรับ ให้ส่งสรุปรายการชำระเงินก่อน ที่อยู่จัดส่งเป็นข้อมูลสุดท้ายหลังลูกค้าชำระเงินหรือส่งสลิป',
       'ถ้าลูกค้าส่งสลิปหรือหลักฐานชำระเงิน ให้ขอบคุณและขอชื่อ เบอร์โทร ที่อยู่จัดส่ง จากนั้นสรุปออเดอร์ให้ตรวจ',
@@ -947,6 +993,7 @@ function guardedDraftText(text, fallback, { trustedContext = '', productFacts = 
   if (/^here is\b/i.test(draft) || /^```/.test(draft) || /"draftText"\s*:/.test(draft)) return fallback
   if (/(AI Page Assistant|language model|โมเดล|prompt|system|developer)/i.test(draft)) return fallback
   if (/(และ|หรือ|กับ|ของ|ให้|ว่า|น้อง)$/i.test(draft)) return fallback
+  if (hasPlusSizeWording(draft) && !hasPlusSizeEvidence([trustedContext, fallback].filter(Boolean).join('\n'))) return fallback
   if (hasTrustedPrice(draft) && !hasTrustedPrice(trustedContext)) return fallback
   if (hasStockAssertion(draft) && !/(พร้อมส่ง|มีสินค้า|stock|available|คงเหลือ|สต็อก)/i.test(trustedContext)) return fallback
   if (Number(productFacts?.availableTotal || 0) <= 0 && hasStockAssertion(draft)) return fallback
@@ -1101,6 +1148,7 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
     const parsed = parseAiJson(text)
     const trustedContext = [
       JSON.stringify(baseDecision.originContext || {}),
+      JSON.stringify(baseDecision.salesSlots || {}),
       productFactsText(baseDecision.productFacts),
       ...relevantKnowledge(baseDecision.intent, snapshot, { workspaceId: _oaiWsId, queryText: baseDecision.knowledgeQueryText }).map((source, index) => knowledgeTextForPrompt(source, index)),
     ].join('\n')
@@ -1175,6 +1223,7 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
     const finishedCleanly = !candidate.finishReason || candidate.finishReason === 'STOP'
     const trustedContext = [
       JSON.stringify(baseDecision.originContext || {}),
+      JSON.stringify(baseDecision.salesSlots || {}),
       productFactsText(baseDecision.productFacts),
       ...relevantKnowledge(baseDecision.intent, snapshot, { workspaceId: _gemWsId, queryText: baseDecision.knowledgeQueryText }).map((source, index) => knowledgeTextForPrompt(source, index)),
     ].join('\n')
