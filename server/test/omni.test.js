@@ -3336,6 +3336,49 @@ test('AI reply engine requests OpenAI structured JSON output for guarded drafts'
   }
 })
 
+test('AI reply engine prompts customer replies in real shop admin style', async () => {
+  const previousKey = process.env.OPENAI_API_KEY
+  process.env.OPENAI_API_KEY = 'test-openai-key'
+  const calls = []
+  const service = createOmniService()
+  const thread = service.getThread('thread_1')
+  const ai = createAiReplyEngine({
+    provider: 'openai',
+    model: 'gpt-4.1-mini',
+    fetchImpl: async (url, options) => {
+      calls.push({ url, body: JSON.parse(options.body) })
+      return {
+        ok: true,
+        json: async () => ({
+          choices: [{
+            message: {
+              content: JSON.stringify({
+                draftText: 'ได้ค่ะ ขอทราบสีหรือไซซ์ที่สนใจ เดี๋ยวช่วยเช็กข้อมูลให้ตรงตัวนะคะ',
+                confidence: 0.82,
+                reason: 'shop_admin_style',
+              }),
+            },
+          }],
+        }),
+      }
+    },
+  })
+
+  try {
+    await ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
+
+    assert.equal(calls.length, 1)
+    const systemPrompt = calls[0].body.messages.find((message) => message.role === 'system').content
+    assert.match(systemPrompt, /น้ำเสียงต้องเหมือนแอดมินร้านจริง/)
+    assert.match(systemPrompt, /ห้ามขึ้นต้นทุกครั้งด้วย "สวัสดีค่ะ" หรือ "รับทราบค่ะ"/)
+    assert.match(systemPrompt, /ตอบนำด้วยคำตอบหรือ next action/)
+    assert.match(systemPrompt, /ถามกลับได้ไม่เกิน 1 คำถาม/)
+  } finally {
+    if (previousKey === undefined) delete process.env.OPENAI_API_KEY
+    else process.env.OPENAI_API_KEY = previousKey
+  }
+})
+
 test('AI reply engine calls Gemini natively for Vercel drafts', async () => {
   const previousKey = process.env.GOOGLE_API_KEY
   process.env.GOOGLE_API_KEY = 'test-gemini-key'
