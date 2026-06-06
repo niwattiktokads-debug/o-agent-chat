@@ -683,6 +683,56 @@ describe('OmniWorkbench', () => {
     expect(await screen.findByRole('switch', { name: /ส่งจริงเปิด/ })).toBeInTheDocument()
   })
 
+  it('replaces an older auto-filled AI draft when the operator has not edited it', async () => {
+    render(<OmniWorkbench />)
+    const draftBox = await screen.findByPlaceholderText(/พิมพ์ข้อความตอบลูกค้า/)
+
+    act(() => {
+      omniMock.subscribers.at(-1)?.({
+        pages: [{ id: 'page_annalynn', name: 'Anna Lynn', status: 'active' }],
+        platformAccounts: [{ id: 'acct_fb_annalynn', pageId: 'page_annalynn', platform: 'facebook' }],
+        threads: [{ id: 'thread_1', customerId: 'cust_1', pageId: 'page_annalynn', platform: 'facebook', status: 'draft_ready', intent: 'productImage', risk: 'medium' }],
+        messages: [
+          { id: 'msg_1', threadId: 'thread_1', direction: 'inbound', authorName: 'Facebook Customer', text: 'สนใจสินค้า', createdAt: '2026-06-05T12:20:00.000Z' },
+          { id: 'draft_ai_1', threadId: 'thread_1', direction: 'outbound', authorName: 'Anna Lynn AI', text: 'AI ร่างแรกค่ะ', sourceRef: 'ai_reply_draft', deliveryStatus: 'draft_only', createdAt: '2026-06-05T12:21:00.000Z' },
+        ],
+        customers: [{ id: 'cust_1', displayName: 'Facebook Customer' }],
+        orders: [],
+        aiDecisions: [],
+        paymentRequests: [],
+        connectorHealth: [],
+        settings: { ai: { customerSendEnabled: false } },
+      })
+    })
+
+    await waitFor(() => {
+      expect(draftBox).toHaveValue('AI ร่างแรกค่ะ')
+    })
+
+    act(() => {
+      omniMock.subscribers.at(-1)?.({
+        pages: [{ id: 'page_annalynn', name: 'Anna Lynn', status: 'active' }],
+        platformAccounts: [{ id: 'acct_fb_annalynn', pageId: 'page_annalynn', platform: 'facebook' }],
+        threads: [{ id: 'thread_1', customerId: 'cust_1', pageId: 'page_annalynn', platform: 'facebook', status: 'draft_ready', intent: 'productImage', risk: 'medium' }],
+        messages: [
+          { id: 'msg_1', threadId: 'thread_1', direction: 'inbound', authorName: 'Facebook Customer', text: 'สนใจสินค้า', createdAt: '2026-06-05T12:20:00.000Z' },
+          { id: 'draft_ai_2', threadId: 'thread_1', direction: 'outbound', authorName: 'Anna Lynn AI', text: 'AI ร่างล่าสุดค่ะ', sourceRef: 'ai_reply_draft', deliveryStatus: 'draft_only', createdAt: '2026-06-05T12:22:00.000Z' },
+        ],
+        customers: [{ id: 'cust_1', displayName: 'Facebook Customer' }],
+        orders: [],
+        aiDecisions: [],
+        paymentRequests: [],
+        connectorHealth: [],
+        settings: { ai: { customerSendEnabled: false } },
+      })
+    })
+
+    await waitFor(() => {
+      expect(draftBox).toHaveValue('AI ร่างล่าสุดค่ะ')
+    })
+    expect(screen.queryByText('AI ร่างใหม่มาแล้ว แต่ยังไม่ทับข้อความที่พิมพ์อยู่')).not.toBeInTheDocument()
+  })
+
   it('does not overwrite operator text when a new AI draft-only message arrives', async () => {
     render(<OmniWorkbench />)
     const draftBox = await screen.findByPlaceholderText(/พิมพ์ข้อความตอบลูกค้า/)

@@ -199,6 +199,7 @@ function ManualReplyComposer({ thread, messagesSignature = '', onSnapshot, sugge
   const fileInputRef = useRef(null)
   const messageSignatureRef = useRef('')
   const textRef = useRef('')
+  const operatorEditedRef = useRef(false)
 
   useEffect(() => {
     textRef.current = text
@@ -209,6 +210,7 @@ function ManualReplyComposer({ thread, messagesSignature = '', onSnapshot, sugge
     setAttachments([])
     setError('')
     setStatus('')
+    operatorEditedRef.current = false
     messageSignatureRef.current = messagesSignature
   }, [thread?.id])
 
@@ -224,15 +226,20 @@ function ManualReplyComposer({ thread, messagesSignature = '', onSnapshot, sugge
     setAttachments([])
     setError('')
     setStatus('')
+    operatorEditedRef.current = false
   }, [messagesSignature, thread?.id])
 
   useEffect(() => {
     if (!suggestedDraft?.text || suggestedDraft.threadId !== thread?.id) return
-    if (suggestedDraft.source === 'ai_draft_message' && textRef.current.trim()) {
+    const incomingText = String(suggestedDraft.text || '')
+    const hasOperatorText = textRef.current.trim() && textRef.current.trim() !== incomingText.trim()
+    if (suggestedDraft.source === 'ai_draft_message' && operatorEditedRef.current && hasOperatorText) {
+      setError('')
       setStatus('AI ร่างใหม่มาแล้ว แต่ยังไม่ทับข้อความที่พิมพ์อยู่')
       return
     }
-    setText(suggestedDraft.text)
+    setText(incomingText)
+    operatorEditedRef.current = false
     if (Array.isArray(suggestedDraft.attachments)) {
       setAttachments(suggestedDraft.attachments.slice(0, 5))
     }
@@ -272,6 +279,8 @@ function ManualReplyComposer({ thread, messagesSignature = '', onSnapshot, sugge
         return
       }
       setText(draftText)
+      operatorEditedRef.current = false
+      setError('')
       setStatus('AI ร่างให้แล้ว ตรวจในช่องตอบก่อนส่งจริง')
     } catch (err) {
       setError(err.message || 'ai_draft_failed')
@@ -289,6 +298,7 @@ function ManualReplyComposer({ thread, messagesSignature = '', onSnapshot, sugge
     setAttachments([])
     setError('')
     setStatus('')
+    operatorEditedRef.current = false
   }
 
   async function sendLive() {
@@ -315,6 +325,7 @@ function ManualReplyComposer({ thread, messagesSignature = '', onSnapshot, sugge
       setText('')
       setAttachments([])
       setStatus('')
+      operatorEditedRef.current = false
     } catch (err) {
       setError(err.message || 'manual_send_failed')
     } finally {
@@ -358,7 +369,9 @@ function ManualReplyComposer({ thread, messagesSignature = '', onSnapshot, sugge
           rows={3}
           value={text}
           onChange={(event) => {
+            operatorEditedRef.current = true
             setText(event.target.value)
+            setError('')
             setStatus('')
           }}
           placeholder="พิมพ์ข้อความตอบลูกค้า หรือกด AI ร่างให้"
