@@ -49,7 +49,7 @@ const DEFAULT_OMNI_SETTINGS = {
     enabled: true,
     customerSendEnabled: false,
     richMessage: { enabled: false, text: '' },
-    salesAssets: { enabled: true, sizeChartImageUrl: '' },
+    salesAssets: { enabled: true, sizeChartImageUrl: '', sizeChartLinkUrl: '' },
   },
 }
 

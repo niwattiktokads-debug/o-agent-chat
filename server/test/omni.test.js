@@ -1217,10 +1217,20 @@ test('AI reply engine adds rich message campaign brief to the first customer rep
 
 test('AI reply engine prepares bill link and product carousel assets for checkout-ready replies', async () => {
   const seed = createOmniSeed()
-  seed.omniSettings[0].settings.ai.salesAssets = {
-    enabled: true,
-    sizeChartImageUrl: 'https://cdn.example/lorra-size-chart.jpg',
-  }
+  seed.omniSettings = seed.omniSettings.map((row) => ({
+    ...row,
+    settings: {
+      ...row.settings,
+      ai: {
+        ...row.settings.ai,
+        salesAssets: {
+          enabled: true,
+          sizeChartImageUrl: 'https://cdn.example/lorra-size-chart.jpg',
+          sizeChartLinkUrl: 'https://annalynna.easy.co/products/lorra-polo',
+        },
+      },
+    },
+  }))
   seed.customers.push({ id: 'cust_checkout_assets', displayName: 'Checkout Customer', matchConfidence: 1 })
   seed.threads.push({
     id: 'thread_checkout_assets',
@@ -1332,6 +1342,7 @@ test('AI reply engine sends only the size chart image for size chart questions w
   seed.omniSettings[0].settings.ai.salesAssets = {
     enabled: true,
     sizeChartImageUrl: 'https://cdn.example/lorra-size-chart.jpg',
+    sizeChartLinkUrl: 'https://annalynna.easy.co/products/lorra-polo',
   }
   seed.customers.push({ id: 'cust_size_chart_product', displayName: 'Size Product Customer', matchConfidence: 1 })
   seed.threads.push({
@@ -1378,6 +1389,7 @@ test('AI reply engine sends only the size chart image for size chart questions w
   assert.equal(decision.attachments.length, 1)
   assert.equal(decision.attachments[0].source, 'ai_size_chart')
   assert.equal(decision.attachments[0].url, 'https://cdn.example/lorra-size-chart.jpg')
+  assert.equal(decision.carousel[0].buttons[0].url, 'https://annalynna.easy.co/products/lorra-polo')
   assert.equal(decision.attachments.some((item) => item.url === 'https://cdn.example/lorra-black-xl.jpg'), false)
   assert.match(decision.draftText, /ตารางไซซ์/)
   assert.doesNotMatch(decision.draftText, /เช็กราคา|สต็อก|EasyStore/)
@@ -1434,6 +1446,7 @@ test('AI reply engine keeps size chart copy when EasyStore live lookup would oth
   seed.omniSettings[0].settings.ai.salesAssets = {
     enabled: true,
     sizeChartImageUrl: 'https://cdn.example/lorra-size-chart.jpg',
+    sizeChartLinkUrl: 'https://annalynna.easy.co/products/lorra-polo',
   }
   seed.customers.push({ id: 'cust_size_chart_hold', displayName: 'Size Hold Customer', matchConfidence: 1 })
   seed.threads.push({
@@ -1484,8 +1497,91 @@ test('AI reply engine keeps size chart copy when EasyStore live lookup would oth
   assert.equal(decision.ok, true)
   assert.equal(decision.attachments.length, 1)
   assert.equal(decision.attachments[0].source, 'ai_size_chart')
+  assert.equal(decision.carousel[0].buttons[0].title, 'เปิดเว็บสินค้า')
+  assert.equal(decision.carousel[0].buttons[0].url, 'https://annalynna.easy.co/products/lorra-polo')
   assert.match(decision.draftText, /ตารางไซซ์/)
   assert.doesNotMatch(decision.draftText, /เช็กราคา|สต็อก|EasyStore/)
+})
+
+test('Meta auto reply sends size chart as one clickable card instead of duplicate image attachment', async () => {
+  const service = createOmniService()
+  service.updateSettings({
+    workspaceId: 'ws_oagent',
+    settings: { ai: { customerSendEnabled: true } },
+    updatedBy: 'test',
+  })
+  const sent = []
+  const ai = {
+    draft: async ({ thread }) => ({
+      ok: true,
+      provider: 'local_rules',
+      model: 'test',
+      threadId: thread.id,
+      intent: 'productImage',
+      risk: 'low',
+      action: 'draft_ready',
+      confidence: 0.9,
+      allowed: true,
+      draftText: 'ส่งตารางไซซ์ให้ดูนะคะ',
+      reason: 'size_chart_asset_ready',
+      sourceIds: [],
+      evidenceIds: [],
+      attachments: [
+        { id: 'ai_size_chart_1', name: 'ตารางไซซ์', type: 'image/jpeg', size: 0, url: 'https://cdn.example/size-chart.jpg', source: 'ai_size_chart' },
+      ],
+      carousel: [
+        {
+          title: 'ตารางไซซ์',
+          imageUrl: 'https://cdn.example/size-chart.jpg',
+          buttons: [{ type: 'web_url', title: 'เปิดเว็บสินค้า', url: 'https://annalynna.easy.co/products/lorra-polo' }],
+        },
+      ],
+    }),
+  }
+  const app = express()
+  app.use(express.json())
+  mountWebhook(app, { broadcast() {} }, { addMessage: (message) => ({ id: 'room_msg_1', ...message }), snapshot: () => ({}) }, {
+    omni: service,
+    ai,
+    awaitAutoReplies: true,
+    metaAutoReplyDefault: true,
+    metaAutoSendDefault: true,
+    followUpEnabled: false,
+    sendReply: async (input) => {
+      sent.push(input)
+      return { ok: true, response: { message_id: 'mid_size_chart_card' } }
+    },
+  })
+  const server = app.listen(0)
+  try {
+    const baseUrl = `http://127.0.0.1:${server.address().port}`
+    const response = await fetch(`${baseUrl}/webhook/meta?autoReply=1&send=1`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        object: 'page',
+        entry: [{
+          id: '122106446570001676',
+          messaging: [{
+            sender: { id: 'customer_size_card_1' },
+            recipient: { id: '122106446570001676' },
+            timestamp: 1779470100000,
+            message: { mid: 'mid_size_card_1', text: 'ขอภาพไซซ์' },
+          }],
+        }],
+      }),
+    })
+    const payload = await response.json()
+
+    assert.equal(response.status, 200)
+    assert.equal(payload.result.autoReplies[0].sent, true)
+    assert.equal(sent.length, 1)
+    assert.deepEqual(sent[0].attachments, [])
+    assert.equal(sent[0].carousel.length, 1)
+    assert.equal(sent[0].carousel[0].buttons[0].url, 'https://annalynna.easy.co/products/lorra-polo')
+  } finally {
+    await new Promise((resolve) => server.close(resolve))
+  }
 })
 
 test('Meta auto reply records AI carousel assets as visible guarded draft attachments', async () => {

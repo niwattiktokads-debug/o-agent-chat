@@ -747,7 +747,10 @@ async function draftThreadReply({ omni, ai, threadId, send = false, sendReply = 
   const recipientId = thread.customer?.providerCustomerId
   if (!recipientId) return { ...result, sent: false, sendSkipped: 'missing_recipient_id' }
 
-  const attachments = decisionAttachments
+  const carouselImageUrls = new Set(decisionCarousel.map((card) => card.imageUrl).filter(Boolean))
+  const attachments = decisionAttachments.filter((attachment) => (
+    attachment.source !== 'ai_size_chart' || !carouselImageUrls.has(attachment.url)
+  ))
   const sendResult = await sendReply({ pageProfile, recipientId, message: decision.draftText, attachments, carousel: decisionCarousel })
   if (!sendResult?.ok) return { ...result, sent: false, sendSkipped: sendResult?.error || 'send_failed', sendResult }
   const recordedOutbound = omni.recordOutboundMessage({

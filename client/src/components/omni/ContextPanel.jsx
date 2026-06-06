@@ -115,9 +115,10 @@ export default function ContextPanel({ snapshot, thread, onSnapshot, workspaceId
     }
   }
 
-  async function saveSalesAssets(enabled = true, overrideUrl = null, successMessage = '') {
+  async function saveSalesAssets(enabled = true, overrideUrl = null, successMessage = '', overrideLinkUrl = null) {
     if (!settings || salesAssetsBusy) return
     const url = String(overrideUrl ?? sizeChartImageUrl).trim()
+    const linkUrl = String(overrideLinkUrl ?? settings.ai?.salesAssets?.sizeChartLinkUrl ?? '').trim()
     setSalesAssetsBusy(true)
     setSalesAssetsStatus('')
     setGuardError('')
@@ -129,6 +130,7 @@ export default function ContextPanel({ snapshot, thread, onSnapshot, workspaceId
           ...(settings.ai?.salesAssets || {}),
           enabled,
           sizeChartImageUrl: enabled ? url : '',
+          sizeChartLinkUrl: enabled ? linkUrl : '',
         },
       },
     }
@@ -200,7 +202,7 @@ export default function ContextPanel({ snapshot, thread, onSnapshot, workspaceId
   async function useEasyStoreSizeChart(image, index = 0) {
     if (!image?.url) return
     setSizeChartImageUrl(image.url)
-    const saved = await saveSalesAssets(true, image.url, 'ใช้รูปจาก EasyStore แล้ว')
+    const saved = await saveSalesAssets(true, image.url, 'ใช้รูปจาก EasyStore แล้ว', sizeChartProduct?.links?.storefrontUrl || '')
     if (saved) {
       setSizeChartPickerOpen(false)
       setSizeChartPickerStatus(`ใช้ ${easyStoreImageLabel(image, index)} เป็นตารางไซซ์แล้ว`)

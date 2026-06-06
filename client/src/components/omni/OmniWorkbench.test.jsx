@@ -849,6 +849,7 @@ describe('OmniWorkbench', () => {
         ai: expect.objectContaining({
           salesAssets: expect.objectContaining({
             sizeChartImageUrl: 'https://cdn.example/workspace-size-chart.jpg',
+            sizeChartLinkUrl: '',
           }),
         }),
       }),
@@ -871,6 +872,17 @@ describe('OmniWorkbench', () => {
 
     expect(await screen.findByText('ใช้รูปจาก EasyStore แล้ว')).toBeInTheDocument()
     expect(screen.getByLabelText('ลิงก์รูปตารางไซซ์')).toHaveValue('https://cdn.example/amanda-size-chart.jpg')
+    expect(saveOmniSettings).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        ai: expect.objectContaining({
+          salesAssets: expect.objectContaining({
+            sizeChartImageUrl: 'https://cdn.example/amanda-size-chart.jpg',
+            sizeChartLinkUrl: 'https://annalynna.easy.co/products/amanda-jumpsuit',
+          }),
+        }),
+      }),
+      expect.objectContaining({ workspaceId: 'ws_oagent' }),
+    )
     expect(screen.queryByRole('dialog', { name: 'เลือกภาพตารางไซซ์จาก EasyStore' })).not.toBeInTheDocument()
   })
 
