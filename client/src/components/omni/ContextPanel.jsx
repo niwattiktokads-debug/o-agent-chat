@@ -340,7 +340,8 @@ export default function ContextPanel({ snapshot, thread, onSnapshot, workspaceId
                 role="dialog"
                 aria-modal="true"
                 aria-label="เลือกภาพตารางไซซ์จาก EasyStore"
-                className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-rule)] bg-[var(--color-panel)] shadow-[0_24px_80px_rgba(16,24,32,0.28)]"
+                data-size="wide"
+                className="flex h-[min(90vh,860px)] w-[min(96vw,1180px)] flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-rule)] bg-[var(--color-panel)] shadow-[0_24px_80px_rgba(16,24,32,0.28)]"
               >
                 <header className="flex items-start justify-between gap-3 border-b border-[var(--color-rule)] px-4 py-3">
                   <div>
@@ -356,7 +357,7 @@ export default function ContextPanel({ snapshot, thread, onSnapshot, workspaceId
                     ×
                   </button>
                 </header>
-                <div className="grid min-h-0 flex-1 gap-0 overflow-hidden md:grid-cols-[280px_minmax(0,1fr)]">
+                <div className="grid min-h-0 flex-1 gap-0 overflow-hidden lg:grid-cols-[320px_minmax(0,1fr)]">
                   <section className="min-h-0 border-b border-[var(--color-rule)] p-4 md:border-b-0 md:border-r">
                     <form onSubmit={loadSizeChartProducts} className="flex gap-2">
                       <label htmlFor="size-chart-easystore-search" className="sr-only">ค้นสินค้า EasyStore สำหรับรูปตารางไซซ์</label>
@@ -376,7 +377,7 @@ export default function ContextPanel({ snapshot, thread, onSnapshot, workspaceId
                       </button>
                     </form>
                     <div className="mt-3 text-xs font-bold text-[var(--color-muted)]">{sizeChartPickerStatus || 'เลือกรายการสินค้าเพื่อดูรูปทั้งหมด'}</div>
-                    <div className="mt-3 max-h-[54vh] space-y-2 overflow-y-auto pr-1" aria-label="รายการสินค้า EasyStore สำหรับตารางไซซ์">
+                    <div className="mt-3 max-h-[68vh] space-y-2 overflow-y-auto pr-1" aria-label="รายการสินค้า EasyStore สำหรับตารางไซซ์">
                       {sizeChartProducts.length ? sizeChartProducts.map((product) => {
                         const id = easyStoreProductId(product)
                         const active = id && id === easyStoreProductId(sizeChartProduct || {})
@@ -426,7 +427,7 @@ export default function ContextPanel({ snapshot, thread, onSnapshot, workspaceId
                         <span className="rounded-[var(--radius-pill)] bg-[var(--color-panel-2)] px-2 py-1 text-[11px] font-bold text-[var(--color-muted)]">{sizeChartImages.length} รูป</span>
                       </div>
                     </div>
-                    <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
                       {sizeChartImages.length ? sizeChartImages.map((image, index) => (
                         <div key={image.id || image.url || index} className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)]">
                           <a href={image.url} target="_blank" rel="noreferrer" aria-label={`เปิดรูปเต็ม ${easyStoreImageLabel(image, index)}`}>

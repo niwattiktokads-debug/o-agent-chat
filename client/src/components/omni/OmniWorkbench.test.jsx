@@ -863,6 +863,7 @@ describe('OmniWorkbench', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'เลือกจาก EasyStore' }))
 
     const dialog = await screen.findByRole('dialog', { name: 'เลือกภาพตารางไซซ์จาก EasyStore' })
+    expect(dialog).toHaveAttribute('data-size', 'wide')
     expect((await within(dialog).findAllByText('Lorra เดรสเชิ้ต Polo')).length).toBeGreaterThan(0)
     expect(await within(dialog).findByAltText('ตารางไซซ์ Amanda')).toBeInTheDocument()
     expect(await within(dialog).findByRole('link', { name: 'เปิดเว็บสินค้า' })).toHaveAttribute('href', 'https://annalynna.easy.co/products/amanda-jumpsuit')
