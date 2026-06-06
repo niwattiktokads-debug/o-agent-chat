@@ -1,7 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { deleteKnowledgeSource, fetchKnowledgeSources, fetchOmniSnapshot, importKnowledgePack, saveKnowledgeSource } from '../../lib/omniApi.js'
 
-const trainMenu = ['Overview', 'Instructions', 'Knowledge Source', 'Testing', 'Deploy']
+const trainMenu = ['Overview', 'Instructions', 'AI Reply Style', 'Knowledge Source', 'Testing', 'Deploy']
+const AI_REPLY_STYLE_SOURCE_ID = 'ks_omni_ai_reply_style_rules_v1'
+const AI_REPLY_STYLE_TITLE = 'Omni User Context - AI reply style rules'
+const DEFAULT_AI_REPLY_STYLE_RULES = [
+  'ตอบแบบแอดมินร้านจริง สุภาพ ตรง ไม่เหมือนบอท',
+  'สั้น ครบ อ่านเร็ว ตัวอักษรไม่เยอะ',
+  'ใช้ bullet point สั้น ๆ เมื่อมีหลายข้อ ไม่เกิน 3 ข้อ',
+  'ห้ามเขียนย่อหน้ายาว',
+  'ถามกลับได้ไม่เกิน 1 คำถาม และถามเฉพาะข้อมูลที่ขาดจริง',
+  'ห้ามมั่วราคา สต็อก โปร เลขพัสดุ หรือคำมั่นสัญญา',
+].join('\n')
 
 const EMPTY_FORM = {
   id: '',
@@ -82,6 +92,13 @@ function buildTestAnswer(source, prompt) {
   }
 }
 
+function findAiReplyStyleSource(sources = []) {
+  return sources.find((source) => source.id === AI_REPLY_STYLE_SOURCE_ID) || sources.find((source) => {
+    const tags = (source.tags || []).map((tag) => String(tag || '').toLowerCase())
+    return tags.includes('reply-style') || tags.includes('ai-reply-style')
+  })
+}
+
 export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat, onOpenConnections, showPageNav = true, workspaceId: propWorkspaceId = '' }) {
   const [sources, setSources] = useState([])
   const [snapshot, setSnapshot] = useState(null)
@@ -93,6 +110,7 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat, onOpenC
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [instructions, setInstructions] = useState(DEFAULT_INSTRUCTIONS)
+  const [aiReplyStyleText, setAiReplyStyleText] = useState(DEFAULT_AI_REPLY_STYLE_RULES)
   const [testPrompt, setTestPrompt] = useState('ลูกค้าถามว่าสินค้ายังเปลี่ยนคืนได้ไหม')
   const [testScope, setTestScope] = useState('all_pages')
   const [testResult, setTestResult] = useState(null)
@@ -119,6 +137,8 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat, onOpenC
       .then(([nextSources, snapshot]) => {
         if (!ignore) {
           setSources(nextSources)
+          const styleSource = findAiReplyStyleSource(nextSources)
+          setAiReplyStyleText(styleSource?.content || DEFAULT_AI_REPLY_STYLE_RULES)
           setSnapshot(snapshot)
           setPages(snapshot.pages || [])
         }
@@ -138,7 +158,10 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat, onOpenC
     setBusy(true)
     setError('')
     try {
-      setSources(await fetchKnowledgeSources({ query: search, type, workspaceId: propWorkspaceId }))
+      const nextSources = await fetchKnowledgeSources({ query: search, type, workspaceId: propWorkspaceId })
+      setSources(nextSources)
+      const styleSource = findAiReplyStyleSource(nextSources)
+      if (styleSource?.content) setAiReplyStyleText(styleSource.content)
     } catch (err) {
       setError(err.message || 'knowledge_load_failed')
     } finally {
@@ -248,6 +271,37 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat, onOpenC
       setNotice(`บันทึกแล้ว: ${saved.source?.title || 'Omni AI global instructions'}`)
     } catch (err) {
       setError(err.message || 'instruction_save_failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function saveAiReplyStyle() {
+    const content = String(aiReplyStyleText || '').trim()
+    if (!content) {
+      setError('ต้องใส่กติกาการตอบลูกค้าก่อนบันทึก')
+      return
+    }
+    setBusy(true)
+    setError('')
+    setNotice('')
+    try {
+      const saved = await saveKnowledgeSource({
+        id: AI_REPLY_STYLE_SOURCE_ID,
+        title: AI_REPLY_STYLE_TITLE,
+        type: 'manual',
+        scope: 'all_pages',
+        status: 'ready',
+        content,
+        tags: ['omni', 'ai', 'reply-style', 'train-ai', 'visible-rule'],
+        sourceRef: 'omni-user-context:ai-reply-style:v1',
+        workspaceId: propWorkspaceId || 'ws_oagent',
+      })
+      await loadSources(query, typeFilter)
+      setAiReplyStyleText(saved.source?.content || content)
+      setNotice(`บันทึกแล้ว: ${saved.source?.title || AI_REPLY_STYLE_TITLE}`)
+    } catch (err) {
+      setError(err.message || 'ai_reply_style_save_failed')
     } finally {
       setBusy(false)
     }
@@ -384,6 +438,16 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat, onOpenC
                 </div>
               ) : null}
 
+              {activeSection === 'AI Reply Style' ? (
+                <AiReplyStylePanel
+                  busy={busy}
+                  value={aiReplyStyleText}
+                  onChange={setAiReplyStyleText}
+                  onSave={saveAiReplyStyle}
+                  sourceId={AI_REPLY_STYLE_SOURCE_ID}
+                />
+              ) : null}
+
               {activeSection === 'Knowledge Source' ? (
                 <>
                   <OperationalTrainingPanel
@@ -436,6 +500,54 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat, onOpenC
         </div>
       </section>
     </main>
+  )
+}
+
+function AiReplyStylePanel({ busy, value, onChange, onSave, sourceId }) {
+  return (
+    <div className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-bold text-[var(--color-ink)]">AI Reply Style Rules</h3>
+          <p className="mt-1 text-sm leading-6 text-[var(--color-ink-2)]">
+            กติกานี้ถูกส่งเข้า prompt ของ AI reply ทุกครั้ง และแก้ผ่าน Train AI หรือ CLI ได้
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <span className="rounded-[var(--radius-pill)] bg-[var(--color-panel-2)] px-2 py-1 text-xs font-bold text-[var(--color-muted)]">Train AI source</span>
+          <span className="rounded-[var(--radius-pill)] bg-[var(--color-live-soft)] px-2 py-1 text-xs font-bold text-[var(--color-live)]">CLI editable</span>
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] p-3">
+        <div className="text-xs font-bold text-[var(--color-muted)]">Source ID</div>
+        <code className="mt-1 block break-all text-xs font-semibold text-[var(--color-ink)]">{sourceId}</code>
+      </div>
+
+      <label htmlFor="ai-reply-style-rules" className="mt-4 block text-sm font-bold text-[var(--color-ink)]">
+        กติกาการตอบลูกค้า
+      </label>
+      <textarea
+        id="ai-reply-style-rules"
+        aria-label="กติกาการตอบลูกค้า"
+        className="mt-2 min-h-[300px] w-full rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-sm leading-6 text-[var(--color-ink)] outline-none focus-visible:border-[var(--color-focus)] focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm leading-6 text-[var(--color-muted)]">
+          ปุ่มนี้บันทึกเป็น knowledge source สถานะ ready แต่ยังไม่ส่งข้อความหาลูกค้า
+        </p>
+        <button
+          type="button"
+          className="rounded-[var(--radius-md)] bg-[var(--color-accent)] px-3 py-2 text-sm font-semibold text-[var(--color-accent-ink)] disabled:opacity-50"
+          disabled={busy}
+          onClick={onSave}
+        >
+          Save AI reply style
+        </button>
+      </div>
+    </div>
   )
 }
 

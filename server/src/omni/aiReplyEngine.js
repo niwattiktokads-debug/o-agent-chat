@@ -6,6 +6,7 @@ const DEFAULT_HELPER = process.env.OMNI_AI_REPLY_HELPER || '/Users/babycuca/.cod
 const GEMINI_API_BASE = process.env.GEMINI_API_BASE || 'https://generativelanguage.googleapis.com/v1beta'
 const OPENAI_API_BASE = process.env.OPENAI_API_BASE || 'https://api.openai.com/v1'
 const MAX_DRAFT_CHARS = Number(process.env.OMNI_AI_MAX_DRAFT_CHARS || 480)
+const AI_REPLY_STYLE_SOURCE_ID = 'ks_omni_ai_reply_style_rules_v1'
 
 const PAGE_AGENT_FALLBACKS = {
   page_annalynn: 'แอดมิน Anna Lynn',
@@ -638,6 +639,35 @@ function relevantKnowledge(intent, snapshot, { workspaceId, queryText = '' } = {
     .slice(0, 3)
 }
 
+function workspaceMatches(source = {}, workspaceId) {
+  if (!workspaceId) return true
+  return (source.workspaceId || 'ws_oagent') === workspaceId
+}
+
+function isAiReplyStyleSource(source = {}) {
+  const id = String(source.id || '')
+  const tags = (source.tags || []).map((tag) => String(tag || '').toLowerCase())
+  return id === AI_REPLY_STYLE_SOURCE_ID ||
+    tags.includes('reply-style') ||
+    tags.includes('ai-reply-style')
+}
+
+function aiReplyStyleTextForPrompt(snapshot = {}, workspaceId) {
+  return (snapshot.knowledgeSources || [])
+    .filter((source) => source.status === 'ready')
+    .filter((source) => workspaceMatches(source, workspaceId))
+    .filter(isAiReplyStyleSource)
+    .filter((source) => String(source.content || '').trim())
+    .sort((a, b) => {
+      if (a.id === AI_REPLY_STYLE_SOURCE_ID && b.id !== AI_REPLY_STYLE_SOURCE_ID) return -1
+      if (b.id === AI_REPLY_STYLE_SOURCE_ID && a.id !== AI_REPLY_STYLE_SOURCE_ID) return 1
+      return String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''))
+    })
+    .slice(0, 2)
+    .map((source) => `${source.title || 'AI reply style rules'}\n${String(source.content || '').trim().slice(0, 1800)}`)
+    .join('\n\n')
+}
+
 function isEasyStoreProductKnowledge(source = {}) {
   const id = String(source.id || '')
   const tags = (source.tags || []).map((tag) => String(tag).toLowerCase())
@@ -878,6 +908,7 @@ function buildCustomerReplyPrompt({ thread, snapshot, policy, baseDecision }) {
     baseDecision.knowledgeQueryText || '',
   ].join(' ')
   const knowledge = relevantKnowledge(baseDecision.intent, snapshot, { workspaceId, queryText: knowledgeQueryText })
+  const aiReplyStyleText = aiReplyStyleTextForPrompt(snapshot, workspaceId)
   const productFacts = baseDecision.productFacts || productFactsForThread(thread, snapshot, origin)
   const richMessage = richMessageForThread(thread, snapshot)
   const messages = recentMessages
@@ -892,6 +923,10 @@ function buildCustomerReplyPrompt({ thread, snapshot, policy, baseDecision }) {
       'คุณคือ AI ตอบลูกค้าของ Omni Cloud สำหรับเพจขายสินค้า',
       `ชื่อผู้ช่วย: ${agent?.name || 'AI Page Assistant'}`,
       'ตอบเป็นภาษาไทย สุภาพ ช่วยลูกค้าให้ครบก่อน แล้วค่อยกระชับ ไม่ออกนอกเรื่อง',
+      ...(aiReplyStyleText ? [
+        'กติกา AI Reply Style จาก Train AI (บอสแก้ได้ในหน้า Train AI หรือ CLI omni-knowledge-import):',
+        aiReplyStyleText,
+      ] : []),
       'น้ำเสียงต้องเหมือนแอดมินร้านจริง คุยตรง สุภาพ เป็นธรรมชาติ ไม่เหมือนบอทหรือข้อความแพทเทิร์น',
       'รูปแบบที่บอสชอบคือสั้น ครบ อ่านเร็ว และสุภาพ ตัวอักษรไม่เยอะแต่ลูกค้าต้องเข้าใจทันที',
       'ใช้ bullet point สั้น ๆ ได้เมื่อมีหลายข้อ เช่น ราคา สี ไซซ์ วิธีชำระเงิน หรือข้อมูลที่ต้องขอเพิ่ม แต่ถ้ามีข้อเดียวให้ตอบเป็นประโยคสั้น',

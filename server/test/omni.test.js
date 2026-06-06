@@ -3382,6 +3382,59 @@ test('AI reply engine prompts customer replies in real shop admin style', async 
   }
 })
 
+test('AI reply engine injects visible Train AI reply style rules into provider prompts', async () => {
+  const previousKey = process.env.OPENAI_API_KEY
+  process.env.OPENAI_API_KEY = 'test-openai-key'
+  const calls = []
+  const seed = createOmniSeed()
+  seed.knowledgeSources.push({
+    id: 'ks_omni_ai_reply_style_rules_v1',
+    workspaceId: 'ws_oagent',
+    title: 'Omni User Context - AI reply style rules',
+    type: 'manual',
+    scope: 'all_pages',
+    status: 'ready',
+    content: 'Custom visible Train AI rule: ตอบแบบ bullet ไม่เกิน 3 ข้อ และห้ามย่อหน้ายาว',
+    tags: ['omni', 'ai', 'reply-style', 'train-ai', 'visible-rule'],
+    createdAt: '2026-06-06T08:00:00.000Z',
+    updatedAt: '2026-06-06T08:00:00.000Z',
+  })
+  const service = createOmniService(seed)
+  const thread = service.getThread('thread_1')
+  const ai = createAiReplyEngine({
+    provider: 'openai',
+    model: 'gpt-4.1-mini',
+    fetchImpl: async (url, options) => {
+      calls.push({ url, body: JSON.parse(options.body) })
+      return {
+        ok: true,
+        json: async () => ({
+          choices: [{
+            message: {
+              content: JSON.stringify({
+                draftText: 'ได้ค่ะ ขอทราบสีหรือไซซ์ที่สนใจ เดี๋ยวช่วยเช็กข้อมูลให้ตรงตัวนะคะ',
+                confidence: 0.82,
+                reason: 'visible_train_ai_style',
+              }),
+            },
+          }],
+        }),
+      }
+    },
+  })
+
+  try {
+    await ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
+
+    const systemPrompt = calls[0].body.messages.find((message) => message.role === 'system').content
+    assert.match(systemPrompt, /กติกา AI Reply Style จาก Train AI/)
+    assert.match(systemPrompt, /Custom visible Train AI rule/)
+  } finally {
+    if (previousKey === undefined) delete process.env.OPENAI_API_KEY
+    else process.env.OPENAI_API_KEY = previousKey
+  }
+})
+
 test('AI reply engine calls Gemini natively for Vercel drafts', async () => {
   const previousKey = process.env.GOOGLE_API_KEY
   process.env.GOOGLE_API_KEY = 'test-gemini-key'

@@ -33,6 +33,17 @@ const sources = [
   },
 ]
 
+const aiReplyStyleSource = {
+  id: 'ks_omni_ai_reply_style_rules_v1',
+  title: 'Omni User Context - AI reply style rules',
+  type: 'manual',
+  scope: 'all_pages',
+  status: 'ready',
+  content: 'ตอบสั้น ครบ สุภาพ\nใช้ bullet point ไม่เกิน 3 ข้อ\nห้ามย่อหน้ายาว',
+  tags: ['omni', 'ai', 'reply-style', 'train-ai', 'visible-rule'],
+  updatedAt: '2026-06-06T08:00:00.000Z',
+}
+
 describe('AiKnowledgeSourcePage', () => {
   beforeEach(() => {
     apiMocks.fetchKnowledgeSources.mockReset()
@@ -111,6 +122,35 @@ describe('AiKnowledgeSourcePage', () => {
       expect(saveKnowledgeSource).toHaveBeenCalledWith(expect.objectContaining({
         title: 'New FAQ',
         content: 'ตอบจาก FAQ ใหม่',
+      }))
+    })
+  })
+
+  it('shows and saves visible AI reply style rules from Train AI', async () => {
+    apiMocks.fetchKnowledgeSources.mockResolvedValue([aiReplyStyleSource, ...sources])
+    apiMocks.saveKnowledgeSource.mockResolvedValue({
+      ok: true,
+      source: { ...aiReplyStyleSource, content: 'ตอบแบบเดส สั้น ครบ มี bullet' },
+    })
+
+    render(<AiKnowledgeSourcePage workspaceId="ws_oagent" />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'AI Reply Style' }))
+
+    expect(await screen.findByText('AI Reply Style Rules')).toBeInTheDocument()
+    const editor = screen.getByLabelText('กติกาการตอบลูกค้า')
+    expect(editor).toHaveValue(aiReplyStyleSource.content)
+
+    fireEvent.change(editor, { target: { value: 'ตอบแบบเดส สั้น ครบ มี bullet' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save AI reply style' }))
+
+    await waitFor(() => {
+      expect(saveKnowledgeSource).toHaveBeenCalledWith(expect.objectContaining({
+        id: 'ks_omni_ai_reply_style_rules_v1',
+        title: 'Omni User Context - AI reply style rules',
+        content: 'ตอบแบบเดส สั้น ครบ มี bullet',
+        tags: expect.arrayContaining(['reply-style', 'visible-rule']),
+        workspaceId: 'ws_oagent',
       }))
     })
   })
