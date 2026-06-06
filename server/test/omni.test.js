@@ -1215,7 +1215,7 @@ test('AI reply engine adds rich message campaign brief to the first customer rep
   assert.doesNotMatch(secondDecision.draftText, /6\.6 ออกตัวแรงลดยกล้อ/)
 })
 
-test('AI reply engine prepares bill link and product carousel assets for checkout-ready replies', async () => {
+test('AI reply engine prepares product carousel for checkout-ready replies but does not attach payment link in draft automatically', async () => {
   const seed = createOmniSeed()
   seed.omniSettings = seed.omniSettings.map((row) => ({
     ...row,
@@ -1331,7 +1331,9 @@ test('AI reply engine prepares bill link and product carousel assets for checkou
   const decision = await ai.draft({ thread, snapshot, policy: service.getPolicyForThread(thread) })
 
   assert.equal(decision.ok, true)
-  assert.match(decision.draftText, /https:\/\/pay\.example\/checkout\/lorra-xl/)
+  assert.match(decision.draftText, /เช็กราค/)
+  assert.match(decision.draftText, /สต็อก/)
+  assert.doesNotMatch(decision.draftText, /https:\/\/pay\.example\/checkout\/lorra-xl/)
   assert.equal(decision.attachments.some((item) => item.url === 'https://cdn.example/lorra-black-xl.jpg'), true)
   assert.equal(decision.attachments.some((item) => item.url === 'https://cdn.example/lorra-size-chart.jpg'), false)
   assert.equal(decision.carousel.some((card) => card.imageUrl === 'https://cdn.example/lorra-gray-xl.jpg'), true)
@@ -3471,10 +3473,9 @@ test('AI reply engine routes CF to payment before shipping address', async () =>
 
   assert.equal(decision.intent, 'orderPurchase')
   assert.equal(decision.allowed, false)
-  assert.match(decision.draftText, /สรุปรายการ/)
-  assert.match(decision.draftText, /ชำระ/)
-  assert.match(decision.draftText, /ส่งสลิป/)
-  assert.doesNotMatch(decision.draftText, /ที่อยู่/)
+  assert.match(decision.draftText, /เช็กราค/)
+  assert.match(decision.draftText, /สต็อก/)
+  assert.match(decision.draftText, /แอดมิน/)
 })
 
 test('AI reply engine asks shipping details after payment proof', async () => {

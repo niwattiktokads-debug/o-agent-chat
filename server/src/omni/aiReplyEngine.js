@@ -503,9 +503,7 @@ function salesWorkflowDraft({ intent, originContext = null, productFacts = null,
   }
 
   if (intent === 'orderPurchase') {
-    const detail = [productText, hasColor ? `สี${color}` : '', hasSize ? `ไซซ์ ${size}` : ''].filter(Boolean).join(' ')
-    const price = productFacts?.price ? ` ราคา ${moneyText(productFacts.price)} บาท` : ''
-    return `สรุปรายการนะคะ ${detail || 'สินค้าที่เลือก'}${price}${productFacts && Number(productFacts.availableTotal || 0) > 0 ? ' พร้อมส่งค่ะ' : ''} ชำระเงินได้ตามช่องทางที่แอดมินแจ้งไว้ หลังชำระแล้วส่งสลิปมาได้เลยนะคะ`
+    return `ยินดีค่ะ เดี๋ยวแอดมินเช็กราคาและสต็อกจาก EasyStore อีกครั้งก่อนนะคะ เพื่อไม่ให้แจ้งข้อมูลผิด\n- รอการยืนยันอีกครั้งก่อนสรุปยอดชำระ\n- ส่งสลิปหรือข้อมูลการโอนเมื่อแอดมินคอนเฟิร์มแล้วได้เลยค่ะ`
   }
 
   if (intent === 'paymentProof') {
@@ -773,7 +771,7 @@ function latestPaymentLinkForThread(thread, snapshot) {
 
 function appendPaymentLinkToDraft(draftText, paymentLink, intent) {
   const draft = String(draftText || '').trim()
-  if (!paymentLink?.url || !['orderPurchase', 'paymentProof', 'price', 'stock'].includes(intent)) return draft
+  if (!paymentLink?.url || !['paymentProof', 'price', 'stock'].includes(intent)) return draft
   if (draft.includes(paymentLink.url)) return draft
   return `${draft}\n${paymentLink.text}`.trim().slice(0, MAX_DRAFT_CHARS)
 }
