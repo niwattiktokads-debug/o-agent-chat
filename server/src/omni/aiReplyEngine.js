@@ -799,20 +799,22 @@ function buildSalesAttachments({ productFacts, settings, includeSizeChart = fals
   if (!salesAssets.enabled) return []
   const productName = productFacts?.productName || 'สินค้า'
   const rows = []
-  for (const [index, variant] of (productFacts?.variants || []).entries()) {
-    const url = safeImageUrl(variant.imageUrl)
-    if (!url || rows.some((item) => item.url === url)) continue
-    rows.push({
-      id: `ai_product_asset_${index + 1}`,
-      name: variantLabel(variant, productName).slice(0, 120),
-      type: 'image/jpeg',
-      size: 0,
-      url,
-      source: 'ai_product_carousel',
-    })
+  if (!includeSizeChart) {
+    for (const [index, variant] of (productFacts?.variants || []).entries()) {
+      const url = safeImageUrl(variant.imageUrl)
+      if (!url || rows.some((item) => item.url === url)) continue
+      rows.push({
+        id: `ai_product_asset_${index + 1}`,
+        name: variantLabel(variant, productName).slice(0, 120),
+        type: 'image/jpeg',
+        size: 0,
+        url,
+        source: 'ai_product_carousel',
+      })
+    }
   }
   const sizeChartUrl = safeImageUrl(salesAssets.sizeChartImageUrl)
-  if (sizeChartUrl && (includeSizeChart || Boolean(productFacts)) && !rows.some((item) => item.url === sizeChartUrl)) {
+  if (sizeChartUrl && includeSizeChart && !rows.some((item) => item.url === sizeChartUrl)) {
     rows.push({
       id: 'ai_size_chart_1',
       name: 'ตารางไซซ์',

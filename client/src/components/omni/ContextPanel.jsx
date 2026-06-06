@@ -410,15 +410,37 @@ export default function ContextPanel({ snapshot, thread, onSnapshot, workspaceId
                         <h3 className="text-sm font-black text-[var(--color-ink)]">{easyStoreProductTitle(sizeChartProduct || {})}</h3>
                         <p className="mt-1 text-xs font-semibold text-[var(--color-muted)]">เลือกภาพที่เป็นตารางไซซ์จริงจาก EasyStore</p>
                       </div>
-                      <span className="rounded-[var(--radius-pill)] bg-[var(--color-panel-2)] px-2 py-1 text-[11px] font-bold text-[var(--color-muted)]">{sizeChartImages.length} รูป</span>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {sizeChartProduct?.links?.storefrontUrl ? (
+                          <a
+                            href={sizeChartProduct.links.storefrontUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] px-2 py-1 text-[11px] font-bold text-[var(--color-ink-2)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+                          >
+                            เปิดเว็บสินค้า
+                          </a>
+                        ) : null}
+                        <span className="rounded-[var(--radius-pill)] bg-[var(--color-panel-2)] px-2 py-1 text-[11px] font-bold text-[var(--color-muted)]">{sizeChartImages.length} รูป</span>
+                      </div>
                     </div>
                     <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
                       {sizeChartImages.length ? sizeChartImages.map((image, index) => (
                         <div key={image.id || image.url || index} className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)]">
-                          <img src={image.url} alt={easyStoreImageLabel(image, index)} className="aspect-square w-full object-cover" loading="lazy" />
+                          <a href={image.url} target="_blank" rel="noreferrer" aria-label={`เปิดรูปเต็ม ${easyStoreImageLabel(image, index)}`}>
+                            <img src={image.url} alt={easyStoreImageLabel(image, index)} className="aspect-square w-full object-cover" loading="lazy" />
+                          </a>
                           <div className="p-2">
                             <div className="truncate text-xs font-bold text-[var(--color-ink)]">{easyStoreImageLabel(image, index)}</div>
                             <div className="mt-1 text-[10px] font-semibold text-[var(--color-muted)]">{[image.width, image.height].filter(Boolean).join('×') || `รูปที่ ${index + 1}`}</div>
+                            <a
+                              href={image.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="mt-2 block w-full rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-2 py-1.5 text-center text-xs font-bold text-[var(--color-ink-2)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+                            >
+                              เปิดรูปเต็ม
+                            </a>
                             <button
                               type="button"
                               disabled={salesAssetsBusy}

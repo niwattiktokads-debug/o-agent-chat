@@ -864,6 +864,8 @@ describe('OmniWorkbench', () => {
     const dialog = await screen.findByRole('dialog', { name: 'เลือกภาพตารางไซซ์จาก EasyStore' })
     expect((await within(dialog).findAllByText('Lorra เดรสเชิ้ต Polo')).length).toBeGreaterThan(0)
     expect(await within(dialog).findByAltText('ตารางไซซ์ Amanda')).toBeInTheDocument()
+    expect(await within(dialog).findByRole('link', { name: 'เปิดเว็บสินค้า' })).toHaveAttribute('href', 'https://annalynna.easy.co/products/amanda-jumpsuit')
+    expect(await within(dialog).findByRole('link', { name: 'เปิดรูปเต็ม ตารางไซซ์ Amanda' })).toHaveAttribute('href', 'https://cdn.example/amanda-size-chart.jpg')
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'ใช้เป็นตารางไซซ์ ตารางไซซ์ Amanda' }))
 

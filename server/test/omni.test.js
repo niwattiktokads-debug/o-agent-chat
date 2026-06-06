@@ -1323,8 +1323,62 @@ test('AI reply engine prepares bill link and product carousel assets for checkou
   assert.equal(decision.ok, true)
   assert.match(decision.draftText, /https:\/\/pay\.example\/checkout\/lorra-xl/)
   assert.equal(decision.attachments.some((item) => item.url === 'https://cdn.example/lorra-black-xl.jpg'), true)
-  assert.equal(decision.attachments.some((item) => item.url === 'https://cdn.example/lorra-size-chart.jpg'), true)
+  assert.equal(decision.attachments.some((item) => item.url === 'https://cdn.example/lorra-size-chart.jpg'), false)
   assert.equal(decision.carousel.some((card) => card.imageUrl === 'https://cdn.example/lorra-gray-xl.jpg'), true)
+})
+
+test('AI reply engine sends only the size chart image for size chart questions with product facts', async () => {
+  const seed = createOmniSeed()
+  seed.omniSettings[0].settings.ai.salesAssets = {
+    enabled: true,
+    sizeChartImageUrl: 'https://cdn.example/lorra-size-chart.jpg',
+  }
+  seed.customers.push({ id: 'cust_size_chart_product', displayName: 'Size Product Customer', matchConfidence: 1 })
+  seed.threads.push({
+    id: 'thread_size_chart_product',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'cust_size_chart_product',
+    status: 'open',
+    intent: 'unknown',
+    risk: 'low',
+    unreadCount: 1,
+    messageCount: 1,
+    updatedAt: '2026-06-05T05:12:00.000Z',
+  })
+  seed.messages.push({
+    id: 'msg_size_chart_product',
+    threadId: 'thread_size_chart_product',
+    direction: 'inbound',
+    authorName: 'Size Product Customer',
+    text: 'ขอดูตารางไซซ์ Lorra ดำ XL',
+    createdAt: '2026-06-05T05:12:00.000Z',
+  })
+  seed.inventorySnapshots.push({
+    id: 'es_stock_lorra_black_xl_size_chart',
+    sku: 'LORRA-BLK-XL',
+    source: 'easystore',
+    available: 2,
+    checkedAt: '2026-06-05T05:10:00.000Z',
+    productId: '16462646',
+    variantId: '7601',
+    productName: 'Lorra เดรสเชิ้ต Polo',
+    price: 1290,
+    imageUrl: 'https://cdn.example/lorra-black-xl.jpg',
+  })
+  const service = createOmniService(seed)
+  const thread = service.getThread('thread_size_chart_product')
+  const snapshot = service.snapshot()
+  snapshot.settings = service.getSettingsForThread(thread.id)
+  const ai = createAiReplyEngine({ provider: 'local_rules', model: 'test' })
+
+  const decision = await ai.draft({ thread, snapshot, policy: service.getPolicyForThread(thread) })
+
+  assert.equal(decision.ok, true)
+  assert.equal(decision.attachments.length, 1)
+  assert.equal(decision.attachments[0].source, 'ai_size_chart')
+  assert.equal(decision.attachments[0].url, 'https://cdn.example/lorra-size-chart.jpg')
+  assert.equal(decision.attachments.some((item) => item.url === 'https://cdn.example/lorra-black-xl.jpg'), false)
 })
 
 test('AI reply engine attaches size chart for size questions without product facts', async () => {
