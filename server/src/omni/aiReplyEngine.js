@@ -54,9 +54,9 @@ function classifyIntent(text) {
   if (isCustomerCorrection(value)) return 'humanReview'
   if (/(สลิป|โอนแล้ว|จ่ายแล้ว|ชำระแล้ว|หลักฐาน|payment proof|paid)/i.test(value)) return 'paymentProof'
   if (/(^|\s)(cf|เอา|รับ|สั่ง|จอง)(\s|$)|สั่งค่ะ|สั่งครับ|เอาค่ะ|เอาครับ|รับค่ะ|รับครับ/i.test(value)) return 'orderPurchase'
-  if (/(ไซซ์ไหนดี|ไซส์ไหนดี|ใส่ได้ไหม|ใส่ได้มั้ย|พอดีไหม|พอดีมั้ย|อก|เอว|สะโพก|size advice|แนะนำไซซ์|แนะนำไซส์)/i.test(value)) return 'sizeAdvice'
+  if (/(ไซซ์ไหนดี|ไซส์ไหนดี|ใส่ได้ไหม|ใส่ได้มั้ย|พอดีไหม|พอดีมั้ย|รอบอก|รอบเอว|สะโพก|size advice|แนะนำไซซ์|แนะนำไซส์)/i.test(value)) return 'sizeAdvice'
   if (/(ไม่ชอบ|มีแบบอื่น|แบบอื่น|แนะนำ.*แบบ|ตัวอื่น|รุ่นอื่น)/i.test(value)) return 'alternativeProduct'
-  if (/(ลดได้ไหม|ลดไหม|ขอลด|ส่วนลด|โปร|ของแถม|discount)/i.test(value)) return 'discount'
+  if (/(ลดได้ไหม|ลดไหม|ขอลด|ส่วนลด|โปรโมชั่น|มีโปร(?:ไหม|มั้ย|อะไร)?|ของแถม|discount)/i.test(value)) return 'discount'
   if (/(ค่าส่ง|ส่งฟรี|จัดส่ง|ส่งเมื่อไหร่|ส่งวันไหน|shipping|delivery)/i.test(value)) return 'shipping'
   if (/(รูป|ภาพ|ถ่าย|photo|image|pic|picture|ดูสี|ขอดู|ส่ง.*รูป|ส่ง.*ภาพ)/i.test(value)) return 'productImage'
   if (/(ของ|สินค้า|ไซซ์|ไซส์|ขนาด|รุ่น|size|สี|stock|พร้อมส่ง|มีไหม|\b(?:s|m|l|xl|xxl|2xl|3xl|4xl|5xl)\b)/i.test(value)) return 'stock'
@@ -524,11 +524,22 @@ const KNOWLEDGE_STOP_WORDS = new Set([
 ])
 
 function queryTokensForKnowledge(queryText = '') {
-  return [...new Set(String(queryText || '')
+  const tokens = [...new Set(String(queryText || '')
     .toLowerCase()
     .match(/[a-z0-9ก-๙]{2,}/g) || [])]
     .filter((token) => !KNOWLEDGE_STOP_WORDS.has(token))
-    .slice(0, 24)
+  const thaiSubtokens = []
+  for (const token of tokens) {
+    if (!/^[ก-๙]+$/.test(token) || token.length < 6) continue
+    for (let size = 4; size <= Math.min(10, token.length); size += 1) {
+      for (let index = 0; index + size <= token.length; index += 1) {
+        thaiSubtokens.push(token.slice(index, index + size))
+      }
+    }
+  }
+  return [...new Set([...tokens, ...thaiSubtokens])]
+    .filter((token) => !KNOWLEDGE_STOP_WORDS.has(token))
+    .slice(0, 48)
 }
 
 function relevantKnowledge(intent, snapshot, { workspaceId, queryText = '' } = {}) {
@@ -536,6 +547,11 @@ function relevantKnowledge(intent, snapshot, { workspaceId, queryText = '' } = {
     stock: ['สินค้า', 'stock', 'product', 'faq'],
     price: ['ราคา', 'โปร', 'price', 'product'],
     productImage: ['สินค้า', 'รูป', 'ภาพ', 'image', 'product'],
+    sizeAdvice: ['สินค้า', 'ไซซ์', 'ไซส์', 'size', 'product', 'stock'],
+    orderPurchase: ['สินค้า', 'order', 'payment', 'product', 'price', 'stock'],
+    discount: ['สินค้า', 'โปร', 'price', 'product'],
+    alternativeProduct: ['สินค้า', 'product', 'แบบอื่น', 'รุ่น'],
+    shipping: ['สินค้า', 'shipping', 'delivery', 'product'],
     orderStatus: ['พัสดุ', 'shipping', 'order', 'payment'],
     refund: ['คืน', 'refund', 'exchange', 'policy'],
     faq: ['faq', 'policy'],
