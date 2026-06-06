@@ -80,9 +80,9 @@ function productDraftStock(product = {}) {
 
 function buildEasyStoreProductDraft({ product, thread }) {
   const id = product.productId || product.id || product.variantId || product.sku || ''
-  const previewUrl = id
+  const previewUrl = product.storefrontUrl || product.links?.storefrontUrl || (id
     ? `${window.location.origin}/p/easystore/${encodeURIComponent(id)}`
-    : ''
+    : '')
   const size = productDraftSize(product)
   const detailLine = [
     size ? `ไซซ์ ${size}` : '',

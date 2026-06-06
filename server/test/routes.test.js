@@ -1872,7 +1872,7 @@ test('POST /api/omni/threads/:threadId/easystore-product-draft creates draft-onl
     assert.equal(body.message.sourceRef, 'easystore_product_draft:16462646')
     assert.match(body.message.text, /มี Julai Set เขียวค่ะ/)
     assert.match(body.message.text, /ไซซ์ S\/M ราคา 990 บาท พร้อมส่ง/)
-    assert.match(body.message.text, /\n\nดูสินค้า:\nhttps:\/\/omni\.oagent\.biz\/p\/easystore\/16462646$/)
+    assert.match(body.message.text, /\n\nดูสินค้า:\nhttps:\/\/annalynna\.easy\.co\/products\/julai-set-green$/)
     assert.doesNotMatch(body.message.text, /10 ชิ้น|threadId=|SKU:|ตัวเลือก:|ลิงก์ร้าน:|ปิดออเดอร์/)
     assert.equal(body.message.attachments[0].url, 'https://cdn.example/julai.jpg')
 
@@ -2076,6 +2076,24 @@ test('POST /webhook/meta skips auto draft when page auto reply is disabled', asy
   localOmni.setPageAutoReply({ pageId: 'page_annalynn', enabled: false, updatedBy: 'test' })
   mountWebhook(app, localHub, createState(), {
     omni: localOmni,
+    easyStore: {
+      async searchProducts() {
+        return {
+          ok: true,
+          products: [{
+            id: 'es_live_lorra_black_image',
+            sku: 'LORRA-BLK-XL',
+            source: 'easystore_live',
+            availableStock: 5,
+            productId: 'lorra-black',
+            variantId: 'xl',
+            productName: 'Lorra เดรสเชิ้ต Polo สีดำ',
+            price: 1290,
+            imageUrl: 'https://cdn.example/lorra-black-xl.jpg',
+          }],
+        }
+      },
+    },
     metaVerifyToken: 'verify-token-test',
   })
   const localServer = app.listen(0)
@@ -3284,8 +3302,27 @@ test('POST /webhook/meta sends HTTPS product image attachment for product image 
   })
   const localOmni = createOmniService(seed)
   localOmni.updateSettings({ settings: { ai: { customerSendEnabled: true } }, updatedBy: 'test' })
+  const easyStore = {
+    async searchProducts() {
+      return {
+        ok: true,
+        products: [{
+          id: 'es_live_lorra_black_xl_image',
+          sku: 'LORRA-BLK-XL',
+          source: 'easystore_live',
+          availableStock: 5,
+          productId: 'lorra-black',
+          variantId: 'xl',
+          productName: 'Lorra เดรสเชิ้ต Polo สีดำ',
+          price: 1290,
+          imageUrl: 'https://cdn.example/lorra-black-xl.jpg',
+        }],
+      }
+    },
+  }
   mountWebhook(app, localHub, createState(), {
     omni: localOmni,
+    easyStore,
     metaVerifyToken: 'verify-token-test',
     awaitAutoReplies: true,
     sendReply: async (payload) => {

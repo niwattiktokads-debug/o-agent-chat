@@ -88,7 +88,7 @@ function compactProductTitle(product = {}) {
 }
 
 function buildEasyStoreProductDraft({ product, threadId }) {
-  const previewUrl = buildEasyStorePreviewUrl({ productId: product.id })
+  const previewUrl = String(product.links?.storefrontUrl || '').trim() || buildEasyStorePreviewUrl({ productId: product.id })
   const image = product.images?.[0] || null
   const priceLine = product.price?.formatted ? `ราคา ${product.price.formatted.replace(/^฿/, '')} บาท` : ''
   const size = cleanVariantSize(product.size || product.variantSize || '')
@@ -583,7 +583,7 @@ export function mountRoutes(app, hub, room, options = {}) {
       })
       if (!result.ok) return res.status(result.error === 'thread_not_found' ? 404 : 400).json(result)
       hub.broadcast('omni', result.snapshot)
-      res.json({ ...result, product, previewUrl: buildEasyStorePreviewUrl({ productId: product.id, threadId: req.params.threadId }) })
+      res.json({ ...result, product, previewUrl: String(product.links?.storefrontUrl || '').trim() || buildEasyStorePreviewUrl({ productId: product.id, threadId: req.params.threadId }) })
     } catch (error) {
       const status = error.status === 404 || error.message === 'easystore_product_not_found' ? 404 : 400
       res.status(status).json({ ok: false, error: error.message || 'easystore_product_draft_failed' })

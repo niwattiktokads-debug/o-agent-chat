@@ -243,8 +243,7 @@ function productFactsForThread(thread, snapshot, originContext = null) {
   }
 }
 
-function shouldLookupEasyStoreLive(intent, productFacts) {
-  if (productFacts) return false
+function shouldLookupEasyStoreLive(intent) {
   return ['stock', 'price', 'productImage', 'orderPurchase', 'sizeAdvice', 'discount', 'alternativeProduct', 'shipping'].includes(intent)
 }
 
@@ -322,7 +321,7 @@ function productMatchesIdentity(row, terms = []) {
 }
 
 async function productFactsFromEasyStoreLive({ easyStore, thread, snapshot, originContext, intent }) {
-  if (!easyStore || typeof easyStore.searchProducts !== 'function' || !shouldLookupEasyStoreLive(intent, null)) return null
+  if (!easyStore || typeof easyStore.searchProducts !== 'function' || !shouldLookupEasyStoreLive(intent)) return null
   const keyword = easyStoreSearchKeyword(thread, snapshot, originContext)
   if (!keyword) return null
   let result
@@ -1216,16 +1215,21 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
         originContextText(originContext),
       ].filter(Boolean).join(' ')
       const knowledge = relevantKnowledge(intent, snapshot, { workspaceId, queryText: knowledgeQueryText })
-      let productFacts = productFactsForThread(thread, snapshot, originContext)
+      const inventoryProductFacts = productFactsForThread(thread, snapshot, originContext)
+      let productFacts = inventoryProductFacts
       let productFactsReason = productFacts ? 'product_inventory_fact_match' : ''
       let liveLookupHoldReason = ''
-      if (shouldLookupEasyStoreLive(intent, productFacts)) {
+      if (shouldLookupEasyStoreLive(intent)) {
         const liveProductFacts = await productFactsFromEasyStoreLive({ easyStore, thread, snapshot, originContext, intent })
         if (liveProductFacts?.conflict) {
           liveLookupHoldReason = liveProductFacts.reason || 'easystore_live_product_conflict'
         } else if (liveProductFacts) {
           productFacts = liveProductFacts
           productFactsReason = 'easystore_live_product_fact_match'
+        } else if (inventoryProductFacts) {
+          productFacts = null
+          productFactsReason = ''
+          liveLookupHoldReason = 'easystore_live_lookup_required'
         }
       }
       const slots = latestSalesSlots(thread, snapshot, originContext)
@@ -1237,7 +1241,9 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
       const richMessage = richMessageForThread(thread, snapshot)
       const draftText = holdReason === 'easystore_live_product_conflict'
         ? 'เดี๋ยวขอให้แอดมินตรวจรุ่นและสต็อกจาก EasyStore ให้ชัดก่อนนะคะ เพื่อไม่ให้แจ้งผิดรุ่นค่ะ'
-        : draftForIntent(intent, originContext, productFacts, slots)
+        : holdReason === 'easystore_live_lookup_required'
+          ? 'เดี๋ยวขอให้แอดมินเช็กราคาและสต็อกจาก EasyStore อีกครั้งก่อนนะคะ เพื่อไม่ให้แจ้งข้อมูลผิดค่ะ'
+          : draftForIntent(intent, originContext, productFacts, slots)
       const paymentLink = latestPaymentLinkForThread(thread, snapshot)
       const salesAttachments = buildSalesAttachments({ productFacts, settings: snapshot.settings || {} })
       const salesCarousel = buildSalesCarousel({ productFacts, attachments: salesAttachments, paymentLink })

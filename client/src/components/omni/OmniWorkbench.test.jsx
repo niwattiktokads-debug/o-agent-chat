@@ -338,6 +338,7 @@ vi.mock('../../lib/omniApi.js', () => ({
       color: 'ดำ',
       size: 'XL',
       imageUrl: 'https://cdn.example/lorra.jpg',
+      storefrontUrl: 'https://annalynna.easy.co/products/lorra-polo',
       sellPrice: 690,
       availableStock: 13,
     }],
@@ -819,7 +820,7 @@ describe('OmniWorkbench', () => {
     expect(await screen.findByText(/ใส่สินค้าในกล่องตอบแล้ว: Lorra เดรสเชิ้ต Polo/)).toBeInTheDocument()
     expect(draftBox.value).toContain('มี Lorra สีดำค่ะ')
     expect(draftBox.value).toContain('ราคา 690 บาท พร้อมส่ง')
-    expect(draftBox.value).toContain('\n\nดูสินค้า:\nhttp://localhost:3000/p/easystore/16462394')
+    expect(draftBox.value).toContain('\n\nดูสินค้า:\nhttps://annalynna.easy.co/products/lorra-polo')
     expect(draftBox.value).not.toContain('13 ชิ้น')
     expect(draftBox.value).not.toContain('threadId=')
     expect(draftBox.value).not.toContain('SKU:')
@@ -933,7 +934,7 @@ describe('OmniWorkbench', () => {
     expect(await screen.findByText(/ใส่สินค้าในกล่องตอบแล้ว: Lorra เดรสเชิ้ต Polo/)).toBeInTheDocument()
     expect(draftBox.value).toContain('มี Lorra สีดำค่ะ')
     expect(draftBox.value).toContain('ราคา 690 บาท พร้อมส่ง')
-    expect(draftBox.value).toContain('\n\nดูสินค้า:\nhttp://localhost:3000/p/easystore/16462394')
+    expect(draftBox.value).toContain('\n\nดูสินค้า:\nhttps://annalynna.easy.co/products/lorra-polo')
     expect(draftBox.value).not.toContain('13 ชิ้น')
     expect(draftBox.value).not.toContain('threadId=')
     expect(draftBox.value).not.toContain('SKU:')

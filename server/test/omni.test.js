@@ -1162,7 +1162,38 @@ test('AI reply engine prepares bill link and product carousel assets for checkou
   const thread = service.getThread('thread_checkout_assets')
   const snapshot = service.snapshot()
   snapshot.settings = service.getSettingsForThread(thread.id)
-  const ai = createAiReplyEngine({ provider: 'local_rules', model: 'test' })
+  const easyStore = {
+    async searchProducts() {
+      return {
+        ok: true,
+        products: [
+          {
+            id: 'es_live_lorra_black_xl_checkout',
+            sku: 'LORRA-BLK-XL',
+            source: 'easystore_live',
+            availableStock: 2,
+            productId: '16462646',
+            variantId: '7601',
+            productName: 'Lorra เดรสเชิ้ต Polo',
+            price: 1290,
+            imageUrl: 'https://cdn.example/lorra-black-xl.jpg',
+          },
+          {
+            id: 'es_live_lorra_gray_xl_checkout',
+            sku: 'LORRA-GRY-XL',
+            source: 'easystore_live',
+            availableStock: 1,
+            productId: '16462646',
+            variantId: '7602',
+            productName: 'Lorra เดรสเชิ้ต Polo',
+            price: 1290,
+            imageUrl: 'https://cdn.example/lorra-gray-xl.jpg',
+          },
+        ],
+      }
+    },
+  }
+  const ai = createAiReplyEngine({ provider: 'local_rules', model: 'test', easyStore })
 
   const decision = await ai.draft({ thread, snapshot, policy: service.getPolicyForThread(thread) })
 
@@ -2222,7 +2253,7 @@ test('AI reply engine asks narrowly when customer came from live without product
   assert.doesNotMatch(decision.draftText, /ส่งรูป/)
 })
 
-test('AI reply engine answers from EasyStore inventory facts instead of promising to check', async () => {
+test('AI reply engine refreshes EasyStore live facts instead of trusting stale inventory snapshots', async () => {
   const seed = createOmniSeed()
   seed.customers.push({ id: 'cust_amanda_stock', displayName: 'Amanda Customer', matchConfidence: 1 })
   seed.threads.push({
@@ -2250,17 +2281,43 @@ test('AI reply engine answers from EasyStore inventory facts instead of promisin
     { id: 'es_stock_16462646_1', sku: 'AMANDA-BLK-M', source: 'easystore', available: 3, checkedAt: '2026-06-04T04:55:00.000Z', productId: '16462646', variantId: '1', productName: 'Amanda Jumpsuit', price: 1290 },
     { id: 'es_stock_16462646_2', sku: 'AMANDA-BLK-L', source: 'easystore', available: 0, checkedAt: '2026-06-04T04:55:00.000Z', productId: '16462646', variantId: '2', productName: 'Amanda Jumpsuit', price: 1290 },
   )
+  const calls = []
+  const easyStore = {
+    async searchProducts({ keyword, limit }) {
+      calls.push({ keyword, limit })
+      return {
+        ok: true,
+        source: 'easystore_live',
+        products: [{
+          id: 'es_live_amanda_black_m',
+          productId: '16462646',
+          variantId: 'live_1',
+          sku: 'AMANDA-BLK-M',
+          source: 'easystore_live',
+          productName: 'Amanda Jumpsuit',
+          color: 'ดำ',
+          size: 'M',
+          sellPrice: 890,
+          stock: 8,
+        }],
+      }
+    },
+  }
   const service = createOmniService(seed)
   const thread = service.getThread('thread_amanda_stock')
-  const ai = createAiReplyEngine({ provider: 'local_rules', model: 'test' })
+  const ai = createAiReplyEngine({ provider: 'local_rules', model: 'test', easyStore })
   const decision = await ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
 
+  assert.equal(calls.length, 1)
   assert.equal(decision.ok, true)
   assert.equal(decision.intent, 'stock')
+  assert.equal(decision.reason, 'easystore_live_product_fact_match')
+  assert.equal(decision.productFacts.source, 'easystore_live')
   assert.match(decision.draftText, /เช็กให้แล้ว/)
   assert.match(decision.draftText, /Amanda Jumpsuit/)
-  assert.match(decision.draftText, /พร้อมส่งรวม 3 ชิ้น/)
-  assert.match(decision.draftText, /1,290/)
+  assert.match(decision.draftText, /พร้อมส่งรวม 8 ชิ้น/)
+  assert.match(decision.draftText, /890/)
+  assert.doesNotMatch(decision.draftText, /1,290|พร้อมส่งรวม 3 ชิ้น/)
   assert.doesNotMatch(decision.draftText, /เดี๋ยว.*เช็ก/)
 })
 
@@ -2551,17 +2608,31 @@ test('AI reply engine prioritizes exact EasyStore SKU over newer color-only prod
     { id: 'es_stock_polo_black_m', sku: 'poloดำM', source: 'easystore', available: 20, checkedAt: '2026-06-04T04:35:16.000Z', productId: '16462402', variantId: '76013354', productName: 'เสื้อเชิ้ตโปโลผู้หญิง', price: 590 },
     { id: 'es_stock_cropset_black_1', sku: 'cropsetดำ1', source: 'easystore', available: 0, checkedAt: '2026-06-04T04:55:09.000Z', productId: '16462572', variantId: '76014489', productName: 'ชุดเซ็ต โอเวอร์ไซซ์ สีดำ', price: 499 },
   )
+  const calls = []
+  const easyStore = {
+    async searchProducts({ keyword, limit }) {
+      calls.push({ keyword, limit })
+      return {
+        ok: true,
+        products: [
+          { id: 'es_live_polo_black_m', sku: 'poloดำM', source: 'easystore_live', availableStock: 20, productId: '16462402', variantId: '76013354', productName: 'เสื้อเชิ้ตโปโลผู้หญิง', price: 590 },
+          { id: 'es_live_cropset_black_1', sku: 'cropsetดำ1', source: 'easystore_live', availableStock: 0, productId: '16462572', variantId: '76014489', productName: 'ชุดเซ็ต โอเวอร์ไซซ์ สีดำ', price: 499 },
+        ],
+      }
+    },
+  }
   const service = createOmniService(seed)
   const thread = service.getThread('thread_polo_stock')
-  const ai = createAiReplyEngine({ provider: 'local_rules', model: 'test' })
+  const ai = createAiReplyEngine({ provider: 'local_rules', model: 'test', easyStore })
   const decision = await ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
 
+  assert.equal(calls.length, 1)
   assert.equal(decision.ok, true)
   assert.match(decision.draftText, /เสื้อเชิ้ตโปโลผู้หญิง/)
   assert.match(decision.draftText, /พร้อมส่งรวม 20 ชิ้น/)
   assert.match(decision.draftText, /590/)
   assert.doesNotMatch(decision.draftText, /ชุดเซ็ต/)
-  assert.deepEqual(decision.sourceIds.includes('es_stock_polo_black_m'), true)
+  assert.deepEqual(decision.sourceIds.includes('es_live_polo_black_m'), true)
 })
 
 test('AI reply engine classifies product image requests as human attachment work', async () => {
@@ -2895,9 +2966,26 @@ test('AI reply engine closes known color and size price questions with ready-to-
   seed.inventorySnapshots.push(
     { id: 'es_stock_lorra_black_xl', sku: 'LORRA-BLK-XL', source: 'easystore', available: 5, checkedAt: '2026-06-04T05:20:00.000Z', productId: 'lorra', variantId: 'xl', productName: 'Lorra', price: 590 },
   )
+  const easyStore = {
+    async searchProducts() {
+      return {
+        ok: true,
+        products: [{
+          id: 'es_live_lorra_black_xl_price',
+          sku: 'LORRA-BLK-XL',
+          source: 'easystore_live',
+          availableStock: 5,
+          productId: 'lorra',
+          variantId: 'xl',
+          productName: 'Lorra',
+          price: 590,
+        }],
+      }
+    },
+  }
   const service = createOmniService(seed)
   const thread = service.getThread('thread_sales_price')
-  const ai = createAiReplyEngine({ provider: 'local_rules', model: 'test' })
+  const ai = createAiReplyEngine({ provider: 'local_rules', model: 'test', easyStore })
   const decision = await ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
 
   assert.equal(decision.intent, 'price')
