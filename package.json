@@ -1,6 +1,6 @@
 {
   "name": "omni-server",
-  "version": "0.0.45",
+  "version": "0.0.46",
   "description": "Omni Chat Server",
   "scripts": {
     "start": "node server/src/index.js",

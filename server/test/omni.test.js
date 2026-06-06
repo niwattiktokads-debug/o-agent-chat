@@ -1379,6 +1379,8 @@ test('AI reply engine sends only the size chart image for size chart questions w
   assert.equal(decision.attachments[0].source, 'ai_size_chart')
   assert.equal(decision.attachments[0].url, 'https://cdn.example/lorra-size-chart.jpg')
   assert.equal(decision.attachments.some((item) => item.url === 'https://cdn.example/lorra-black-xl.jpg'), false)
+  assert.match(decision.draftText, /ตารางไซซ์/)
+  assert.doesNotMatch(decision.draftText, /เช็กราคา|สต็อก|EasyStore/)
 })
 
 test('AI reply engine attaches size chart for size questions without product facts', async () => {
@@ -1423,6 +1425,67 @@ test('AI reply engine attaches size chart for size questions without product fac
     item.url === 'https://cdn.example/anna-size-chart.jpg'
   )), true)
   assert.equal(decision.carousel.some((card) => card.imageUrl === 'https://cdn.example/anna-size-chart.jpg'), true)
+  assert.match(decision.draftText, /ตารางไซซ์/)
+  assert.doesNotMatch(decision.draftText, /เช็กราคา|สต็อก|EasyStore/)
+})
+
+test('AI reply engine keeps size chart copy when EasyStore live lookup would otherwise hold', async () => {
+  const seed = createOmniSeed()
+  seed.omniSettings[0].settings.ai.salesAssets = {
+    enabled: true,
+    sizeChartImageUrl: 'https://cdn.example/lorra-size-chart.jpg',
+  }
+  seed.customers.push({ id: 'cust_size_chart_hold', displayName: 'Size Hold Customer', matchConfidence: 1 })
+  seed.threads.push({
+    id: 'thread_size_chart_hold',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'cust_size_chart_hold',
+    status: 'open',
+    intent: 'unknown',
+    risk: 'low',
+    unreadCount: 1,
+    messageCount: 1,
+    updatedAt: '2026-06-05T05:20:00.000Z',
+  })
+  seed.messages.push({
+    id: 'msg_size_chart_hold',
+    threadId: 'thread_size_chart_hold',
+    direction: 'inbound',
+    authorName: 'Size Hold Customer',
+    text: 'Lorra size',
+    createdAt: '2026-06-05T05:20:00.000Z',
+  })
+  seed.inventorySnapshots.push({
+    id: 'es_stock_lorra_size_hold',
+    sku: 'LORRA-BLK-M',
+    source: 'easystore',
+    available: 2,
+    checkedAt: '2026-06-05T05:10:00.000Z',
+    productId: '16462646',
+    variantId: '7601',
+    productName: 'Lorra เดรสเชิ้ต Polo',
+    price: 1290,
+    imageUrl: 'https://cdn.example/lorra-black-m.jpg',
+  })
+  const easyStore = {
+    async searchProducts() {
+      return { ok: true, source: 'easystore_live', products: [] }
+    },
+  }
+  const service = createOmniService(seed)
+  const thread = service.getThread('thread_size_chart_hold')
+  const snapshot = service.snapshot()
+  snapshot.settings = service.getSettingsForThread(thread.id)
+  const ai = createAiReplyEngine({ provider: 'local_rules', model: 'test', easyStore })
+
+  const decision = await ai.draft({ thread, snapshot, policy: service.getPolicyForThread(thread) })
+
+  assert.equal(decision.ok, true)
+  assert.equal(decision.attachments.length, 1)
+  assert.equal(decision.attachments[0].source, 'ai_size_chart')
+  assert.match(decision.draftText, /ตารางไซซ์/)
+  assert.doesNotMatch(decision.draftText, /เช็กราคา|สต็อก|EasyStore/)
 })
 
 test('Meta auto reply records AI carousel assets as visible guarded draft attachments', async () => {

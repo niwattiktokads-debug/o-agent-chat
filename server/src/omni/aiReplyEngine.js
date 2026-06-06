@@ -790,8 +790,34 @@ function variantLabel(variant = {}, productName = 'สินค้า') {
 }
 
 function shouldAttachSizeChart({ intent, text }) {
-  if (intent === 'sizeAdvice') return true
-  return /(ตารางไซซ์|ตารางไซส์|ไซซ์|ไซส์|size chart|size guide|\bsize\b|\bsizing\b|ขนาด)/i.test(String(text || ''))
+  const value = String(text || '').toLowerCase()
+  if (/(ตารางไซซ์|ตารางไซส์|size chart|size guide|sizing chart)/i.test(value)) return true
+  if (/(ขอ|ขอดู|ส่ง|ดู|แนบ).{0,24}(ภาพ|รูป|ตาราง).{0,24}(ไซซ์|ไซส์|size|sizing)/i.test(value)) return true
+  if (/(ขอ|ขอดู|ส่ง|ดู|แนบ).{0,24}(ไซซ์|ไซส์|size|sizing).{0,24}(ภาพ|รูป|ตาราง)/i.test(value)) return true
+  if (/\b[a-z][a-z0-9-]{2,}\s+size\b/i.test(value)) return true
+  return intent === 'sizeAdvice' && /(ภาพ|รูป|ตาราง|chart|guide)/i.test(value)
+}
+
+function sizeChartDraftText() {
+  return 'ส่งตารางไซซ์ให้ดูนะคะ ถ้าบอกส่วนสูง น้ำหนัก หรือไซซ์ที่ใส่ปกติ แอดมินช่วยเทียบให้ได้ค่ะ'
+}
+
+function hasSizeChartAttachment(decision = {}) {
+  return (decision.attachments || []).some((attachment) => attachment?.source === 'ai_size_chart')
+}
+
+function enforceSizeChartDraft(decision = {}) {
+  if (!hasSizeChartAttachment(decision)) return decision
+  return {
+    ...decision,
+    draftText: applyRichMessageToDraft(
+      appendPaymentLinkToDraft(sizeChartDraftText(), decision.paymentLink, decision.intent),
+      decision.richMessage,
+    ),
+    reason: decision.reason === 'easystore_live_lookup_required'
+      ? 'size_chart_asset_ready'
+      : decision.reason,
+  }
 }
 
 function buildSalesAttachments({ productFacts, settings, includeSizeChart = false }) {
@@ -1135,7 +1161,7 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
       }
     }
     if (!payload.ok) return { ...baseDecision, ok: false, error: payload.error || 'ai_helper_failed' }
-    return {
+    return enforceSizeChartDraft({
       ...baseDecision,
       provider: payload.provider || provider,
       model: payload.model || model,
@@ -1146,7 +1172,7 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
       ), baseDecision.richMessage),
       confidence: Number(payload.confidence || baseDecision.confidence || 0.74),
       reason: payload.reason || baseDecision.reason,
-    }
+    })
   }
 
   async function draftWithOpenAI({ thread, snapshot, policy, baseDecision }) {
@@ -1172,7 +1198,7 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
     })
     const payload = await response.json().catch(() => ({}))
     if (!response.ok) {
-      return {
+      return enforceSizeChartDraft({
         ...baseDecision,
         ok: true,
         provider: 'openai',
@@ -1181,11 +1207,11 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
         confidence: Math.min(baseDecision.confidence || 0.7, 0.68),
         reason: `openai_error_fallback:${payload?.error?.message || response.status}`,
         helperError: payload?.error?.message || `openai_http_${response.status}`,
-      }
+      })
     }
     const text = payload?.choices?.[0]?.message?.content?.trim() || ''
     if (!text) {
-      return {
+      return enforceSizeChartDraft({
         ...baseDecision,
         ok: true,
         provider: 'openai',
@@ -1193,7 +1219,7 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
         draftText: baseDecision.draftText,
         confidence: Math.min(baseDecision.confidence || 0.7, 0.68),
         reason: 'openai_empty_fallback',
-      }
+      })
     }
     const parsed = parseAiJson(text)
     const trustedContext = [
@@ -1206,14 +1232,14 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
       trustedContext,
       productFacts: baseDecision.productFacts,
     }), baseDecision.paymentLink, baseDecision.intent), baseDecision.richMessage)
-    return {
+    return enforceSizeChartDraft({
       ...baseDecision,
       provider: 'openai',
       model,
       draftText,
       confidence: Math.max(0, Math.min(1, Number(parsed?.confidence || baseDecision.confidence || 0.74))),
       reason: parsed?.reason || 'openai_guarded_text_draft',
-    }
+    })
   }
 
   async function draftWithGemini({ thread, snapshot, policy, baseDecision }) {
@@ -1241,7 +1267,7 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
     })
     const payload = await response.json().catch(() => ({}))
     if (!response.ok) {
-      return {
+      return enforceSizeChartDraft({
         ...baseDecision,
         ok: true,
         provider: 'gemini',
@@ -1250,10 +1276,10 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
         confidence: Math.min(baseDecision.confidence || 0.7, 0.68),
         reason: `gemini_error_fallback:${payload?.error?.message || payload?.error || response.status}`,
         helperError: payload?.error?.message || payload?.error || `gemini_http_${response.status}`,
-      }
+      })
     }
     if (!payload?.candidates?.length) {
-      return {
+      return enforceSizeChartDraft({
         ...baseDecision,
         ok: true,
         provider: 'gemini',
@@ -1262,7 +1288,7 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
         confidence: Math.min(baseDecision.confidence || 0.7, 0.68),
         reason: 'gemini_empty_fallback',
         error: payload?.error?.message || payload?.error || `gemini_http_${response.status}`,
-      }
+      })
     }
     const candidate = payload?.candidates?.[0] || {}
     const text = candidate?.content?.parts
@@ -1284,14 +1310,14 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
       })
       : baseDecision.draftText, baseDecision.paymentLink, baseDecision.intent), baseDecision.richMessage)
 
-    return {
+    return enforceSizeChartDraft({
       ...baseDecision,
       provider: 'gemini',
       model,
       draftText,
       confidence: Math.max(0, Math.min(1, Number(parsed?.confidence || baseDecision.confidence || 0.74))),
       reason: finishedCleanly ? (parsed?.reason || 'gemini_guarded_text_draft') : `gemini_fallback_${candidate.finishReason}`,
-    }
+    })
   }
 
   return {
@@ -1338,7 +1364,10 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
         ? (productFacts.variants || []).map((variant) => variant.id).filter(Boolean)
         : []
       const richMessage = richMessageForThread(thread, snapshot)
-      const draftText = holdReason === 'easystore_live_product_conflict'
+      const includeSizeChart = shouldAttachSizeChart({ intent, text: [classificationText, inbound?.text].filter(Boolean).join(' ') })
+      const draftText = includeSizeChart
+        ? sizeChartDraftText()
+        : holdReason === 'easystore_live_product_conflict'
         ? 'เดี๋ยวขอให้แอดมินตรวจรุ่นและสต็อกจาก EasyStore ให้ชัดก่อนนะคะ เพื่อไม่ให้แจ้งผิดรุ่นค่ะ'
         : holdReason === 'easystore_live_lookup_required'
           ? 'เดี๋ยวขอให้แอดมินเช็กราคาและสต็อกจาก EasyStore อีกครั้งก่อนนะคะ เพื่อไม่ให้แจ้งข้อมูลผิดค่ะ'
@@ -1347,7 +1376,7 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
       const salesAttachments = buildSalesAttachments({
         productFacts,
         settings: snapshot.settings || {},
-        includeSizeChart: shouldAttachSizeChart({ intent, text: [classificationText, inbound?.text].filter(Boolean).join(' ') }),
+        includeSizeChart,
       })
       const salesCarousel = buildSalesCarousel({ productFacts, attachments: salesAttachments, paymentLink })
 
@@ -1377,7 +1406,7 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
         carousel: salesCarousel,
       }
 
-      if (provider === 'local_rules') return baseDecision
+      if (provider === 'local_rules') return enforceSizeChartDraft(baseDecision)
       if (provider === 'gemini') return draftWithGemini({ thread, snapshot, policy, baseDecision })
       if (provider === 'openai') return draftWithOpenAI({ thread, snapshot, policy, baseDecision })
       return draftWithHelper({ thread, snapshot, policy, baseDecision })
