@@ -26,6 +26,107 @@ function fbPageAccessToken(pageProfile) {
     : { ok: false, source: candidates }
 }
 
+export function normalizeMetaGraphError(payload = {}, fallback = 'fb_graph_error') {
+  const error = payload?.error || {}
+  const message = typeof error === 'string' ? error : String(error.message || fallback)
+  const code = Number(error.code || 0)
+  const subcode = Number(error.error_subcode || 0)
+  if (code === 190 || /validating access token|invalidated|expired|session/i.test(message)) {
+    return {
+      error: 'meta_page_token_invalid',
+      detail: message,
+      metaCode: code || null,
+      metaSubcode: subcode || null,
+      userMessage: 'Meta Page token ใช้ไม่ได้หรือหมดอายุ ต้องเปลี่ยน token ของเพจก่อน Omni จึงจะส่งตอบลูกค้าได้',
+    }
+  }
+  return {
+    error: message || fallback,
+    detail: message || fallback,
+    metaCode: code || null,
+    metaSubcode: subcode || null,
+    userMessage: 'Meta ส่งข้อความไม่สำเร็จ ตรวจ connector health และ permission ของเพจ',
+  }
+}
+
+export async function checkMetaConnectorHealth({ fetchImpl = fetch, monitoredProfiles = null } = {}) {
+  const profiles = pageProfiles()
+  const profileKeys = (monitoredProfiles || String(process.env.OMNI_META_HEALTH_PAGE_PROFILES || 'anna_lynn,man_kynd,page_des,fb_112154661515664')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean))
+    .filter((key) => profiles[key]?.platform === 'facebook')
+
+  const checkedAt = new Date().toISOString()
+  const pages = []
+  for (const profileKey of profileKeys) {
+    const profile = profiles[profileKey]
+    const token = fbPageAccessToken(profileKey)
+    if (!token.ok) {
+      pages.push({
+        pageProfile: profileKey,
+        pageName: profile.pageName,
+        status: 'degraded',
+        error: 'fb_page_token_missing',
+        expectedEnv: token.source,
+        userMessage: 'ยังไม่มี Meta Page token สำหรับเพจนี้',
+      })
+      continue
+    }
+
+    const url = new URL(`${FACEBOOK_GRAPH_BASE}/${encodeURIComponent(profile.pageId)}`)
+    url.searchParams.set('fields', 'id,name')
+    url.searchParams.set('access_token', token.value)
+    try {
+      const response = await fetchImpl(url)
+      const text = await response.text()
+      const payload = text ? JSON.parse(text) : {}
+      if (!response.ok) {
+        pages.push({
+          pageProfile: profileKey,
+          pageName: profile.pageName,
+          status: 'degraded',
+          tokenSource: token.source,
+          ...normalizeMetaGraphError(payload, 'meta_healthcheck_failed'),
+        })
+        continue
+      }
+      pages.push({
+        pageProfile: profileKey,
+        pageName: payload.name || profile.pageName,
+        status: 'healthy',
+        tokenSource: token.source,
+      })
+    } catch (error) {
+      pages.push({
+        pageProfile: profileKey,
+        pageName: profile.pageName,
+        status: 'degraded',
+        tokenSource: token.source,
+        error: 'meta_graph_network_error',
+        detail: error.message,
+        userMessage: 'ติดต่อ Meta Graph API ไม่ได้ชั่วคราว',
+      })
+    }
+  }
+
+  const broken = pages.filter((page) => page.status !== 'healthy')
+  return {
+    ok: broken.length === 0,
+    provider: 'meta',
+    status: broken.length ? 'degraded' : 'healthy',
+    lastCheckedAt: checkedAt,
+    mode: 'live_token_check',
+    pages,
+    summary: broken.length
+      ? `Meta token ใช้ไม่ได้ ${broken.length}/${pages.length} เพจ`
+      : `Meta token พร้อมใช้งาน ${pages.length}/${pages.length} เพจ`,
+    userMessage: broken.length
+      ? 'Omni รับแชท/ร่างตอบได้ แต่ส่งจริงผ่าน Facebook ไม่ได้จนกว่าเปลี่ยน Page token'
+      : 'Meta connector พร้อมส่งข้อความ',
+  }
+}
+
 const IG_PAGE_TOKEN_ENV = {
   ig_anna_lynn: ['META_PAGE_TOKEN_IG_ANNA_LYNN', 'IG_ANNA_LYNN_PAGE_TOKEN'],
   ig_man_kynd: ['META_PAGE_TOKEN_IG_MAN_KYND', 'IG_MAN_KYND_PAGE_TOKEN'],
@@ -274,10 +375,11 @@ export async function sendFacebookReply(input = {}, runnerArg = null) {
     const payload = responseText ? JSON.parse(responseText) : {}
     responses.push({ status: response.status, response: payload })
     if (!response.ok) {
+      const normalized = normalizeMetaGraphError(payload, 'fb_graph_error')
       return {
         ok: false,
         status: response.status,
-        error: payload?.error?.message || payload?.error || 'fb_graph_error',
+        ...normalized,
         response: payload,
         responses,
       }
@@ -389,10 +491,11 @@ export async function sendFacebookCommentReply(input = {}, runnerArg = null) {
   const responseText = await response.text()
   const payload = responseText ? JSON.parse(responseText) : {}
   if (!response.ok) {
+    const normalized = normalizeMetaGraphError(payload, 'fb_graph_comment_error')
     return {
       ok: false,
       status: response.status,
-      error: payload?.error?.message || payload?.error || 'fb_graph_comment_error',
+      ...normalized,
       response: payload,
     }
   }

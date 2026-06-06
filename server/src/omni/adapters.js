@@ -1,3 +1,5 @@
+import { checkMetaConnectorHealth } from './metaInboxClient.js'
+
 function createMockAdapter(provider) {
   return {
     provider,
@@ -34,6 +36,16 @@ function createMockAdapter(provider) {
   }
 }
 
+function createMetaAdapter() {
+  const fallback = createMockAdapter('meta')
+  return {
+    ...fallback,
+    async healthcheck() {
+      return checkMetaConnectorHealth()
+    },
+  }
+}
+
 function createKgpAdapter(kgpPayment) {
   const fallback = createMockAdapter('meta_pay_kgp')
   return {
@@ -47,7 +59,7 @@ function createKgpAdapter(kgpPayment) {
 
 export function createAdapterRegistry({ kgpPayment = null } = {}) {
   const adapters = new Map([
-    ['meta', createMockAdapter('meta')],
+    ['meta', createMetaAdapter()],
     ['tiktok_shop', createMockAdapter('tiktok_shop')],
     ['tiktok_business_messaging', createMockAdapter('tiktok_business_messaging')],
     ['bigseller', createMockAdapter('bigseller')],

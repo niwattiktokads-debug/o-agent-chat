@@ -570,7 +570,14 @@ export function mountRoutes(app, hub, room, options = {}) {
       if (!recipientId) return res.status(400).json({ ok: false, sent: false, error: 'recipient_id_not_found' })
 
       const sendResult = await sendFacebookReplyRuntime({ pageProfile, recipientId, message: text, attachments: liveAttachments, carousel: carousel.cards })
-      if (!sendResult?.ok) return res.status(400).json({ ok: false, sent: false, error: sendResult?.error || 'facebook_send_failed', sendResult })
+      if (!sendResult?.ok) return res.status(400).json({
+        ok: false,
+        sent: false,
+        error: sendResult?.error || 'facebook_send_failed',
+        userMessage: sendResult?.userMessage || 'ส่งลูกค้าไม่สำเร็จ ตรวจ Connector Health ก่อนส่งซ้ำ',
+        pageProfile,
+        sendResult,
+      })
 
       const recorded = omni.recordOutboundMessage({
         threadId: thread.id,

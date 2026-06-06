@@ -8,7 +8,7 @@ import { OMNI_STATUSES, validatePage } from '../src/omni/schema.js'
 import { createOmniSeed } from '../src/omni/seed.js'
 import { createAdapterRegistry } from '../src/omni/adapters.js'
 import { createOmniService } from '../src/omni/service.js'
-import { listFacebookConversations, normalizeMetaConversations, sendFacebookCommentReply, sendFacebookReply, sendInstagramCommentReply } from '../src/omni/metaInboxClient.js'
+import { checkMetaConnectorHealth, listFacebookConversations, normalizeMetaConversations, normalizeMetaGraphError, sendFacebookCommentReply, sendFacebookReply, sendInstagramCommentReply } from '../src/omni/metaInboxClient.js'
 import { loadPageRegistry } from '../src/omni/pageRegistry.js'
 import { createMetaSocialRuntime } from '../src/omni/metaSocialRuntime.js'
 import { createAiReplyEngine } from '../src/omni/aiReplyEngine.js'
@@ -47,6 +47,45 @@ test('omni seed starts with configured production page data', () => {
   assert.equal(seed.pages.every((page) => page.agentProfileId), true)
   assert.equal(seed.knowledgeSources.length, 5)
   assert.equal(seed.knowledgeSources.every((source) => source.content), true)
+})
+
+test('Meta token errors are normalized for operator-facing send failures', () => {
+  const result = normalizeMetaGraphError({
+    error: {
+      message: 'Error validating access token: The session was invalidated previously using an API call.',
+      code: 190,
+      error_subcode: 463,
+    },
+  })
+
+  assert.equal(result.error, 'meta_page_token_invalid')
+  assert.equal(result.metaCode, 190)
+  assert.match(result.userMessage, /token/)
+})
+
+test('Meta connector health reports degraded page tokens without exposing secrets', async () => {
+  const savedToken = process.env.META_PAGE_TOKEN_ANNA_LYNN
+  process.env.META_PAGE_TOKEN_ANNA_LYNN = 'test_invalid_token'
+  try {
+    const result = await checkMetaConnectorHealth({
+      monitoredProfiles: ['anna_lynn'],
+      fetchImpl: async () => new Response(JSON.stringify({
+        error: {
+          message: 'Error validating access token: Session has expired.',
+          code: 190,
+          error_subcode: 463,
+        },
+      }), { status: 400 }),
+    })
+
+    assert.equal(result.status, 'degraded')
+    assert.equal(result.pages[0].error, 'meta_page_token_invalid')
+    assert.equal(result.pages[0].tokenSource, 'META_PAGE_TOKEN_ANNA_LYNN')
+    assert.equal(JSON.stringify(result).includes('test_invalid_token'), false)
+  } finally {
+    if (savedToken === undefined) delete process.env.META_PAGE_TOKEN_ANNA_LYNN
+    else process.env.META_PAGE_TOKEN_ANNA_LYNN = savedToken
+  }
 })
 
 test('ZORT order body includes customer and Thai shipping address fields', async () => {
@@ -593,7 +632,9 @@ test('page validation accepts active, paused, and archived statuses', () => {
 test('adapter registry exposes provider-agnostic healthchecks', async () => {
   const registry = createAdapterRegistry()
   const meta = await registry.get('meta').healthcheck()
-  assert.deepEqual(meta, { ok: true, provider: 'meta', mode: 'mock' })
+  assert.equal(meta.provider, 'meta')
+  assert.equal(meta.mode, 'live_token_check')
+  assert.ok(['healthy', 'degraded'].includes(meta.status))
 })
 
 test('omni service filters threads by page and blocks unsafe auto-send', () => {

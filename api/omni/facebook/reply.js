@@ -31,6 +31,29 @@ function pageAccessToken(pageProfile) {
   return envName ? { ok: true, value: process.env[envName], source: envName } : { ok: false, source: candidates }
 }
 
+function normalizeMetaGraphError(payload = {}, fallback = 'meta_graph_error') {
+  const error = payload?.error || {}
+  const message = typeof error === 'string' ? error : String(error.message || fallback)
+  const code = Number(error.code || 0)
+  const subcode = Number(error.error_subcode || 0)
+  if (code === 190 || /validating access token|invalidated|expired|session/i.test(message)) {
+    return {
+      error: 'meta_page_token_invalid',
+      detail: message,
+      metaCode: code || null,
+      metaSubcode: subcode || null,
+      userMessage: 'Meta Page token ใช้ไม่ได้หรือหมดอายุ ต้องเปลี่ยน token ของเพจก่อน Omni จึงจะส่งตอบลูกค้าได้',
+    }
+  }
+  return {
+    error: message || fallback,
+    detail: message || fallback,
+    metaCode: code || null,
+    metaSubcode: subcode || null,
+    userMessage: 'Meta ส่งข้อความไม่สำเร็จ ตรวจ connector health และ permission ของเพจ',
+  }
+}
+
 async function graphRequest(pathname, accessToken, { method = 'POST', body = {}, baseUrl = GRAPH_BASE } = {}) {
   const url = new URL(`${baseUrl}${pathname}`)
   url.searchParams.set('access_token', accessToken)
@@ -42,7 +65,7 @@ async function graphRequest(pathname, accessToken, { method = 'POST', body = {},
   const text = await response.text()
   const payload = text ? JSON.parse(text) : {}
   if (!response.ok) {
-    return { ok: false, status: response.status, error: payload?.error?.message || payload?.error || 'meta_graph_error' }
+    return { ok: false, status: response.status, ...normalizeMetaGraphError(payload, 'meta_graph_error'), response: payload }
   }
   return { ok: true, status: response.status, response: payload }
 }

@@ -21,6 +21,10 @@ async function postJson(path, payload = {}) {
   return body
 }
 
+function apiErrorMessage(body, fallback) {
+  return body?.userMessage || body?.sendResult?.userMessage || body?.summary || body?.error || fallback
+}
+
 export async function fetchOmniSnapshot(workspaceId) {
   const qs = workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : ''
   return (await getJson(`/api/omni/snapshot${qs}`)).snapshot
@@ -441,7 +445,7 @@ export async function sendManualReply(threadId, draft) {
     body: JSON.stringify({ ...draft, approved: true }),
   })
   const body = await response.json()
-  if (!response.ok || !body.ok) throw new Error(body.error || 'manual_send_failed')
+  if (!response.ok || !body.ok) throw new Error(apiErrorMessage(body, 'manual_send_failed'))
   return body
 }
 
