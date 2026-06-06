@@ -2,7 +2,7 @@ import React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import OmniWorkbench from './OmniWorkbench.jsx'
-import { searchEasyStoreProducts } from '../../lib/omniApi.js'
+import { saveOmniSettings, searchEasyStoreProducts } from '../../lib/omniApi.js'
 
 const omniMock = vi.hoisted(() => ({
   subscribers: [],
@@ -11,7 +11,7 @@ const omniMock = vi.hoisted(() => ({
 vi.mock('../../lib/omniApi.js', () => ({
   fetchOmniSnapshot: async () => ({
     pages: [
-      { id: 'page_mankynd', name: 'MAN KYND', status: 'active' },
+      { id: 'page_mankynd', name: 'MAN KYND', status: 'active', workspaceId: 'ws_oagent' },
       { id: 'page_annalynn_tiktok', name: 'AnnaLynn', status: 'active' },
       { id: 'page_fb_112154661515664', name: 'Viris Zamara', status: 'active' },
     ],
@@ -320,10 +320,10 @@ vi.mock('../../lib/omniApi.js', () => ({
     orderAddressIntake: { enabled: true, createConfirmationDraft: true },
     ai: { enabled: true, customerSendEnabled: false, salesAssets: { enabled: true, sizeChartImageUrl: '' } },
   }),
-  saveOmniSettings: async (settings) => ({
+  saveOmniSettings: vi.fn(async (settings) => ({
     ok: true,
     settings,
-  }),
+  })),
   searchZortProducts: async () => ({
     ok: true,
     products: [{ id: '637', sku: 'BLACK-M', name: 'Black Shirt M', sellPrice: 590, availableStock: 7 }],
@@ -505,7 +505,7 @@ describe('OmniWorkbench', () => {
     fireEvent.click(screen.getByRole('button', { name: 'โพสต์' }))
 
     expect(await screen.findByRole('heading', { name: 'โพสต์' })).toBeInTheDocument()
-    expect(await screen.findByRole('heading', { name: 'ตั้งค่า Post Selling Session' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: /ตั้งค่า Post Selling Session/ })).toBeInTheDocument()
     expect(await screen.findByRole('heading', { name: 'ข้อความ' })).toBeInTheDocument()
     expect(await screen.findByRole('heading', { name: 'คำสั่งซื้อ (0)' })).toBeInTheDocument()
     expect(await screen.findByText('ยังไม่มีคำสั่งซื้อจากโพสต์นี้')).toBeInTheDocument()
@@ -834,6 +834,26 @@ describe('OmniWorkbench', () => {
 
     expect(await screen.findByText('บันทึกรูปตารางไซซ์แล้ว')).toBeInTheDocument()
     expect(sizeChartInput).toHaveValue('https://cdn.example/size-chart.jpg')
+  })
+
+  it('saves sales assets into the active thread workspace when the workspace selector has not loaded yet', async () => {
+    render(<OmniWorkbench />)
+
+    const sizeChartInput = await screen.findByLabelText('ลิงก์รูปตารางไซซ์')
+    fireEvent.change(sizeChartInput, { target: { value: 'https://cdn.example/workspace-size-chart.jpg' } })
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึกรูปตารางไซซ์' }))
+
+    expect(await screen.findByText('บันทึกรูปตารางไซซ์แล้ว')).toBeInTheDocument()
+    expect(saveOmniSettings).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        ai: expect.objectContaining({
+          salesAssets: expect.objectContaining({
+            sizeChartImageUrl: 'https://cdn.example/workspace-size-chart.jpg',
+          }),
+        }),
+      }),
+      expect.objectContaining({ workspaceId: 'ws_oagent' }),
+    )
   })
 
   it('lets the operator pick a size chart image from EasyStore in a popup', async () => {

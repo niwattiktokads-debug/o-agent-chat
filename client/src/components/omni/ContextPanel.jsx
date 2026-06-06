@@ -35,6 +35,13 @@ function easyStoreImageLabel(image = {}, index = 0) {
   return image.alt || image.title || `รูปสินค้า ${index + 1}`
 }
 
+function resolveContextWorkspaceId({ workspaceId, snapshot, thread }) {
+  if (workspaceId) return workspaceId
+  const page = (snapshot?.pages || []).find((item) => item.id === thread?.pageId)
+  if (page?.workspaceId) return page.workspaceId
+  return snapshot?.workspaces?.[0]?.id || 'ws_oagent'
+}
+
 export default function ContextPanel({ snapshot, thread, onSnapshot, workspaceId, onUseDraft }) {
   const [tab, setTab] = useState('ai')
   const [settings, setSettings] = useState(snapshot?.settings || null)
@@ -52,6 +59,7 @@ export default function ContextPanel({ snapshot, thread, onSnapshot, workspaceId
   const [sizeChartImages, setSizeChartImages] = useState([])
   const [sizeChartPickerBusy, setSizeChartPickerBusy] = useState(false)
   const [sizeChartPickerStatus, setSizeChartPickerStatus] = useState('')
+  const contextWorkspaceId = resolveContextWorkspaceId({ workspaceId, snapshot, thread })
 
   useEffect(() => {
     if (snapshot?.settings) setSettings(snapshot.settings)
@@ -67,7 +75,7 @@ export default function ContextPanel({ snapshot, thread, onSnapshot, workspaceId
 
   useEffect(() => {
     let ignore = false
-    fetchOmniSettings(workspaceId || undefined)
+    fetchOmniSettings(contextWorkspaceId)
       .then((nextSettings) => {
         if (!ignore) setSettings(nextSettings)
       })
@@ -75,7 +83,7 @@ export default function ContextPanel({ snapshot, thread, onSnapshot, workspaceId
         if (!ignore) setGuardError(error.message || 'settings_load_failed')
       })
     return () => { ignore = true }
-  }, [workspaceId])
+  }, [contextWorkspaceId])
 
   async function saveRichMessage(enabled = true) {
     if (!settings || richMessageBusy) return
@@ -94,7 +102,7 @@ export default function ContextPanel({ snapshot, thread, onSnapshot, workspaceId
       },
     }
     try {
-      const result = await saveOmniSettings(nextSettings, { workspaceId: workspaceId || undefined })
+      const result = await saveOmniSettings(nextSettings, { workspaceId: contextWorkspaceId })
       setSettings(result.settings || nextSettings)
       setRichMessageText(result.settings?.ai?.richMessage?.text || nextSettings.ai.richMessage.text)
       const nextSnapshot = result.snapshot || (snapshot ? { ...snapshot, settings: result.settings || nextSettings } : null)
@@ -125,7 +133,7 @@ export default function ContextPanel({ snapshot, thread, onSnapshot, workspaceId
       },
     }
     try {
-      const result = await saveOmniSettings(nextSettings, { workspaceId: workspaceId || undefined })
+      const result = await saveOmniSettings(nextSettings, { workspaceId: contextWorkspaceId })
       setSettings(result.settings || nextSettings)
       setSizeChartImageUrl(result.settings?.ai?.salesAssets?.sizeChartImageUrl || nextSettings.ai.salesAssets.sizeChartImageUrl)
       const nextSnapshot = result.snapshot || (snapshot ? { ...snapshot, settings: result.settings || nextSettings } : null)
