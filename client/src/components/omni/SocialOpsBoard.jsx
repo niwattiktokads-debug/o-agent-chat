@@ -11,6 +11,7 @@ const FALLBACK_PAGE_PROFILES = [
   { id: 'man_kynd', label: 'MAN KYND' },
   { id: 'anna_lynn', label: 'AnnaLynn' },
   { id: 'page_des', label: 'เพจเดส' },
+  { id: 'tangtob', label: 'ละครแนวตั้งตบ' },
   { id: 'fb_112154661515664', label: 'Facebook 112154661515664' },
 ]
 
@@ -19,6 +20,7 @@ const PROFILE_TO_OMNI_PAGE = {
   man_kynd: 'page_mankynd',
   anna_lynn: 'page_annalynn',
   page_des: 'page_des',
+  tangtob: 'page_tangtob',
   fb_112154661515664: 'page_fb_112154661515664',
   ig_anna_lynn: 'page_ig_annalynn',
   ig_man_kynd: 'page_ig_mankynd',

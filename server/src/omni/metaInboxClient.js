@@ -14,6 +14,7 @@ const FB_PAGE_TOKEN_ENV = {
   man_kynd: ['META_PAGE_TOKEN_MAN_KYND'],
   anna_lynn: ['META_PAGE_TOKEN_ANNA_LYNN'],
   page_des: ['META_PAGE_TOKEN_PAGE_DES'],
+  tangtob: ['META_PAGE_TOKEN_TANGTOB'],
   fb_112154661515664: ['META_PAGE_TOKEN_112154661515664'],
   vz_dot: ['META_PAGE_TOKEN_VZ_DOT'],
   vz_viris_zamara: ['META_PAGE_TOKEN_VZ_VIRIS_ZAMARA'],
@@ -52,7 +53,7 @@ export function normalizeMetaGraphError(payload = {}, fallback = 'fb_graph_error
 
 export async function checkMetaConnectorHealth({ fetchImpl = fetch, monitoredProfiles = null } = {}) {
   const profiles = pageProfiles()
-  const profileKeys = (monitoredProfiles || String(process.env.OMNI_META_HEALTH_PAGE_PROFILES || 'anna_lynn,man_kynd,page_des,fb_112154661515664,vz_dot')
+  const profileKeys = (monitoredProfiles || String(process.env.OMNI_META_HEALTH_PAGE_PROFILES || 'anna_lynn,man_kynd,page_des,tangtob,fb_112154661515664,vz_dot')
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean))

@@ -10,6 +10,7 @@ const PAGE_PROFILE_BY_OMNI_PAGE = {
   page_annalynn: 'anna_lynn',
   page_mankynd: 'man_kynd',
   page_des: 'page_des',
+  page_tangtob: 'tangtob',
   page_vz_dot: 'vz_dot',
   page_vz_viris_zamara: 'vz_viris_zamara',
 }
@@ -18,6 +19,7 @@ const PAGE_TOKEN_ENV = {
   anna_lynn: ['META_PAGE_TOKEN_ANNA_LYNN', 'FB_ANNA_LYNN_PAGE_TOKEN', 'META_PAGE_ACCESS_TOKEN_ANNA_LYNN'],
   man_kynd: ['META_PAGE_TOKEN_MAN_KYND', 'FB_PAGE_TOKEN_MAN_KYND', 'META_PAGE_ACCESS_TOKEN_MAN_KYND'],
   page_des: ['META_PAGE_TOKEN_PAGE_DES', 'FB_PAGE_TOKEN_PAGE_DES', 'META_PAGE_ACCESS_TOKEN_PAGE_DES'],
+  tangtob: ['META_PAGE_TOKEN_TANGTOB', 'FB_PAGE_TOKEN_TANGTOB'],
   vz_dot: ['META_PAGE_TOKEN_VZ_DOT', 'FB_PAGE_TOKEN_VZ_DOT'],
   vz_viris_zamara: ['META_PAGE_TOKEN_VZ_VIRIS_ZAMARA', 'FB_PAGE_TOKEN_VZ_VIRIS_ZAMARA'],
 }
@@ -27,6 +29,7 @@ const PAGE_POLICY_FALLBACKS = {
   page_annalynn_tiktok: 'policy_annalynn',
   page_mankynd: 'policy_mankynd',
   page_des: 'policy_page_des',
+  page_tangtob: 'policy_default',
   page_vz_dot: 'policy_default',
   page_vz_viris_zamara: 'policy_default',
 }

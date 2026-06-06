@@ -8,6 +8,7 @@ const FACEBOOK_PAGE_IDS = {
   page_mankynd: '189971841184132',
   page_annalynn: '122106446570001676',
   page_des: '1137894522741329',
+  page_tangtob: '106740601303449',
   page_fb_112154661515664: '112154661515664',
 }
 

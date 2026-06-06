@@ -28,7 +28,7 @@ import { createZortCommerceRuntime } from '../src/omni/zortCommerceRuntime.js'
 
 test('omni seed starts with configured production page data', () => {
   const seed = createOmniSeed()
-  assert.equal(seed.pages.length, 8)
+  assert.equal(seed.pages.length, 9)
   assert.equal(seed.pages.find((page) => page.id === 'page_annalynn').name, 'Anna Lynn')
   assert.equal(seed.pages.find((page) => page.id === 'page_ig_annalynn').name, 'Anna Lynn IG')
   assert.equal(seed.pages.find((page) => page.id === 'page_annalynn_tiktok').name, 'AnnaLynn')
@@ -42,6 +42,8 @@ test('omni seed starts with configured production page data', () => {
   assert.equal(seed.pages.find((page) => page.id === 'page_fb_112154661515664').name, 'Viris Zamara')
   assert.ok(seed.pages.find((page) => page.id === 'page_vz_dot'))
   assert.equal(seed.pages.find((page) => page.id === 'page_vz_dot').name, 'VZ.')
+  assert.ok(seed.pages.find((page) => page.id === 'page_tangtob'))
+  assert.equal(seed.platformAccounts.find((account) => account.id === 'acct_fb_tangtob').pageId, 'page_tangtob')
   assert.equal(seed.pages.some((page) => page.id === 'page_shop_4'), false)
   assert.equal(seed.pages.some((page) => page.id === 'page_shop_5'), false)
   assert.equal(seed.pages.every((page) => page.status === 'active'), true)
@@ -912,7 +914,7 @@ test('omni routes are mounted under api', async () => {
 
     assert.equal(response.status, 200)
     assert.equal(body.ok, true)
-    assert.equal(body.pages.length, 8)
+    assert.equal(body.pages.length, 9)
   } finally {
     server.close()
   }

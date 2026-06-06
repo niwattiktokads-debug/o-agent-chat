@@ -53,6 +53,7 @@ const PAGE_RUNTIME_FALLBACKS = {
   page_annalynn_tiktok: { agentProfileId: 'agent_annalynn', policySetId: 'policy_annalynn' },
   page_mankynd: { agentProfileId: 'agent_mankynd', policySetId: 'policy_mankynd' },
   page_des: { agentProfileId: 'agent_page_des', policySetId: 'policy_page_des' },
+  page_tangtob: { agentProfileId: 'agent_default', policySetId: 'policy_default' },
 }
 
 export default function SettingsPage({
