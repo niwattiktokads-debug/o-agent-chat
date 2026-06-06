@@ -789,7 +789,12 @@ function variantLabel(variant = {}, productName = 'สินค้า') {
   return [productName, color ? `สี${color}` : '', size ? `ไซซ์ ${size}` : '', sku].filter(Boolean).join(' · ')
 }
 
-function buildSalesAttachments({ productFacts, settings }) {
+function shouldAttachSizeChart({ intent, text }) {
+  if (intent === 'sizeAdvice') return true
+  return /(ตารางไซซ์|ตารางไซส์|ไซซ์|ไซส์|size chart|size guide|\bsize\b|\bsizing\b|ขนาด)/i.test(String(text || ''))
+}
+
+function buildSalesAttachments({ productFacts, settings, includeSizeChart = false }) {
   const salesAssets = normalizeSalesAssets(settings)
   if (!salesAssets.enabled) return []
   const productName = productFacts?.productName || 'สินค้า'
@@ -807,7 +812,7 @@ function buildSalesAttachments({ productFacts, settings }) {
     })
   }
   const sizeChartUrl = safeImageUrl(salesAssets.sizeChartImageUrl)
-  if (sizeChartUrl && !rows.some((item) => item.url === sizeChartUrl)) {
+  if (sizeChartUrl && (includeSizeChart || Boolean(productFacts)) && !rows.some((item) => item.url === sizeChartUrl)) {
     rows.push({
       id: 'ai_size_chart_1',
       name: 'ตารางไซซ์',
@@ -1337,7 +1342,11 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
           ? 'เดี๋ยวขอให้แอดมินเช็กราคาและสต็อกจาก EasyStore อีกครั้งก่อนนะคะ เพื่อไม่ให้แจ้งข้อมูลผิดค่ะ'
           : draftForIntent(intent, originContext, productFacts, slots)
       const paymentLink = latestPaymentLinkForThread(thread, snapshot)
-      const salesAttachments = buildSalesAttachments({ productFacts, settings: snapshot.settings || {} })
+      const salesAttachments = buildSalesAttachments({
+        productFacts,
+        settings: snapshot.settings || {},
+        includeSizeChart: shouldAttachSizeChart({ intent, text: [classificationText, inbound?.text].filter(Boolean).join(' ') }),
+      })
       const salesCarousel = buildSalesCarousel({ productFacts, attachments: salesAttachments, paymentLink })
 
       const baseDecision = {

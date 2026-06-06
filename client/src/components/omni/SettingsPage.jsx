@@ -20,7 +20,12 @@ const DEFAULT_SETTINGS = {
   report: { timezone: 'Asia/Bangkok' },
   orderDraft: { enabled: true, approvalRequired: true, createZortOrderOnApprove: true },
   orderAddressIntake: { enabled: true, createConfirmationDraft: true },
-  ai: { enabled: true, customerSendEnabled: false },
+  ai: {
+    enabled: true,
+    customerSendEnabled: false,
+    richMessage: { enabled: false, text: '' },
+    salesAssets: { enabled: true, sizeChartImageUrl: '' },
+  },
 }
 
 const LIVE_CF_MODES = [

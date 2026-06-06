@@ -1327,6 +1327,50 @@ test('AI reply engine prepares bill link and product carousel assets for checkou
   assert.equal(decision.carousel.some((card) => card.imageUrl === 'https://cdn.example/lorra-gray-xl.jpg'), true)
 })
 
+test('AI reply engine attaches size chart for size questions without product facts', async () => {
+  const seed = createOmniSeed()
+  seed.omniSettings[0].settings.ai.salesAssets = {
+    enabled: true,
+    sizeChartImageUrl: 'https://cdn.example/anna-size-chart.jpg',
+  }
+  seed.customers.push({ id: 'cust_size_chart_only', displayName: 'Size Customer', matchConfidence: 1 })
+  seed.threads.push({
+    id: 'thread_size_chart_only',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'cust_size_chart_only',
+    status: 'open',
+    intent: 'unknown',
+    risk: 'low',
+    unreadCount: 1,
+    messageCount: 1,
+    updatedAt: '2026-06-05T05:15:00.000Z',
+  })
+  seed.messages.push({
+    id: 'msg_size_chart_only',
+    threadId: 'thread_size_chart_only',
+    direction: 'inbound',
+    authorName: 'Size Customer',
+    text: 'ขอดูตารางไซซ์หน่อยค่ะ',
+    createdAt: '2026-06-05T05:15:00.000Z',
+  })
+  const service = createOmniService(seed)
+  const thread = service.getThread('thread_size_chart_only')
+  const snapshot = service.snapshot()
+  snapshot.settings = service.getSettingsForThread(thread.id)
+  const ai = createAiReplyEngine({ provider: 'local_rules', model: 'test' })
+
+  const decision = await ai.draft({ thread, snapshot, policy: service.getPolicyForThread(thread) })
+
+  assert.equal(decision.ok, true)
+  assert.ok(decision.intent)
+  assert.equal(decision.attachments.some((item) => (
+    item.source === 'ai_size_chart' &&
+    item.url === 'https://cdn.example/anna-size-chart.jpg'
+  )), true)
+  assert.equal(decision.carousel.some((card) => card.imageUrl === 'https://cdn.example/anna-size-chart.jpg'), true)
+})
+
 test('Meta auto reply records AI carousel assets as visible guarded draft attachments', async () => {
   const service = createOmniService()
   const app = express()
