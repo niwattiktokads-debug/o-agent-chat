@@ -245,7 +245,7 @@ function productFactsForThread(thread, snapshot, originContext = null) {
 
 function shouldLookupEasyStoreLive(intent, productFacts) {
   if (productFacts) return false
-  return ['stock', 'price', 'productImage', 'orderPurchase'].includes(intent)
+  return ['stock', 'price', 'productImage', 'orderPurchase', 'sizeAdvice', 'discount', 'alternativeProduct', 'shipping'].includes(intent)
 }
 
 function easyStoreSearchKeyword(thread, snapshot, originContext = null) {
@@ -594,6 +594,25 @@ function relevantKnowledge(intent, snapshot, { workspaceId, queryText = '' } = {
     .slice(0, 3)
 }
 
+function isEasyStoreProductKnowledge(source = {}) {
+  const id = String(source.id || '')
+  const tags = (source.tags || []).map((tag) => String(tag).toLowerCase())
+  return id === 'ks_annalynn_easystore_products_v1' ||
+    id.startsWith('ks_annalynn_product_') ||
+    (tags.includes('easystore') && tags.includes('product'))
+}
+
+function knowledgeTextForPrompt(source = {}, index = 0) {
+  if (!isEasyStoreProductKnowledge(source)) {
+    return `[${index + 1}] ${source.title}\n${String(source.content || '').slice(0, 900)}`
+  }
+  return [
+    `[${index + 1}] ${source.title}`,
+    'ใช้ source นี้เพื่อจับชื่อ/alias/SKU ของสินค้าเท่านั้น',
+    'ห้ามใช้ source นี้เป็นราคา สต็อก หรือสถานะพร้อมส่ง ให้ใช้ EasyStore live lookup เท่านั้น',
+  ].join('\n')
+}
+
 function agentForThread(thread, snapshot) {
   const page = (snapshot.pages || []).find((item) => item.id === thread.pageId)
   const agent = (snapshot.agentProfiles || []).find((item) => item.id === page?.agentProfileId) || null
@@ -821,7 +840,7 @@ function buildCustomerReplyPrompt({ thread, snapshot, policy, baseDecision }) {
     .map((message) => `${message.direction === 'inbound' ? 'ลูกค้า' : 'เพจ'}: ${message.text}`)
     .join('\n')
   const knowledgeText = knowledge
-    .map((source, index) => `[${index + 1}] ${source.title}\n${String(source.content || '').slice(0, 900)}`)
+    .map((source, index) => knowledgeTextForPrompt(source, index))
     .join('\n\n')
 
   return {
@@ -1084,7 +1103,7 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
     const trustedContext = [
       JSON.stringify(baseDecision.originContext || {}),
       productFactsText(baseDecision.productFacts),
-      ...relevantKnowledge(baseDecision.intent, snapshot, { workspaceId: _oaiWsId, queryText: baseDecision.knowledgeQueryText }).map((source) => source.content || ''),
+      ...relevantKnowledge(baseDecision.intent, snapshot, { workspaceId: _oaiWsId, queryText: baseDecision.knowledgeQueryText }).map((source, index) => knowledgeTextForPrompt(source, index)),
     ].join('\n')
     const draftText = applyRichMessageToDraft(appendPaymentLinkToDraft(guardedDraftText(parsed?.draftText || text, baseDecision.draftText, {
       trustedContext,
@@ -1158,7 +1177,7 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
     const trustedContext = [
       JSON.stringify(baseDecision.originContext || {}),
       productFactsText(baseDecision.productFacts),
-      ...relevantKnowledge(baseDecision.intent, snapshot, { workspaceId: _gemWsId, queryText: baseDecision.knowledgeQueryText }).map((source) => source.content || ''),
+      ...relevantKnowledge(baseDecision.intent, snapshot, { workspaceId: _gemWsId, queryText: baseDecision.knowledgeQueryText }).map((source, index) => knowledgeTextForPrompt(source, index)),
     ].join('\n')
     const draftText = applyRichMessageToDraft(appendPaymentLinkToDraft(finishedCleanly
       ? guardedDraftText(parsed?.draftText || text, baseDecision.draftText, {

@@ -3111,6 +3111,104 @@ test('AI reply engine calls Gemini natively for Vercel drafts', async () => {
   }
 })
 
+test('AI reply engine treats EasyStore product knowledge as aliases, not stock truth', async () => {
+  const previousKey = process.env.GOOGLE_API_KEY
+  process.env.GOOGLE_API_KEY = 'test-gemini-key'
+  const seed = createOmniSeed()
+  seed.customers.push({ id: 'cust_samantha_static_guard', displayName: 'Samantha Guard Customer', matchConfidence: 1 })
+  seed.threads.push({
+    id: 'thread_samantha_static_guard',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'cust_samantha_static_guard',
+    status: 'open',
+    intent: 'unknown',
+    risk: 'low',
+    unreadCount: 1,
+    messageCount: 1,
+    updatedAt: '2026-06-05T10:00:00.000Z',
+  })
+  seed.messages.push({
+    id: 'msg_samantha_static_guard',
+    threadId: 'thread_samantha_static_guard',
+    direction: 'inbound',
+    authorName: 'Samantha Guard Customer',
+    text: 'Samantha สีดำ M มีของไหม ราคาเท่าไหร่',
+    createdAt: '2026-06-05T10:00:00.000Z',
+    providerMessageId: 'mid_samantha_static_guard',
+  })
+  seed.knowledgeSources.push({
+    id: 'ks_annalynn_product_16460001_v1',
+    workspaceId: 'ws_oagent',
+    title: 'EasyStore product Samantha static cache',
+    type: 'manual',
+    scope: 'page_annalynn',
+    status: 'ready',
+    content: 'สินค้า Samantha สีดำ ราคา 999 บาท พร้อมส่ง 99 ชิ้น',
+    tags: ['annalynn', 'easystore', 'product', 'samantha'],
+    updatedAt: '2026-06-05T10:00:00.000Z',
+    createdAt: '2026-06-05T10:00:00.000Z',
+  })
+  const calls = []
+  const easyStore = {
+    async searchProducts() {
+      return {
+        ok: true,
+        source: 'easystore_live',
+        products: [{
+          id: 'es_live_samantha_black_m',
+          productId: '16460001',
+          variantId: '76010001',
+          sku: 'SAMANTHA-BLK-M',
+          source: 'easystore_live',
+          productName: 'Samantha Dress',
+          color: 'ดำ',
+          size: 'M',
+          sellPrice: 1290,
+          stock: 3,
+        }],
+      }
+    },
+  }
+  const service = createOmniService(seed)
+  const thread = service.getThread('thread_samantha_static_guard')
+  const ai = createAiReplyEngine({
+    provider: 'gemini',
+    model: 'gemini-3-flash-preview',
+    easyStore,
+    fetchImpl: async (url, options) => {
+      calls.push({ url, body: JSON.parse(options.body) })
+      return {
+        ok: true,
+        json: async () => ({
+          candidates: [{
+            content: {
+              parts: [{ text: 'เช็กให้แล้วค่ะ Samantha Dress สีดำ ไซซ์ M พร้อมส่งรวม 3 ชิ้น ราคาเริ่มต้น 1,290 บาทค่ะ' }],
+            },
+          }],
+        }),
+      }
+    },
+  })
+
+  try {
+    const decision = await ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
+    const promptText = calls[0].body.contents[0].parts[0].text
+
+    assert.equal(decision.reason, 'gemini_guarded_text_draft')
+    assert.equal(decision.productFacts.source, 'easystore_live')
+    assert.match(promptText, /ใช้ source นี้เพื่อจับชื่อ\/alias\/SKU/)
+    assert.match(promptText, /ห้ามใช้ source นี้เป็นราคา สต็อก หรือสถานะพร้อมส่ง/)
+    assert.doesNotMatch(promptText, /พร้อมส่ง 99 ชิ้น/)
+    assert.doesNotMatch(promptText, /ราคา 999 บาท/)
+    assert.match(promptText, /พร้อมส่งรวม 3 ชิ้น/)
+    assert.match(promptText, /1,290/)
+  } finally {
+    if (previousKey === undefined) delete process.env.GOOGLE_API_KEY
+    else process.env.GOOGLE_API_KEY = previousKey
+  }
+})
+
 test('AI reply engine falls back when Gemini invents price or stock without source evidence', async () => {
   const previousKey = process.env.GOOGLE_API_KEY
   process.env.GOOGLE_API_KEY = 'test-gemini-key'
