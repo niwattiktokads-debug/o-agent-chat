@@ -509,7 +509,29 @@ function draftForIntent(intent, originContext = null, productFacts = null, slots
   return 'รับทราบค่ะ เดี๋ยวช่วยดูรายละเอียดให้ครบก่อนนะคะ ถ้ามีรุ่น สี ไซซ์ หรือเลขออเดอร์ที่เกี่ยวข้อง ส่งเพิ่มมาได้เลยค่ะ'
 }
 
-function relevantKnowledge(intent, snapshot, { workspaceId } = {}) {
+const KNOWLEDGE_STOP_WORDS = new Set([
+  'ค่ะ',
+  'ครับ',
+  'ราคา',
+  'เท่าไหร่',
+  'มีของไหม',
+  'มีไหม',
+  'ขอรูป',
+  'ไซซ์',
+  'สี',
+  'สินค้า',
+  'พร้อมส่ง',
+])
+
+function queryTokensForKnowledge(queryText = '') {
+  return [...new Set(String(queryText || '')
+    .toLowerCase()
+    .match(/[a-z0-9ก-๙]{2,}/g) || [])]
+    .filter((token) => !KNOWLEDGE_STOP_WORDS.has(token))
+    .slice(0, 24)
+}
+
+function relevantKnowledge(intent, snapshot, { workspaceId, queryText = '' } = {}) {
   const termsByIntent = {
     stock: ['สินค้า', 'stock', 'product', 'faq'],
     price: ['ราคา', 'โปร', 'price', 'product'],
@@ -519,6 +541,7 @@ function relevantKnowledge(intent, snapshot, { workspaceId } = {}) {
     faq: ['faq', 'policy'],
   }
   const terms = termsByIntent[intent] || termsByIntent.faq
+  const queryTokens = queryTokensForKnowledge(queryText)
   return (snapshot.knowledgeSources || [])
     .filter((source) => source.status === 'ready')
     .filter((source) => {
@@ -533,8 +556,18 @@ function relevantKnowledge(intent, snapshot, { workspaceId } = {}) {
       return terms.some((term) => haystack.includes(term.toLowerCase()))
     })
     .map((source) => {
-      const haystack = [source.title, source.content, ...(source.tags || [])].join(' ').toLowerCase()
-      const score = terms.reduce((total, term) => total + (haystack.includes(term.toLowerCase()) ? 1 : 0), 0)
+      const title = String(source.title || '').toLowerCase()
+      const content = String(source.content || '').toLowerCase()
+      const tags = (source.tags || []).join(' ').toLowerCase()
+      const haystack = [title, content, tags].join(' ')
+      const intentScore = terms.reduce((total, term) => total + (haystack.includes(term.toLowerCase()) ? 1 : 0), 0)
+      const queryScore = queryTokens.reduce((total, token) => {
+        if (title.includes(token)) return total + 8
+        if (tags.includes(token)) return total + 5
+        if (content.includes(token)) return total + 3
+        return total
+      }, 0)
+      const score = intentScore + queryScore
       return { source, score }
     })
     .sort((a, b) => {
@@ -758,9 +791,14 @@ function buildCustomerReplyPrompt({ thread, snapshot, policy, baseDecision }) {
   const customer = customerForThread(thread, snapshot)
   const threadPage = (snapshot.pages || []).find((p) => p.id === thread.pageId)
   const workspaceId = threadPage?.workspaceId || undefined
-  const knowledge = relevantKnowledge(baseDecision.intent, snapshot, { workspaceId })
   const recentMessages = recentMessagesForThread(thread, snapshot)
   const origin = compactOriginContext(thread, recentMessages)
+  const knowledgeQueryText = [
+    recentMessages.map((message) => message.text || '').join(' '),
+    originContextText(origin),
+    baseDecision.knowledgeQueryText || '',
+  ].join(' ')
+  const knowledge = relevantKnowledge(baseDecision.intent, snapshot, { workspaceId, queryText: knowledgeQueryText })
   const productFacts = baseDecision.productFacts || productFactsForThread(thread, snapshot, origin)
   const richMessage = richMessageForThread(thread, snapshot)
   const messages = recentMessages
@@ -1030,7 +1068,7 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
     const trustedContext = [
       JSON.stringify(baseDecision.originContext || {}),
       productFactsText(baseDecision.productFacts),
-      ...relevantKnowledge(baseDecision.intent, snapshot, { workspaceId: _oaiWsId }).map((source) => source.content || ''),
+      ...relevantKnowledge(baseDecision.intent, snapshot, { workspaceId: _oaiWsId, queryText: baseDecision.knowledgeQueryText }).map((source) => source.content || ''),
     ].join('\n')
     const draftText = applyRichMessageToDraft(appendPaymentLinkToDraft(guardedDraftText(parsed?.draftText || text, baseDecision.draftText, {
       trustedContext,
@@ -1104,7 +1142,7 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
     const trustedContext = [
       JSON.stringify(baseDecision.originContext || {}),
       productFactsText(baseDecision.productFacts),
-      ...relevantKnowledge(baseDecision.intent, snapshot, { workspaceId: _gemWsId }).map((source) => source.content || ''),
+      ...relevantKnowledge(baseDecision.intent, snapshot, { workspaceId: _gemWsId, queryText: baseDecision.knowledgeQueryText }).map((source) => source.content || ''),
     ].join('\n')
     const draftText = applyRichMessageToDraft(appendPaymentLinkToDraft(finishedCleanly
       ? guardedDraftText(parsed?.draftText || text, baseDecision.draftText, {
@@ -1136,8 +1174,13 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
       // Derive workspaceId from thread's page for tenant-scoped knowledge
       const threadPage = (snapshot.pages || []).find((p) => p.id === thread.pageId)
       const workspaceId = threadPage?.workspaceId || undefined
-      const knowledge = relevantKnowledge(intent, snapshot, { workspaceId })
       const originContext = compactOriginContext(thread, recentMessagesForThread(thread, snapshot))
+      const knowledgeQueryText = [
+        classificationText,
+        inbound?.text,
+        originContextText(originContext),
+      ].filter(Boolean).join(' ')
+      const knowledge = relevantKnowledge(intent, snapshot, { workspaceId, queryText: knowledgeQueryText })
       let productFacts = productFactsForThread(thread, snapshot, originContext)
       let productFactsReason = productFacts ? 'product_inventory_fact_match' : ''
       let liveLookupHoldReason = ''
@@ -1181,6 +1224,7 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
         sourceIds: [...knowledge.map((source) => source.id), ...productSourceIds],
         evidenceIds: inbound?.id ? [inbound.id] : [],
         originContext,
+        knowledgeQueryText,
         productFacts,
         salesSlots: slots,
         richMessage: richMessage?.enabled ? richMessage : null,

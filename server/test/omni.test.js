@@ -982,6 +982,66 @@ test('AI reply engine prioritizes Boss sales workflow knowledge when it matches 
   assert.equal(decision.sourceIds.includes('ks_annalynn_sales_workflow_v1'), true)
 })
 
+test('AI reply engine ranks product knowledge by the customer product name', async () => {
+  const seed = createOmniSeed()
+  seed.knowledgeSources.push(
+    {
+      id: 'ks_annalynn_product_amanda_v1',
+      workspaceId: 'ws_oagent',
+      title: 'Anna Lynn product - Amanda Jumpsuit',
+      type: 'manual',
+      scope: 'page_annalynn',
+      status: 'ready',
+      content: 'Amanda Jumpsuit ราคา 890 บาท สีดำพร้อมส่ง',
+      tags: ['annalynn', 'product', 'stock', 'price', 'amanda'],
+      updatedAt: '2026-06-06T01:00:00.000Z',
+      createdAt: '2026-06-06T01:00:00.000Z',
+    },
+    {
+      id: 'ks_annalynn_product_samantha_v1',
+      workspaceId: 'ws_oagent',
+      title: 'Anna Lynn product - AL1004 Samantha ซาแมนต้า',
+      type: 'manual',
+      scope: 'page_annalynn',
+      status: 'ready',
+      content: 'Samantha ซาแมนต้า ราคา 390 บาท สีขาว L-XL มี 15 ชิ้น',
+      tags: ['annalynn', 'product', 'stock', 'price', 'samantha', 'ซาแมนต้า'],
+      updatedAt: '2026-06-06T01:00:00.000Z',
+      createdAt: '2026-06-06T01:00:00.000Z',
+    },
+  )
+  seed.customers.push({ id: 'cust_samantha', displayName: 'Samantha Customer', matchConfidence: 1 })
+  seed.threads.push({
+    id: 'thread_samantha',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'cust_samantha',
+    status: 'open',
+    intent: 'unknown',
+    risk: 'low',
+    unreadCount: 1,
+    messageCount: 1,
+    updatedAt: '2026-06-06T01:05:00.000Z',
+  })
+  seed.messages.push({
+    id: 'msg_samantha',
+    threadId: 'thread_samantha',
+    direction: 'inbound',
+    authorName: 'Samantha Customer',
+    text: 'Samantha สีขาวมีของไหม ราคาเท่าไหร่',
+    createdAt: '2026-06-06T01:05:00.000Z',
+  })
+
+  const service = createOmniService(seed)
+  const thread = service.getThread('thread_samantha')
+  const ai = createAiReplyEngine({ provider: 'local_rules', model: 'test' })
+  const decision = await ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
+
+  assert.equal(decision.ok, true)
+  assert.equal(decision.sourceIds[0], 'ks_annalynn_product_samantha_v1')
+  assert.equal(decision.sourceIds.includes('ks_annalynn_product_amanda_v1'), false)
+})
+
 test('AI reply engine adds rich message campaign brief to the first customer reply only', async () => {
   const seed = createOmniSeed()
   seed.omniSettings[0].settings.ai.richMessage = {
