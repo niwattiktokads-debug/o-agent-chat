@@ -878,7 +878,7 @@ describe('OmniWorkbench', () => {
         ai: expect.objectContaining({
           salesAssets: expect.objectContaining({
             sizeChartImageUrl: 'https://cdn.example/amanda-size-chart.jpg',
-            sizeChartLinkUrl: 'https://annalynna.easy.co/products/amanda-jumpsuit',
+            sizeChartLinkUrl: 'https://cdn.example/amanda-size-chart.jpg',
           }),
         }),
       }),

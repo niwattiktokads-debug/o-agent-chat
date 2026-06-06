@@ -848,7 +848,7 @@ function buildSalesAttachments({ productFacts, settings, includeSizeChart = fals
       type: 'image/jpeg',
       size: 0,
       url: sizeChartUrl,
-      linkUrl: /^https:\/\//i.test(salesAssets.sizeChartLinkUrl) ? salesAssets.sizeChartLinkUrl : 'https://annalynna.easy.co',
+      linkUrl: sizeChartUrl,
       source: 'ai_size_chart',
     })
   }
@@ -871,7 +871,7 @@ function buildSalesCarousel({ productFacts, attachments, paymentLink }) {
       ...(subtitle ? { subtitle } : {}),
       imageUrl: attachment.url,
       ...(isSizeChart && attachment.linkUrl
-        ? { buttons: [{ type: 'web_url', title: 'เปิดเว็บสินค้า', url: attachment.linkUrl }] }
+        ? { buttons: [{ type: 'web_url', title: 'เปิดรูปไซซ์', url: attachment.linkUrl }] }
         : paymentLink?.url
           ? { buttons: [{ type: 'web_url', title: 'ชำระเงิน', url: paymentLink.url }] }
           : {}),

@@ -202,7 +202,7 @@ export default function ContextPanel({ snapshot, thread, onSnapshot, workspaceId
   async function useEasyStoreSizeChart(image, index = 0) {
     if (!image?.url) return
     setSizeChartImageUrl(image.url)
-    const saved = await saveSalesAssets(true, image.url, 'ใช้รูปจาก EasyStore แล้ว', sizeChartProduct?.links?.storefrontUrl || '')
+    const saved = await saveSalesAssets(true, image.url, 'ใช้รูปจาก EasyStore แล้ว', image.url)
     if (saved) {
       setSizeChartPickerOpen(false)
       setSizeChartPickerStatus(`ใช้ ${easyStoreImageLabel(image, index)} เป็นตารางไซซ์แล้ว`)
