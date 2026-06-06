@@ -3373,6 +3373,9 @@ test('AI reply engine prompts customer replies in real shop admin style', async 
     assert.match(systemPrompt, /ห้ามขึ้นต้นทุกครั้งด้วย "สวัสดีค่ะ" หรือ "รับทราบค่ะ"/)
     assert.match(systemPrompt, /ตอบนำด้วยคำตอบหรือ next action/)
     assert.match(systemPrompt, /ถามกลับได้ไม่เกิน 1 คำถาม/)
+    assert.match(systemPrompt, /รูปแบบที่บอสชอบคือสั้น ครบ อ่านเร็ว และสุภาพ/)
+    assert.match(systemPrompt, /ใช้ bullet point สั้น ๆ ได้เมื่อมีหลายข้อ/)
+    assert.match(systemPrompt, /ห้ามเขียนย่อหน้ายาว/)
   } finally {
     if (previousKey === undefined) delete process.env.OPENAI_API_KEY
     else process.env.OPENAI_API_KEY = previousKey
