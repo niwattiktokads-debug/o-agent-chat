@@ -2,13 +2,14 @@ import React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import AiKnowledgeSourcePage from './AiKnowledgeSourcePage.jsx'
-import { deleteKnowledgeSource, saveKnowledgeSource } from '../../lib/omniApi.js'
+import { deleteKnowledgeSource, importKnowledgePack, saveKnowledgeSource } from '../../lib/omniApi.js'
 
 const apiMocks = vi.hoisted(() => ({
   saveKnowledgeSource: vi.fn(),
   deleteKnowledgeSource: vi.fn(),
   fetchKnowledgeSources: vi.fn(),
   fetchOmniSnapshot: vi.fn(),
+  importKnowledgePack: vi.fn(),
 }))
 
 vi.mock('../../lib/omniApi.js', () => ({
@@ -16,6 +17,7 @@ vi.mock('../../lib/omniApi.js', () => ({
   fetchOmniSnapshot: apiMocks.fetchOmniSnapshot,
   saveKnowledgeSource: apiMocks.saveKnowledgeSource,
   deleteKnowledgeSource: apiMocks.deleteKnowledgeSource,
+  importKnowledgePack: apiMocks.importKnowledgePack,
 }))
 
 const sources = [
@@ -37,12 +39,45 @@ describe('AiKnowledgeSourcePage', () => {
     apiMocks.fetchOmniSnapshot.mockReset()
     apiMocks.saveKnowledgeSource.mockReset()
     apiMocks.deleteKnowledgeSource.mockReset()
+    apiMocks.importKnowledgePack.mockReset()
     apiMocks.fetchOmniSnapshot.mockResolvedValue({
       pages: [
         { id: 'page_annalynn', name: 'Anna Lynn' },
         { id: 'page_annalynn_tiktok', name: 'AnnaLynn' },
       ],
+      aiGuardRules: [{
+        id: 'plus_size_wording_threshold',
+        title: 'คำว่า "สาวอวบ" ต้องมีเกณฑ์ก่อน',
+        status: 'active',
+        visibleToBoss: true,
+        criteria: { sizes: ['XXL', '2XL', '3XL', '4XL', '5XL'], measurements: { bust: 44, waist: 40, hips: 49 } },
+        fallback: 'ถ้ายังไม่มีข้อมูล ให้ถามอก เอว สะโพกก่อน',
+      }],
     })
+  })
+
+  it('shows real training operations, visible backend guards, and imports standard packs', async () => {
+    apiMocks.fetchKnowledgeSources.mockResolvedValue(sources)
+    apiMocks.importKnowledgePack.mockResolvedValue({
+      ok: true,
+      imported: { id: 'ks_annalynn_sales_workflow_v1', title: 'Anna Lynn sales workflow Q&A - Boss approved v1' },
+      snapshotKnowledgeCount: 2,
+    })
+
+    render(<AiKnowledgeSourcePage workspaceId="ws_oagent" />)
+
+    expect(await screen.findByText('ชุดมาตรฐานพร้อมนำเข้า')).toBeInTheDocument()
+    expect(screen.getByText(/คำว่า "สาวอวบ"/)).toBeInTheDocument()
+    expect(screen.getByText(/อก 44/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Import sales workflow' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Import EasyStore alias pack' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Import sales workflow' }))
+
+    await waitFor(() => {
+      expect(importKnowledgePack).toHaveBeenCalledWith('sales-workflow', expect.objectContaining({ workspaceId: 'ws_oagent' }))
+    })
+    expect(await screen.findByText(/นำเข้าแล้ว/)).toBeInTheDocument()
   })
 
   it('runs a source test from the knowledge list', async () => {
@@ -138,6 +173,7 @@ describe('AiKnowledgeSourcePage workspace reload', () => {
     apiMocks.fetchOmniSnapshot.mockReset()
     apiMocks.saveKnowledgeSource.mockReset()
     apiMocks.deleteKnowledgeSource.mockReset()
+    apiMocks.importKnowledgePack.mockReset()
   })
 
   it('reloads sources when workspaceId prop changes and clears stale state', async () => {

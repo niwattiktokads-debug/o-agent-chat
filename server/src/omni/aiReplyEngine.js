@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import { PLUS_SIZE_LABELS, PLUS_SIZE_MEASUREMENT_MIN } from './aiGuardRules.js'
 const DEFAULT_PROVIDER = process.env.OMNI_AI_PROVIDER || 'local_rules'
 const DEFAULT_MODEL = process.env.OMNI_AI_MODEL || 'guarded-draft-v1'
 const DEFAULT_HELPER = process.env.OMNI_AI_REPLY_HELPER || '/Users/babycuca/.codex/bin/omni-ai-reply'
@@ -17,8 +18,7 @@ const PRODUCT_LOOKUP_GENERIC_TERMS = new Set([
   'สนใจ', 'ตัวนี้', 'รุ่น', 'สี', 'ไซซ์', 'ไซส์', 'size', 'stock', 'price', 'photo', 'image',
 ])
 const DEFAULT_LOW_RISK_AUTOSEND_INTENTS = new Set(['faq', 'stock', 'price', 'orderStatus', 'sizeAdvice', 'shipping'])
-const PLUS_SIZE_LABELS = new Set(['XXL', '2XL', '3XL', '4XL', '5XL'])
-const PLUS_SIZE_MEASUREMENT_MIN = { bust: 44, waist: 40, hips: 49 }
+const PLUS_SIZE_LABEL_SET = new Set(PLUS_SIZE_LABELS)
 
 function autoSendAllEnabled() {
   return process.env.OMNI_AI_AUTO_SEND_ALL === '1' || process.env.OMNI_AI_AUTO_SEND_ON_WEBHOOK === '1'
@@ -99,7 +99,7 @@ function detectSize(text) {
 }
 
 function isPlusSizeLabel(size) {
-  return PLUS_SIZE_LABELS.has(String(size || '').trim().toUpperCase())
+  return PLUS_SIZE_LABEL_SET.has(String(size || '').trim().toUpperCase())
 }
 
 function detectMeasurement(text, pattern) {

@@ -1,5 +1,6 @@
 import { createAdapterRegistry } from './omni/adapters.js'
 import { canUseEasyStoreLiveLookup, createAiReplyEngine } from './omni/aiReplyEngine.js'
+import { getAiGuardRules } from './omni/aiGuardRules.js'
 import { getOmniSchemaSummary } from './omni/db/schema.js'
 import { fetchInstagramProfile, listFacebookConversations, sendFacebookReply } from './omni/metaInboxClient.js'
 import { createOmniService } from './omni/service.js'
@@ -15,6 +16,7 @@ import { createLineSudaOagentNotifier } from './omni/lineSudaOagentNotifier.js'
 import { appendPageRegistryEntry, FALLBACK_PAGE_PROFILES, loadPageRegistry } from './omni/pageRegistry.js'
 import { resolveWorkspaceId } from './omni/workspace.js'
 import { createKgpPaymentRuntime } from './omni/kgpPaymentRuntime.js'
+import { importKnowledgePack } from './omni/knowledgePacks.js'
 
 function normalizeLeader(input) {
   if (!input) return null
@@ -265,7 +267,7 @@ export function mountRoutes(app, hub, room, options = {}) {
   app.get('/api/omni/snapshot', (req, res) => {
     const workspaceId = req.query.workspaceId || ''
     const settings = omni.getSettings({ workspaceId })
-    const full = { ...omni.snapshot(), settings }
+    const full = { ...omni.snapshot(), settings, aiGuardRules: getAiGuardRules() }
     if (!workspaceId) return res.json({ ok: true, snapshot: full })
     // Filter snapshot collections by workspace
     const pages = (full.pages || []).filter((p) => p.workspaceId === workspaceId)
@@ -365,6 +367,26 @@ export function mountRoutes(app, hub, room, options = {}) {
     const result = omni.upsertKnowledgeSource(req.body || {})
     if (!result.ok) return res.status(400).json(result)
     res.json(result)
+  })
+
+  app.post('/api/omni/knowledge-import/:packId', async (req, res) => {
+    try {
+      const result = await importKnowledgePack({
+        packId: req.params.packId,
+        omni,
+        easyStore,
+        input: req.body || {},
+      })
+      if (!result.ok) {
+        const status = result.error === 'knowledge_pack_not_found' ? 404 : 400
+        return res.status(status).json(result)
+      }
+      if (result.snapshot) hub.broadcast('omni', result.snapshot)
+      const { snapshot: _snapshot, ...safeResult } = result
+      res.json(safeResult)
+    } catch (error) {
+      res.status(400).json({ ok: false, error: error.message || 'knowledge_import_failed' })
+    }
   })
 
   app.delete('/api/omni/knowledge-sources/:sourceId', (req, res) => {

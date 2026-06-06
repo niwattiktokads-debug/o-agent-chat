@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { deleteKnowledgeSource, fetchKnowledgeSources, fetchOmniSnapshot, saveKnowledgeSource } from '../../lib/omniApi.js'
+import { deleteKnowledgeSource, fetchKnowledgeSources, fetchOmniSnapshot, importKnowledgePack, saveKnowledgeSource } from '../../lib/omniApi.js'
 
 const trainMenu = ['Overview', 'Instructions', 'Knowledge Source', 'Testing', 'Deploy']
 
@@ -84,6 +84,7 @@ function buildTestAnswer(source, prompt) {
 
 export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat, onOpenConnections, showPageNav = true, workspaceId: propWorkspaceId = '' }) {
   const [sources, setSources] = useState([])
+  const [snapshot, setSnapshot] = useState(null)
   const [pages, setPages] = useState([])
   const [query, setQuery] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
@@ -110,6 +111,7 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat, onOpenC
     setNotice('')
     setTestResult(null)
     setForm(EMPTY_FORM)
+    setSnapshot(null)
     Promise.all([
       fetchKnowledgeSources({ workspaceId: propWorkspaceId }),
       fetchOmniSnapshot(propWorkspaceId || undefined).catch(() => ({ pages: [] })),
@@ -117,6 +119,7 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat, onOpenC
       .then(([nextSources, snapshot]) => {
         if (!ignore) {
           setSources(nextSources)
+          setSnapshot(snapshot)
           setPages(snapshot.pages || [])
         }
       })
@@ -221,6 +224,56 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat, onOpenC
     }
   }
 
+  async function saveInstructions() {
+    const content = String(instructions || '').trim()
+    if (!content) {
+      setError('ต้องใส่ instruction ก่อนบันทึก')
+      return
+    }
+    setBusy(true)
+    setError('')
+    setNotice('')
+    try {
+      const saved = await saveKnowledgeSource({
+        id: 'ks_omni_ai_global_instructions_v1',
+        title: 'Omni AI global instructions',
+        type: 'manual',
+        scope: 'all_pages',
+        status: 'ready',
+        content,
+        tags: ['omni', 'ai', 'instructions', 'guard'],
+        workspaceId: propWorkspaceId || 'ws_oagent',
+      })
+      await loadSources(query, typeFilter)
+      setNotice(`บันทึกแล้ว: ${saved.source?.title || 'Omni AI global instructions'}`)
+    } catch (err) {
+      setError(err.message || 'instruction_save_failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function importPack(packId) {
+    setBusy(true)
+    setError('')
+    setNotice('')
+    try {
+      const result = await importKnowledgePack(packId, {
+        workspaceId: propWorkspaceId || 'ws_oagent',
+        limit: 20,
+        pages: 1,
+      })
+      await loadSources(query, typeFilter)
+      const importedTitle = result.imported?.title || packId
+      const productCount = result.productSourcesImported ? ` · ${result.productSourcesImported} product sources` : ''
+      setNotice(`นำเข้าแล้ว: ${importedTitle}${productCount}`)
+    } catch (err) {
+      setError(err.message || 'knowledge_import_failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   function runTest(prompt = testPrompt, scope = testScope, forcedSource = null) {
     const wsId = scope && scope !== 'all_pages'
       ? (pages.find((p) => p.id === scope)?.workspaceId || '')
@@ -248,6 +301,7 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat, onOpenC
 
   const visibleSources = sources
   const latestSources = sources.slice(0, 3)
+  const aiGuardRules = snapshot?.aiGuardRules || []
 
   return (
     <main className="h-full min-w-0 overflow-y-auto bg-[var(--color-paper)] p-4 text-[var(--color-ink)] lg:p-6">
@@ -324,7 +378,7 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat, onOpenC
                     value={instructions}
                     onChange={(event) => setInstructions(event.target.value)}
                   />
-                  <button type="button" className="mt-4 rounded-[var(--radius-md)] bg-[var(--color-accent)] px-3 py-2 text-sm font-semibold text-[var(--color-accent-ink)]" onClick={() => setNotice('บันทึก instruction ในหน้า local แล้ว')}>
+                  <button type="button" className="mt-4 rounded-[var(--radius-md)] bg-[var(--color-accent)] px-3 py-2 text-sm font-semibold text-[var(--color-accent-ink)] disabled:opacity-50" disabled={busy} onClick={saveInstructions}>
                     Save instructions
                   </button>
                 </div>
@@ -332,6 +386,12 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat, onOpenC
 
               {activeSection === 'Knowledge Source' ? (
                 <>
+                  <OperationalTrainingPanel
+                    sources={sources}
+                    aiGuardRules={aiGuardRules}
+                    busy={busy}
+                    onImportPack={importPack}
+                  />
                   <HeroCard stats={stats} onNew={startNewSource} />
                   <KnowledgeSourceEditor
                     busy={busy}
@@ -376,6 +436,79 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat, onOpenC
         </div>
       </section>
     </main>
+  )
+}
+
+function OperationalTrainingPanel({ sources = [], aiGuardRules = [], busy, onImportPack }) {
+  const hasSalesWorkflow = sources.some((source) => source.id === 'ks_annalynn_sales_workflow_v1')
+  const hasEasyStoreAliasPack = sources.some((source) => source.id === 'ks_annalynn_easystore_products_v1')
+  const visibleRules = aiGuardRules.filter((rule) => rule.visibleToBoss !== false)
+
+  return (
+    <div className="mb-4 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-bold text-[var(--color-ink)]">ชุดมาตรฐานพร้อมนำเข้า</h3>
+          <p className="mt-1 text-sm leading-6 text-[var(--color-ink-2)]">นำเข้า workflow ที่บอสอนุมัติ และ alias-only จาก EasyStore โดยไม่ใช้ราคา/สต็อกค้างใน knowledge</p>
+        </div>
+        <span className="rounded-[var(--radius-pill)] bg-[var(--color-panel-2)] px-2 py-1 text-xs font-bold text-[var(--color-muted)]">approval guard on</span>
+      </div>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-2">
+        <div className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] p-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="font-bold text-[var(--color-ink)]">Sales workflow</p>
+              <p className="mt-1 text-sm leading-5 text-[var(--color-ink-2)]">กติกาตอบขายสินค้า, live truth, approval guard, และคำถามที่ต้องถามเพิ่ม</p>
+            </div>
+            <span className={`rounded-[var(--radius-pill)] px-2 py-1 text-xs font-bold ${hasSalesWorkflow ? 'bg-[var(--color-live-soft)] text-[var(--color-live)]' : 'bg-[var(--color-warn-soft)] text-[var(--color-warn)]'}`}>
+              {hasSalesWorkflow ? 'Imported' : 'Ready'}
+            </span>
+          </div>
+          <button type="button" className="mt-3 rounded-[var(--radius-md)] bg-[var(--color-accent)] px-3 py-2 text-sm font-semibold text-[var(--color-accent-ink)] disabled:opacity-50" disabled={busy} onClick={() => onImportPack('sales-workflow')}>
+            Import sales workflow
+          </button>
+        </div>
+
+        <div className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] p-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="font-bold text-[var(--color-ink)]">EasyStore alias pack</p>
+              <p className="mt-1 text-sm leading-5 text-[var(--color-ink-2)]">ใช้จับชื่อสินค้า, alias, SKU, product_id และ variant_id เท่านั้น</p>
+            </div>
+            <span className={`rounded-[var(--radius-pill)] px-2 py-1 text-xs font-bold ${hasEasyStoreAliasPack ? 'bg-[var(--color-live-soft)] text-[var(--color-live)]' : 'bg-[var(--color-warn-soft)] text-[var(--color-warn)]'}`}>
+              {hasEasyStoreAliasPack ? 'Imported' : 'Ready'}
+            </span>
+          </div>
+          <button type="button" className="mt-3 rounded-[var(--radius-md)] bg-[var(--color-accent)] px-3 py-2 text-sm font-semibold text-[var(--color-accent-ink)] disabled:opacity-50" disabled={busy} onClick={() => onImportPack('easystore-product-pack')}>
+            Import EasyStore alias pack
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] p-3">
+        <h4 className="text-sm font-bold text-[var(--color-ink)]">กฎหลังบ้านที่เปิดอยู่</h4>
+        <div className="mt-2 grid gap-2">
+          {visibleRules.map((rule) => {
+            const measurements = rule.criteria?.measurements || {}
+            const sizes = rule.criteria?.sizes || []
+            return (
+              <div key={rule.id} className="rounded-[var(--radius-sm)] bg-[var(--color-panel)] p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-bold text-[var(--color-ink)]">{rule.title}</p>
+                  <span className="rounded-[var(--radius-pill)] bg-[var(--color-live-soft)] px-2 py-1 text-xs font-bold text-[var(--color-live)]">{rule.status || 'active'}</span>
+                </div>
+                <p className="mt-2 text-sm leading-5 text-[var(--color-ink-2)]">
+                  เกณฑ์: {sizes.join('/')} · อก {measurements.bust} / เอว {measurements.waist} / สะโพก {measurements.hips}
+                </p>
+                <p className="mt-1 text-sm leading-5 text-[var(--color-muted)]">{rule.fallback}</p>
+              </div>
+            )
+          })}
+          {!visibleRules.length ? <p className="text-sm text-[var(--color-muted)]">ยังไม่มี guard rule จาก runtime snapshot</p> : null}
+        </div>
+      </div>
+    </div>
   )
 }
 

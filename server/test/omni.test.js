@@ -875,6 +875,31 @@ test('omni routes are mounted under api', async () => {
   }
 })
 
+test('omni snapshot exposes AI guard rules for operator visibility', async () => {
+  const app = express()
+  app.use(express.json())
+  const service = createOmniService()
+  mountRoutes(app, { broadcast() {} }, { snapshot() { return {} } }, { omni: service })
+
+  const server = app.listen(0)
+  try {
+    const baseUrl = `http://127.0.0.1:${server.address().port}`
+    const response = await fetch(`${baseUrl}/api/omni/snapshot`)
+    const body = await response.json()
+    const plusSizeRule = body.snapshot.aiGuardRules.find((rule) => rule.id === 'plus_size_wording_threshold')
+
+    assert.equal(response.status, 200)
+    assert.equal(plusSizeRule.status, 'active')
+    assert.equal(plusSizeRule.visibleToBoss, true)
+    assert.match(plusSizeRule.title, /สาวอวบ/)
+    assert.deepEqual(plusSizeRule.criteria.measurements, { bust: 44, waist: 40, hips: 49 })
+    assert.deepEqual(plusSizeRule.criteria.sizes, ['XXL', '2XL', '3XL', '4XL', '5XL'])
+    assert.match(plusSizeRule.fallback, /อก เอว สะโพก/)
+  } finally {
+    server.close()
+  }
+})
+
 test('knowledge source routes persist searchable training sources', async () => {
   const app = express()
   app.use(express.json())
@@ -921,6 +946,59 @@ test('knowledge source routes persist searchable training sources', async () => 
     const deleted = await deleteResponse.json()
     assert.equal(deleteResponse.status, 200)
     assert.equal(deleted.deletedId, created.source.id)
+  } finally {
+    server.close()
+  }
+})
+
+test('knowledge import routes write Boss-approved workflow and EasyStore alias-only pack', async () => {
+  const app = express()
+  app.use(express.json())
+  const service = createOmniService()
+  const easyStore = {
+    async listProducts() {
+      return {
+        ok: true,
+        products: [{
+          id: '16462394',
+          title: 'Lorra Dress',
+          handle: 'lorra-dress',
+          variants: [
+            { id: '7601', sku: 'LORRA-RED-2XL', name: 'แดง 2XL', is_enabled: true },
+          ],
+        }],
+      }
+    },
+  }
+  mountRoutes(app, { broadcast() {} }, { snapshot() { return {} } }, { omni: service, easyStore })
+
+  const server = app.listen(0)
+  try {
+    const baseUrl = `http://127.0.0.1:${server.address().port}`
+    const salesResponse = await fetch(`${baseUrl}/api/omni/knowledge-import/sales-workflow`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ workspaceId: 'ws_oagent' }),
+    })
+    const sales = await salesResponse.json()
+    assert.equal(salesResponse.status, 200)
+    assert.equal(sales.imported.id, 'ks_annalynn_sales_workflow_v1')
+    assert.match(sales.imported.title, /sales workflow/i)
+
+    const productResponse = await fetch(`${baseUrl}/api/omni/knowledge-import/easystore-product-pack`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ workspaceId: 'ws_oagent', limit: 1, pages: 1 }),
+    })
+    const productPack = await productResponse.json()
+    assert.equal(productResponse.status, 200)
+    assert.equal(productPack.imported.id, 'ks_annalynn_easystore_products_v1')
+    assert.equal(productPack.productSourcesImported, 1)
+
+    const sources = service.listKnowledgeSources({ workspaceId: 'ws_oagent' })
+    const aliasPack = sources.find((source) => source.id === 'ks_annalynn_easystore_products_v1')
+    assert.match(aliasPack.content, /alias SKU product_id/)
+    assert.doesNotMatch(aliasPack.content, /price\s*:|stock\s*:|พร้อมส่ง\s+\d+/i)
   } finally {
     server.close()
   }

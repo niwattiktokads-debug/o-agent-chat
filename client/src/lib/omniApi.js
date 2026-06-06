@@ -366,6 +366,10 @@ export async function deleteKnowledgeSource(sourceId) {
   return body
 }
 
+export async function importKnowledgePack(packId, options = {}) {
+  return postJson(`/api/omni/knowledge-import/${encodeURIComponent(packId)}`, options)
+}
+
 export async function fetchFacebookConversations(pageProfile) {
   const query = new URLSearchParams({ page: pageProfile })
   return (await getJson(`/api/omni/facebook/conversations?${query.toString()}`)).data
