@@ -15,6 +15,7 @@ const FB_PAGE_TOKEN_ENV = {
   anna_lynn: ['META_PAGE_TOKEN_ANNA_LYNN'],
   page_des: ['META_PAGE_TOKEN_PAGE_DES'],
   fb_112154661515664: ['META_PAGE_TOKEN_112154661515664'],
+  vz_dot: ['META_PAGE_TOKEN_VZ_DOT'],
   vz_viris_zamara: ['META_PAGE_TOKEN_VZ_VIRIS_ZAMARA'],
 }
 
@@ -51,7 +52,7 @@ export function normalizeMetaGraphError(payload = {}, fallback = 'fb_graph_error
 
 export async function checkMetaConnectorHealth({ fetchImpl = fetch, monitoredProfiles = null } = {}) {
   const profiles = pageProfiles()
-  const profileKeys = (monitoredProfiles || String(process.env.OMNI_META_HEALTH_PAGE_PROFILES || 'anna_lynn,man_kynd,page_des,fb_112154661515664')
+  const profileKeys = (monitoredProfiles || String(process.env.OMNI_META_HEALTH_PAGE_PROFILES || 'anna_lynn,man_kynd,page_des,fb_112154661515664,vz_dot')
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean))
@@ -132,6 +133,7 @@ const IG_PAGE_TOKEN_ENV = {
   ig_man_kynd: ['META_PAGE_TOKEN_IG_MAN_KYND', 'IG_MAN_KYND_PAGE_TOKEN'],
   ig_page_des: ['META_PAGE_TOKEN_IG_PAGE_DES', 'IG_PAGE_DES_PAGE_TOKEN'],
   ig_fb_112154661515664: ['META_PAGE_TOKEN_IG_112154661515664', 'IG_112154661515664_PAGE_TOKEN'],
+  vz_dot: ['META_PAGE_TOKEN_VZ_DOT'],
   ig_vz_viris_zamara: ['META_PAGE_TOKEN_VZ_VIRIS_ZAMARA'],
 }
 

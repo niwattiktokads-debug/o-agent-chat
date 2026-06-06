@@ -10,6 +10,7 @@ export function createOmniSeed() {
     { id: 'page_easystore_annalynna', name: 'AnnaLynn EasyStore', status: 'active', brandGroupId: 'brand_fashion', policySetId: 'policy_annalynn', agentProfileId: 'agent_annalynn' },
     { id: 'page_des', name: 'เพจเดส', status: 'active', brandGroupId: 'brand_oagent', policySetId: 'policy_page_des', agentProfileId: 'agent_page_des' },
     { id: 'page_fb_112154661515664', name: 'Viris Zamara', shortName: 'VZ', status: 'active', brandGroupId: 'brand_shared', policySetId: 'policy_default', agentProfileId: 'agent_default' },
+    { id: 'page_vz_dot', name: 'VZ.', shortName: 'VZ.', status: 'active', brandGroupId: 'brand_shared', policySetId: 'policy_default', agentProfileId: 'agent_default' },
   ]
 
   const pagesWithWorkspace = pages.map((page) => ({ ...page, workspaceId: DEFAULT_WORKSPACE_ID }))
@@ -23,6 +24,7 @@ export function createOmniSeed() {
       { id: 'acct_ig_annalynn', pageId: 'page_ig_annalynn', platform: 'instagram', provider: 'instagram_messaging', providerAccountId: '17841456216401165', status: 'healthy' },
       { id: 'acct_fb_page_des', pageId: 'page_des', platform: 'facebook', provider: 'meta', providerAccountId: '1137894522741329', status: 'healthy' },
       { id: 'acct_fb_112154661515664', pageId: 'page_fb_112154661515664', platform: 'facebook', provider: 'meta', providerAccountId: '112154661515664', status: 'pending_token' },
+      { id: 'acct_fb_vz_dot', pageId: 'page_vz_dot', platform: 'facebook', provider: 'meta', providerAccountId: '113897230373719', status: 'healthy' },
       { id: 'acct_tt_shop', pageId: 'page_annalynn_tiktok', platform: 'tiktok', provider: 'tiktok_shop', providerAccountId: '7494912558026296148', status: 'healthy' },
       { id: 'acct_tt_annalynn_dm', pageId: 'page_annalynn_tiktok', platform: 'tiktok', provider: 'tiktok_business_messaging', providerAccountId: 'AnnaLynn', status: 'pending_oauth_approval' },
       { id: 'acct_es_annalynna', pageId: 'page_easystore_annalynna', platform: 'easystore', provider: 'easystore', providerAccountId: 'annalynna.easy.co', status: 'healthy' },

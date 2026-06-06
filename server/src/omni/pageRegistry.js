@@ -7,6 +7,7 @@ export const FALLBACK_PAGE_PROFILES = {
   anna_lynn: { profileKey: 'anna_lynn', pageId: '122106446570001676', pageName: 'Anna Lynn', omniPageId: 'page_annalynn', platform: 'facebook' },
   page_des: { profileKey: 'page_des', pageId: '1137894522741329', pageName: 'Niwatha และ AI ชื่อเดส', omniPageId: 'page_des', platform: 'facebook' },
   fb_112154661515664: { profileKey: 'fb_112154661515664', pageId: '112154661515664', pageName: 'Viris Zamara', omniPageId: 'page_fb_112154661515664', platform: 'facebook' },
+  vz_dot: { profileKey: 'vz_dot', pageId: '113897230373719', pageName: 'VZ.', omniPageId: 'page_vz_dot', platform: 'facebook' },
   ig_anna_lynn: { profileKey: 'ig_anna_lynn', pageId: '17841456216401165', pageName: 'Anna Lynn IG', omniPageId: 'page_ig_annalynn', platform: 'instagram' },
   ig_man_kynd: { profileKey: 'ig_man_kynd', pageId: '17841402222436331', pageName: 'MAN KYND IG', omniPageId: 'page_ig_mankynd', platform: 'instagram' },
   ig_page_des: { profileKey: 'ig_page_des', pageId: 'NOT_LINKED', pageName: 'Niwatha และ AI ชื่อเดส IG', omniPageId: 'page_ig_page_des', platform: 'instagram' },
