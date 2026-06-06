@@ -1357,10 +1357,6 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
         } else if (liveProductFacts) {
           productFacts = liveProductFacts
           productFactsReason = 'easystore_live_product_fact_match'
-        } else if (inventoryProductFacts) {
-          productFacts = null
-          productFactsReason = ''
-          liveLookupHoldReason = 'easystore_live_lookup_required'
         }
       }
       const slots = latestSalesSlots(thread, snapshot, originContext)

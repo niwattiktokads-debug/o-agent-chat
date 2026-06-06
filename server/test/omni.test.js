@@ -1504,6 +1504,68 @@ test('AI reply engine keeps size chart copy when EasyStore live lookup would oth
   assert.doesNotMatch(decision.draftText, /เช็กราคา|สต็อก|EasyStore/)
 })
 
+test('AI reply engine uses snapshot stock facts when live lookup returns empty', async () => {
+  const seed = createOmniSeed()
+  seed.customers.push({ id: 'cust_stock_snapshot_fallback', displayName: 'Stock Snapshot Customer', matchConfidence: 1 })
+  seed.threads.push({
+    id: 'thread_stock_snapshot_fallback',
+    pageId: 'page_annalynn',
+    platform: 'facebook',
+    customerId: 'cust_stock_snapshot_fallback',
+    status: 'open',
+    intent: 'unknown',
+    risk: 'low',
+    unreadCount: 1,
+    messageCount: 1,
+    updatedAt: '2026-06-05T05:25:00.000Z',
+  })
+  seed.messages.push({
+    id: 'msg_stock_snapshot_fallback',
+    threadId: 'thread_stock_snapshot_fallback',
+    direction: 'inbound',
+    authorName: 'Stock Snapshot Customer',
+    text: 'Molly สีดำมีไหมคะ',
+    createdAt: '2026-06-05T05:25:00.000Z',
+  })
+  seed.inventorySnapshots.push({
+    id: 'es_stock_molly_snapshot',
+    sku: 'MOLLY-BLK-M',
+    source: 'easystore',
+    available: 4,
+    checkedAt: '2026-06-05T05:20:00.000Z',
+    productId: '16469999',
+    variantId: '76019998',
+    productName: 'Molly Dress',
+    color: 'ดำ',
+    size: 'M',
+    price: 990,
+    imageUrl: 'https://cdn.example/molly-black-m.jpg',
+  })
+  const easyStore = {
+    async searchProducts() {
+      return {
+        ok: true,
+        products: [],
+      }
+    },
+  }
+  const service = createOmniService(seed)
+  const thread = service.getThread('thread_stock_snapshot_fallback')
+  const ai = createAiReplyEngine({ provider: 'local_rules', model: 'test', easyStore })
+
+  const decision = await ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
+
+  assert.equal(decision.intent, 'stock')
+  assert.equal(decision.allowed, true)
+  assert.equal(decision.action, 'draft_ready')
+  assert.equal(decision.reason, 'product_inventory_fact_match')
+  assert.equal(decision.productFacts?.productName, 'Molly Dress')
+  assert.equal(decision.productFacts?.availableTotal, 4)
+  assert.doesNotMatch(decision.draftText, /เดี๋ยวขอให้แอดมิน|เช็กสต็อกอีกครั้ง/)
+  assert.match(decision.draftText, /Molly Dress/)
+  assert.match(decision.draftText, /พร้อมส่งรวม 4/)
+})
+
 test('Meta auto reply sends size chart as one clickable card instead of duplicate image attachment', async () => {
   const service = createOmniService()
   service.updateSettings({
