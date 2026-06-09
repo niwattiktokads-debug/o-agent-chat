@@ -148,6 +148,8 @@ function isPublicPath(path = '') {
     || path.startsWith('/webhook/easystore')
     || path.startsWith('/webhook/kgp')
     || path.startsWith('/webhook/line/suda-oagent')
+    || path.startsWith('/webhook/zalo/oa')
+    || path.startsWith('/oauth/zalo/callback')
 }
 
 function parseCookies(header = '') {
