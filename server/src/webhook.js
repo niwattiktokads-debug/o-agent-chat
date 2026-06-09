@@ -1019,7 +1019,7 @@ export function mountWebhook(app, hub, room, options = {}) {
   })
 
   app.get('/webhook/zalo/oa', (_req, res) => {
-    res.json({ ok: true, runtime: 'zalo_oa_webhook', mode: 'ack_only' })
+    res.status(200).type('text/plain').send('OK')
   })
 
   app.post('/webhook/zalo/oa', (req, res) => {
