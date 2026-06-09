@@ -23,6 +23,52 @@ const KNOWLEDGE_TYPES = new Set(['manual', 'website', 'file', 'faq', 'order_poli
 const KNOWLEDGE_STATUSES = new Set(['ready', 'training', 'needs_review', 'archived'])
 const PAYMENT_PROVIDERS = new Set(['meta_pay_kgp', 'promptpay'])
 const PAYMENT_STATUSES = new Set(['draft', 'pending', 'paid', 'failed', 'expired', 'manual_verify', 'cancelled'])
+const GOVERNANCE_ACTIONS = new Set(['archive', 'disable', 'clear', 'delete'])
+const GOVERNANCE_OBJECTS = {
+  page: { collection: 'pages', sourceRefPrefix: 'omni_page', clearStrategy: 'metadata_only', hardDeleteBlocked: true },
+  channel: { collection: 'platformAccounts', sourceRefPrefix: 'omni_channel', clearStrategy: 'disconnect_provider_account', hardDeleteBlocked: true },
+  customer: { collection: 'customers', sourceRefPrefix: 'omni_customer', clearStrategy: 'clear_customer_contact', hardDeleteBlocked: true },
+  thread: { collection: 'threads', sourceRefPrefix: 'omni_thread', clearStrategy: 'clear_thread_context', hardDeleteBlocked: true },
+  message: { collection: 'messages', sourceRefPrefix: 'omni_message', clearStrategy: 'clear_message_body', hardDeleteBlocked: true },
+  order: { collection: 'orders', sourceRefPrefix: 'omni_order', clearStrategy: 'clear_shipping_contact', hardDeleteBlocked: true },
+  payment_event: { collection: 'paymentEvents', sourceRefPrefix: 'omni_payment_event', clearStrategy: 'clear_event_source_ref', hardDeleteBlocked: true },
+  ai_decision: { collection: 'aiDecisions', sourceRefPrefix: 'omni_ai_decision', clearStrategy: 'clear_decision_reason', hardDeleteBlocked: true },
+  knowledge_source: { collection: 'knowledgeSources', sourceRefPrefix: 'omni_knowledge', clearStrategy: 'clear_source_content', hardDeleteBlocked: true },
+  payment_request: { collection: 'paymentRequests', sourceRefPrefix: 'omni_payment_request', clearStrategy: 'clear_provider_ref', hardDeleteBlocked: true },
+  test_data: { collection: null, sourceRefPrefix: 'omni_test_data', clearStrategy: 'clear_test_rows', hardDeleteBlocked: true },
+}
+const GOVERNANCE_TYPE_ALIASES = {
+  page: 'page',
+  pages: 'page',
+  channel: 'channel',
+  channels: 'channel',
+  platform_account: 'channel',
+  platform_accounts: 'channel',
+  customer: 'customer',
+  customers: 'customer',
+  thread: 'thread',
+  threads: 'thread',
+  message: 'message',
+  messages: 'message',
+  order: 'order',
+  orders: 'order',
+  payment_event: 'payment_event',
+  payment_events: 'payment_event',
+  order_event: 'payment_event',
+  order_events: 'payment_event',
+  ai_decision: 'ai_decision',
+  ai_decisions: 'ai_decision',
+  ai_decision_entry: 'ai_decision',
+  knowledge_source: 'knowledge_source',
+  knowledge_sources: 'knowledge_source',
+  connection: 'connection',
+  connections: 'connection',
+  payment_request: 'payment_request',
+  payment_requests: 'payment_request',
+  test_data: 'test_data',
+  testdata: 'test_data',
+}
+const GOVERNED_COLLECTIONS = [...new Set(Object.values(GOVERNANCE_OBJECTS).map((definition) => definition.collection).filter(Boolean))]
 const MAX_DRAFT_ATTACHMENTS = 5
 const MAX_DRAFT_ATTACHMENT_BYTES = 5 * 1024 * 1024
 const CLEAR_HISTORY_CONFIRMATION = 'CLEAR_OMNI_HISTORY'
@@ -160,6 +206,149 @@ function createActionAuditRow({
 
 function countCollections(snapshot = {}, collectionNames = HISTORY_COLLECTIONS) {
   return Object.fromEntries(collectionNames.map((name) => [name, Array.isArray(snapshot[name]) ? snapshot[name].length : 0]))
+}
+
+function normalizeGovernanceObjectType(input) {
+  return GOVERNANCE_TYPE_ALIASES[String(input || '').trim().toLowerCase().replace(/-/g, '_')] || null
+}
+
+function governanceStateOf(row = {}) {
+  if (row.governanceState) return row.governanceState
+  if (row.deletedAt) return 'deleted'
+  if (row.archivedAt) return 'archived'
+  if (row.disabledAt) return 'disabled'
+  if (row.clearedAt) return 'cleared'
+  return 'active'
+}
+
+function visibleGovernedRows(rows = []) {
+  return rows.filter((row) => governanceStateOf(row) !== 'deleted')
+}
+
+function sanitizeOmniSnapshot(snapshot = {}) {
+  const next = structuredClone(snapshot)
+  for (const collectionName of GOVERNED_COLLECTIONS) {
+    next[collectionName] = visibleGovernedRows(next[collectionName] || [])
+  }
+  return next
+}
+
+function clearPayloadForObjectType(objectType, row = {}) {
+  switch (objectType) {
+    case 'channel':
+      return { providerAccountId: null }
+    case 'customer':
+      return {
+        displayName: row.displayName ? '[cleared customer]' : row.displayName,
+        phone: null,
+        email: null,
+        address: null,
+        contactJson: row.contactJson ? { redacted: true } : row.contactJson,
+      }
+    case 'thread':
+      return {
+        originContext: row.originContext ? { redacted: true } : row.originContext,
+        unreadCount: 0,
+      }
+    case 'message':
+      return {
+        text: '[cleared message]',
+        attachments: [],
+        providerMessageId: null,
+      }
+    case 'order':
+      return {
+        customerName: row.customerName ? '[cleared customer]' : row.customerName,
+        customerPhone: '',
+        customerEmail: '',
+        shippingAddress: row.shippingAddress ? { redacted: true } : row.shippingAddress,
+      }
+    case 'payment_event':
+      return {
+        sourceRef: null,
+      }
+    case 'ai_decision':
+      return {
+        reason: '[cleared decision]',
+        sourceIds: [],
+      }
+    case 'knowledge_source':
+      return {
+        content: '[cleared knowledge source]',
+        tags: [],
+        sourceRef: null,
+      }
+    case 'payment_request':
+      return {
+        providerRef: null,
+        expiresAt: null,
+      }
+    default:
+      return {}
+  }
+}
+
+function statusPatchForGovernanceAction(objectType, action) {
+  if (objectType === 'page') {
+    if (action === 'disable') return { status: 'paused' }
+    if (action === 'archive' || action === 'delete') return { status: 'archived' }
+  }
+  if (objectType === 'channel' && ['archive', 'disable', 'delete'].includes(action)) return { status: 'disabled' }
+  if (objectType === 'knowledge_source' && ['archive', 'disable'].includes(action)) return { status: 'archived' }
+  return {}
+}
+
+function governedRowForAction(objectType, row, action, { actorId, reason, now }) {
+  const nextState = action === 'delete'
+    ? 'deleted'
+    : action === 'archive'
+      ? 'archived'
+      : action === 'disable'
+        ? 'disabled'
+        : 'cleared'
+  const clearPatch = action === 'clear' ? clearPayloadForObjectType(objectType, row) : {}
+  const next = {
+    ...row,
+    ...statusPatchForGovernanceAction(objectType, action),
+    ...clearPatch,
+    governanceState: nextState,
+    governanceReason: reason || null,
+    governanceUpdatedAt: now,
+    governanceUpdatedBy: actorId,
+  }
+  if (action === 'archive') {
+    next.archivedAt = now
+    next.archivedBy = actorId
+  }
+  if (action === 'disable') {
+    next.disabledAt = now
+    next.disabledBy = actorId
+  }
+  if (action === 'delete') {
+    next.deletedAt = now
+    next.deletedBy = actorId
+  }
+  if (action === 'clear') {
+    next.clearedAt = now
+    next.clearedBy = actorId
+    next.clearedFields = Object.keys(clearPatch)
+  }
+  return next
+}
+
+function testDataCandidate(collectionName, row = {}) {
+  const haystack = [
+    row.id,
+    row.title,
+    row.sourceRef,
+    row.providerMessageId,
+    row.description,
+    row.helper,
+    row.status,
+  ].filter(Boolean).join(' ').toLowerCase()
+  if (['orders', 'paymentRequests'].includes(collectionName) && String(row.status || '').toLowerCase() === 'draft') return true
+  if (collectionName === 'messages' && ['manual_draft', 'ai_address_confirmation_draft'].includes(String(row.sourceRef || ''))) return true
+  return /(test|draft|mock|seed|local)/.test(haystack)
 }
 
 function normalizeKnowledgeSource(input = {}) {
@@ -525,7 +714,7 @@ export function createOmniService(options = createOmniSeed()) {
 
   return {
     snapshot() {
-      return withPageRuntimeSettings(currentData())
+      return withPageRuntimeSettings(sanitizeOmniSnapshot(currentData()))
     },
     listWorkspaces() {
       return (currentData().workspaces || []).map((ws) => structuredClone(ws))
@@ -545,8 +734,23 @@ export function createOmniService(options = createOmniSeed()) {
       return { ok: true, result, workspace: structuredClone(normalized.workspace), snapshot: this.snapshot() }
     },
     listPages(options = {}) {
-      const allPages = withPageRuntimeSettings(currentData()).pages
-      return filterByWorkspace(allPages, options.workspaceId)
+      return filterByWorkspace(this.snapshot().pages, options.workspaceId)
+    },
+    getDeleteGovernanceMatrix() {
+      return [
+        { objectType: 'page', defaultAction: 'archive', actions: ['archive', 'disable', 'clear', 'delete'], collection: 'pages', softDelete: true, hardDeleteBlocked: true, notes: 'Disable/archive also turns off auto-reply at runtime.' },
+        { objectType: 'channel', defaultAction: 'disable', actions: ['archive', 'disable', 'clear', 'delete'], collection: 'platformAccounts', softDelete: true, hardDeleteBlocked: true, notes: 'Clear disconnects provider account id without touching live credentials.' },
+        { objectType: 'customer', defaultAction: 'archive', actions: ['archive', 'disable', 'clear', 'delete'], collection: 'customers', softDelete: true, hardDeleteBlocked: true, notes: 'Clear redacts contact fields and keeps thread/order references.' },
+        { objectType: 'thread', defaultAction: 'archive', actions: ['archive', 'disable', 'clear', 'delete'], collection: 'threads', softDelete: true, hardDeleteBlocked: true, notes: 'Clear removes visible context but preserves audit linkage.' },
+        { objectType: 'message', defaultAction: 'clear', actions: ['archive', 'disable', 'clear', 'delete'], collection: 'messages', softDelete: true, hardDeleteBlocked: true, notes: 'Clear redacts text and attachments.' },
+        { objectType: 'order', defaultAction: 'archive', actions: ['archive', 'disable', 'clear', 'delete'], collection: 'orders', softDelete: true, hardDeleteBlocked: true, notes: 'Clear redacts shipping/contact fields and keeps financial totals.' },
+        { objectType: 'payment_event', defaultAction: 'archive', actions: ['archive', 'disable', 'clear', 'delete'], collection: 'paymentEvents', softDelete: true, hardDeleteBlocked: true, notes: 'Keep event audit history; clear removes external source reference only.' },
+        { objectType: 'ai_decision', defaultAction: 'archive', actions: ['archive', 'disable', 'clear', 'delete'], collection: 'aiDecisions', softDelete: true, hardDeleteBlocked: true, notes: 'Clear redacts reasoning/source ids and keeps the decision shell.' },
+        { objectType: 'knowledge_source', defaultAction: 'archive', actions: ['archive', 'disable', 'clear', 'delete'], collection: 'knowledgeSources', softDelete: true, hardDeleteBlocked: true, notes: 'Archive/remove from training surface without hard delete.' },
+        { objectType: 'connection', defaultAction: 'disable', actions: ['archive', 'disable', 'clear', 'delete'], collection: 'custom_connections', softDelete: true, hardDeleteBlocked: true, notes: 'Applied only to custom connection options in branch/test.' },
+        { objectType: 'payment_request', defaultAction: 'archive', actions: ['archive', 'disable', 'clear', 'delete'], collection: 'paymentRequests', softDelete: true, hardDeleteBlocked: true, notes: 'Clear removes provider ref and expiry only.' },
+        { objectType: 'test_data', defaultAction: 'clear', actions: ['clear', 'delete'], collection: 'derived_collections', softDelete: true, hardDeleteBlocked: true, notes: 'Branch/test-only sweep across local draft, mock, and test-tagged rows.' },
+      ]
     },
     getSettings(options = {}) {
       const workspaceId = String(options.workspaceId || '').trim()
@@ -818,11 +1022,9 @@ export function createOmniService(options = createOmniSeed()) {
     listKnowledgeSources(filters = {}) {
       const query = String(filters.query || '').trim().toLowerCase()
       const workspaceId = String(filters.workspaceId || '').trim() || undefined
-      return (currentData().knowledgeSources || [])
+      return visibleGovernedRows(currentData().knowledgeSources || [])
         .filter((source) => {
-          // Workspace boundary: sources without workspaceId are treated as ws_oagent (default backfill)
-          // When workspaceId filter is given, strictly match — no cross-workspace leakage
-          if (!workspaceId) return true // legacy: no filter → show all
+          if (!workspaceId) return true
           const sourceWs = source.workspaceId || DEFAULT_WORKSPACE_ID
           return sourceWs === workspaceId
         })
@@ -838,14 +1040,7 @@ export function createOmniService(options = createOmniSeed()) {
       return { ok: true, result, source: structuredClone(normalized.row), snapshot: this.snapshot() }
     },
     deleteKnowledgeSource(id) {
-      const sourceId = String(id || '').trim()
-      if (!sourceId) return { ok: false, error: 'knowledge_id_required' }
-      const snapshot = currentData()
-      const next = (snapshot.knowledgeSources || []).filter((source) => source.id !== sourceId)
-      if (next.length === (snapshot.knowledgeSources || []).length) return { ok: false, error: 'knowledge_not_found' }
-      if (store) store.replace('knowledgeSources', next)
-      else data.knowledgeSources = next
-      return { ok: true, deletedId: sourceId, snapshot: this.snapshot() }
+      return this.applyGovernanceAction({ objectType: 'knowledge_source', objectId: id, action: 'delete', actorId: 'boss' })
     },
     getPaymentProviderHealth(provider) {
       const providerId = String(provider || '').trim()
@@ -1175,13 +1370,13 @@ export function createOmniService(options = createOmniSeed()) {
       }
     },
     listThreads(filters = {}) {
-      return currentData().threads
+      return visibleGovernedRows(currentData().threads || [])
         .filter((thread) => !filters.pageId || thread.pageId === filters.pageId)
         .filter((thread) => !filters.status || thread.status === filters.status)
         .map((thread) => structuredClone(thread))
     },
     getThread(threadId) {
-      const snapshot = currentData()
+      const snapshot = this.snapshot()
       const thread = snapshot.threads.find((item) => item.id === threadId)
       if (!thread) return null
       return {
@@ -1233,6 +1428,94 @@ export function createOmniService(options = createOmniSeed()) {
       const audit = createActionAuditRow(input)
       const result = upsert('actionAudits', [audit])
       return { ok: true, result, audit: structuredClone(audit), snapshot: this.snapshot() }
+    },
+    applyGovernanceAction({ objectType, objectId, action, actorType = 'human', actorId = 'boss', reason = '' } = {}) {
+      const normalizedType = normalizeGovernanceObjectType(objectType)
+      if (!normalizedType || normalizedType === 'connection') return { ok: false, error: 'governance_object_type_invalid' }
+      if (!GOVERNANCE_ACTIONS.has(action)) return { ok: false, error: 'governance_action_invalid' }
+      if (normalizedType === 'test_data') return this.clearTestData({ actorType, actorId, reason })
+
+      const definition = GOVERNANCE_OBJECTS[normalizedType]
+      const snapshot = currentData()
+      const collection = snapshot[definition.collection] || []
+      const rowIndex = collection.findIndex((item) => item.id === objectId)
+      if (rowIndex < 0) return { ok: false, error: `${normalizedType}_not_found` }
+
+      const before = structuredClone(collection[rowIndex])
+      const now = new Date().toISOString()
+      const after = governedRowForAction(normalizedType, before, action, { actorId, reason, now })
+      const rows = collection.slice()
+      rows[rowIndex] = after
+      replace(definition.collection, rows)
+
+      const result = {
+        [definition.collection]: { inserted: 0, updated: 1 },
+      }
+
+      if (normalizedType === 'page' && ['archive', 'disable', 'delete'].includes(action)) {
+        const runtimeRow = {
+          pageId: before.id,
+          autoReplyEnabled: false,
+          updatedAt: now,
+          updatedBy: actorId,
+        }
+        result.pageRuntimeSettings = upsert('pageRuntimeSettings', [runtimeRow], 'pageId')
+      }
+
+      const audit = createActionAuditRow({
+        threadId: normalizedType === 'thread' ? before.id : normalizedType === 'message' ? before.threadId : normalizedType === 'payment_request' ? before.threadId : normalizedType === 'ai_decision' ? before.threadId : null,
+        workspaceId: before.workspaceId || null,
+        action: `${normalizedType}_${action}`,
+        actorType,
+        actorId,
+        before,
+        after,
+        sourceRef: `${definition.sourceRefPrefix}:${before.id}`,
+      })
+      result.actionAudits = upsert('actionAudits', [audit])
+
+      return {
+        ok: true,
+        objectType: normalizedType,
+        action,
+        deletedId: action === 'delete' ? before.id : null,
+        row: structuredClone(after),
+        audit: structuredClone(audit),
+        result,
+        snapshot: this.snapshot(),
+      }
+    },
+    clearTestData({ actorType = 'human', actorId = 'boss', reason = '' } = {}) {
+      const now = new Date().toISOString()
+      const summary = {}
+      for (const [objectType, definition] of Object.entries(GOVERNANCE_OBJECTS)) {
+        if (!definition.collection || objectType === 'test_data') continue
+        const rows = currentData()[definition.collection] || []
+        let changed = false
+        const nextRows = rows.map((row) => {
+          if (!testDataCandidate(definition.collection, row) || governanceStateOf(row) === 'deleted') return row
+          changed = true
+          summary[definition.collection] = (summary[definition.collection] || 0) + 1
+          return governedRowForAction(objectType, row, 'delete', { actorId, reason, now })
+        })
+        if (changed) replace(definition.collection, nextRows)
+      }
+      const audit = createActionAuditRow({
+        action: 'test_data_clear',
+        actorType,
+        actorId,
+        after: { summary, reason: reason || null },
+        sourceRef: `${GOVERNANCE_OBJECTS.test_data.sourceRefPrefix}:branch_test`,
+      })
+      const auditResult = upsert('actionAudits', [audit])
+      return {
+        ok: true,
+        objectType: 'test_data',
+        action: 'clear',
+        result: { summary, actionAudits: auditResult },
+        audit: structuredClone(audit),
+        snapshot: this.snapshot(),
+      }
     },
     recordOutboundMessage({ threadId, authorName = 'AI', text, attachments = [], providerMessageId = null, sourceRef = 'ai_auto_reply', decisionId = null, decision = null }) {
       const snapshot = currentData()

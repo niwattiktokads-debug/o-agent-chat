@@ -37,6 +37,20 @@ vi.mock('../../lib/omniApi.js', () => ({
       omniMock.subscribers = omniMock.subscribers.filter((item) => item !== callback)
     }
   },
+  applyOmniGovernanceAction: async () => ({
+    ok: true,
+    snapshot: {
+      pages: [{ id: 'page_mankynd', name: 'MAN KYND', status: 'active', workspaceId: 'ws_oagent' }],
+      platformAccounts: [{ id: 'acct_fb_mankynd', pageId: 'page_mankynd', platform: 'facebook' }],
+      threads: [{ id: 'thread_1', customerId: 'cust_1', pageId: 'page_mankynd', platform: 'facebook', status: 'draft_ready', intent: 'stock', risk: 'low' }],
+      messages: [{ id: 'msg_1', threadId: 'thread_1', direction: 'inbound', authorName: 'ลูกค้า A', text: 'มีไซซ์ M สีดำไหม' }],
+      customers: [{ id: 'cust_1', displayName: 'ลูกค้า A' }],
+      orders: [],
+      aiDecisions: [],
+      paymentRequests: [],
+      connectorHealth: [],
+    },
+  }),
   fetchConnectorHealth: async () => [{ provider: 'meta', status: 'healthy' }],
   fetchPaymentProviderHealth: async () => ({
     provider: 'meta_pay_kgp',
@@ -472,8 +486,10 @@ describe('OmniWorkbench', () => {
     expect(screen.queryByText(/AI auto-reply/)).not.toBeInTheDocument()
     expect(screen.queryByText('AI draft on')).not.toBeInTheDocument()
     expect(screen.queryByText('Auto-send active')).not.toBeInTheDocument()
-    expect(screen.queryByText('AI ทำอะไรอยู่')).not.toBeInTheDocument()
-    expect(screen.queryByText('AI ร่างคำตอบแล้ว')).not.toBeInTheDocument()
+    expect(await screen.findByText('AI ทำอะไรอยู่')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'ให้ AI ร่าง' })).toBeInTheDocument()
+    expect(await screen.findByText('AI ร่างคำตอบแล้ว')).toBeInTheDocument()
+    expect(await screen.findByText('ยังไม่มีข้อความร่างในรายการนี้ กด “ให้ AI ร่าง” เพื่อสร้าง draft ใหม่')).toBeInTheDocument()
     expect(await screen.findByText('ออเดอร์')).toBeInTheDocument()
     expect(await screen.findByText('ชำระเงิน')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'ชำระเงิน' }))

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { deleteKnowledgeSource, fetchKnowledgeSources, fetchOmniSnapshot, importKnowledgePack, saveKnowledgeSource } from '../../lib/omniApi.js'
+import GovernanceActions from '../omni/GovernanceActions.jsx'
 
 const trainMenu = ['Overview', 'Instructions', 'AI Reply Style', 'Knowledge Source', 'Testing', 'Deploy']
 const AI_REPLY_STYLE_SOURCE_ID = 'ks_omni_ai_reply_style_rules_v1'
@@ -233,6 +234,7 @@ export default function AiKnowledgeSourcePage({ onOpenInbox, onOpenChat, onOpenC
   }
 
   async function removeSource(sourceId) {
+    if (typeof window !== 'undefined' && typeof window.confirm === 'function' && !window.confirm('ยืนยันลบ knowledge source นี้แบบ soft-delete ?')) return
     setBusy(true)
     setError('')
     setNotice('')
@@ -773,6 +775,15 @@ function KnowledgeSourceList({ busy, query, setQuery, typeFilter, setTypeFilter,
               <button type="button" className="rounded-[var(--radius-sm)] border border-[var(--color-rule)] px-3 py-1.5 text-sm font-semibold text-[var(--color-ink)] hover:bg-[var(--color-panel-2)]" onClick={() => editSource(row)}>Edit</button>
               <button type="button" className="rounded-[var(--radius-sm)] border border-[var(--color-rule)] px-3 py-1.5 text-sm font-semibold text-[var(--color-ink)] hover:bg-[var(--color-panel-2)]" onClick={() => runSourceTest(row)}>Test</button>
               <button type="button" className="rounded-[var(--radius-sm)] border border-[var(--color-danger)] px-3 py-1.5 text-sm font-semibold text-[var(--color-danger)] hover:bg-[var(--color-danger-soft)] disabled:opacity-50" disabled={busy} onClick={() => removeSource(row.id)}>Delete</button>
+            </div>
+            <div className="lg:col-span-5">
+              <GovernanceActions
+                className="mt-1"
+                objectType="knowledge_source"
+                objectId={row.id}
+                objectLabel={row.title}
+                onChanged={() => loadSources(query, typeFilter)}
+              />
             </div>
           </article>
         ))}

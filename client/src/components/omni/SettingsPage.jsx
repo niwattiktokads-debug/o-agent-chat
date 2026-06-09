@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import {
+  clearOmniTestData,
+  fetchOmniGovernanceMatrix,
   fetchOmniSettings,
   fetchOmniSnapshot,
   fetchOmniStorageStatus,
@@ -75,6 +77,7 @@ export default function SettingsPage({
   const [snapshotStatus, setSnapshotStatus] = useState('')
   const [storageStatus, setStorageStatus] = useState(null)
   const [localSection, setLocalSection] = useState(activeSection || 'settings')
+  const [deleteMatrix, setDeleteMatrix] = useState([])
 
   useEffect(() => {
     if (snapshot) setLocalSnapshot(snapshot)
@@ -85,6 +88,12 @@ export default function SettingsPage({
       .then((data) => setSettings(mergeSettings(DEFAULT_SETTINGS, data || {})))
       .catch((error) => setStatus(error.message))
   }, [workspaceId])
+
+  useEffect(() => {
+    fetchOmniGovernanceMatrix()
+      .then((rows) => setDeleteMatrix(rows || []))
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (snapshot) return
@@ -134,6 +143,17 @@ export default function SettingsPage({
       setStatus('บันทึก setting แล้ว')
     } catch (error) {
       setStatus(error.message)
+    }
+  }
+
+  async function clearTestData() {
+    setStatus('กำลัง clear test data')
+    try {
+      const result = await clearOmniTestData()
+      handleSnapshot(result.snapshot)
+      setStatus('clear test data แล้ว')
+    } catch (error) {
+      setStatus(error.message || 'test_data_clear_failed')
     }
   }
 
@@ -262,6 +282,37 @@ export default function SettingsPage({
             </div>
             <div className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)]">
               <TikTokOrderSync onSynced={handleSnapshot} />
+            </div>
+          </section>
+          <section className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <div className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-bold text-[var(--color-ink)]">Test data</h2>
+                  <p className="mt-1 text-xs leading-5 text-[var(--color-muted)]">clear draft/mock/test rows เฉพาะ local test flow เท่านั้น</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (typeof window !== 'undefined' && typeof window.confirm === 'function' && !window.confirm('ยืนยัน clear test data บน local ?')) return
+                    clearTestData()
+                  }}
+                  className="rounded-[var(--radius-md)] border border-[var(--color-danger)] px-3 py-2 text-sm font-semibold text-[var(--color-danger)] hover:bg-[var(--color-danger-soft)]"
+                >
+                  Clear test data
+                </button>
+              </div>
+            </div>
+            <div className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] p-4">
+              <h2 className="text-sm font-bold text-[var(--color-ink)]">Delete matrix</h2>
+              <div className="mt-3 space-y-2 text-xs text-[var(--color-ink-2)]">
+                {deleteMatrix.map((row) => (
+                  <div key={row.objectType} className="rounded-[var(--radius-sm)] bg-[var(--color-panel-2)] px-3 py-2">
+                    <div className="font-semibold text-[var(--color-ink)]">{row.objectType}</div>
+                    <div className="mt-1">{row.actions.join(' / ')} · default {row.defaultAction}</div>
+                  </div>
+                ))}
+              </div>
             </div>
           </section>
         </>

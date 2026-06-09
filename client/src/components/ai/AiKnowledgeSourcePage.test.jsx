@@ -1,12 +1,13 @@
 import React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import AiKnowledgeSourcePage from './AiKnowledgeSourcePage.jsx'
-import { deleteKnowledgeSource, importKnowledgePack, saveKnowledgeSource } from '../../lib/omniApi.js'
+import { applyOmniGovernanceAction, deleteKnowledgeSource, importKnowledgePack, saveKnowledgeSource } from '../../lib/omniApi.js'
 
 const apiMocks = vi.hoisted(() => ({
   saveKnowledgeSource: vi.fn(),
   deleteKnowledgeSource: vi.fn(),
+  applyOmniGovernanceAction: vi.fn(),
   fetchKnowledgeSources: vi.fn(),
   fetchOmniSnapshot: vi.fn(),
   importKnowledgePack: vi.fn(),
@@ -17,6 +18,7 @@ vi.mock('../../lib/omniApi.js', () => ({
   fetchOmniSnapshot: apiMocks.fetchOmniSnapshot,
   saveKnowledgeSource: apiMocks.saveKnowledgeSource,
   deleteKnowledgeSource: apiMocks.deleteKnowledgeSource,
+  applyOmniGovernanceAction: apiMocks.applyOmniGovernanceAction,
   importKnowledgePack: apiMocks.importKnowledgePack,
 }))
 
@@ -46,10 +48,13 @@ const aiReplyStyleSource = {
 
 describe('AiKnowledgeSourcePage', () => {
   beforeEach(() => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
     apiMocks.fetchKnowledgeSources.mockReset()
     apiMocks.fetchOmniSnapshot.mockReset()
     apiMocks.saveKnowledgeSource.mockReset()
     apiMocks.deleteKnowledgeSource.mockReset()
+    apiMocks.applyOmniGovernanceAction.mockReset()
+    apiMocks.applyOmniGovernanceAction.mockResolvedValue({ ok: true })
     apiMocks.importKnowledgePack.mockReset()
     apiMocks.fetchOmniSnapshot.mockResolvedValue({
       pages: [
@@ -198,11 +203,24 @@ describe('AiKnowledgeSourcePage', () => {
 
     render(<AiKnowledgeSourcePage />)
 
-    expect(await screen.findByText('Return and exchange policy')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    const sourceCard = (await screen.findByText('Return and exchange policy')).closest('article')
+    fireEvent.click(within(sourceCard).getAllByRole('button', { name: 'Delete' })[0])
 
     await waitFor(() => {
       expect(deleteKnowledgeSource).toHaveBeenCalledWith('ks_return_exchange')
+    })
+  })
+
+  it('runs governance action with confirm for knowledge sources', async () => {
+    apiMocks.fetchKnowledgeSources.mockResolvedValue(sources)
+
+    render(<AiKnowledgeSourcePage />)
+
+    expect(await screen.findByText('Return and exchange policy')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Archive' }))
+
+    await waitFor(() => {
+      expect(applyOmniGovernanceAction).toHaveBeenCalledWith('knowledge_source', 'ks_return_exchange', 'archive')
     })
   })
 })

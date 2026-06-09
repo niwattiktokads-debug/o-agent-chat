@@ -649,6 +649,106 @@ test('omni service filters threads by page and blocks unsafe auto-send', () => {
   assert.equal(blocked.reason, 'risk_not_low')
 })
 
+test('delete governance matrix covers requested Omni object types', () => {
+  const service = createOmniService()
+  const objectTypes = service.getDeleteGovernanceMatrix().map((row) => row.objectType)
+  assert.deepEqual(objectTypes, [
+    'page',
+    'channel',
+    'customer',
+    'thread',
+    'message',
+    'order',
+    'payment_event',
+    'ai_decision',
+    'knowledge_source',
+    'connection',
+    'payment_request',
+    'test_data',
+  ])
+})
+
+test('omni governance actions soft-delete, clear, and audit targeted objects', () => {
+  const service = createOmniService()
+
+  const pageResult = service.applyGovernanceAction({ objectType: 'page', objectId: 'page_annalynn', action: 'disable', actorId: 'boss' })
+  assert.equal(pageResult.ok, true)
+  assert.equal(pageResult.row.status, 'paused')
+  assert.equal(pageResult.snapshot.pages.find((page) => page.id === 'page_annalynn').autoReplyEnabled, false)
+
+  const channelResult = service.applyGovernanceAction({ objectType: 'channel', objectId: 'acct_fb_annalynn', action: 'clear', actorId: 'boss' })
+  assert.equal(channelResult.ok, true)
+  assert.equal(channelResult.row.providerAccountId, null)
+
+  const customerResult = service.applyGovernanceAction({ objectType: 'customer', objectId: 'cust_1', action: 'clear', actorId: 'boss' })
+  assert.equal(customerResult.ok, true)
+  assert.equal(customerResult.row.displayName, '[cleared customer]')
+
+  const threadResult = service.applyGovernanceAction({ objectType: 'thread', objectId: 'thread_1', action: 'archive', actorId: 'boss' })
+  assert.equal(threadResult.ok, true)
+  assert.equal(threadResult.row.governanceState, 'archived')
+
+  const messageResult = service.applyGovernanceAction({ objectType: 'message', objectId: 'msg_1', action: 'clear', actorId: 'boss' })
+  assert.equal(messageResult.ok, true)
+  assert.equal(messageResult.row.text, '[cleared message]')
+
+  const orderResult = service.applyGovernanceAction({ objectType: 'order', objectId: 'order_1', action: 'archive', actorId: 'boss' })
+  assert.equal(orderResult.ok, true)
+  assert.equal(orderResult.row.governanceState, 'archived')
+
+  const paymentEventResult = service.applyGovernanceAction({ objectType: 'payment_event', objectId: 'pay_event_1', action: 'delete', actorId: 'boss' })
+  assert.equal(paymentEventResult.ok, true)
+  assert.equal(paymentEventResult.snapshot.paymentEvents.some((item) => item.id === 'pay_event_1'), false)
+
+  const decisionResult = service.applyGovernanceAction({ objectType: 'ai_decision', objectId: 'decision_1', action: 'clear', actorId: 'boss' })
+  assert.equal(decisionResult.ok, true)
+  assert.deepEqual(decisionResult.row.sourceIds, [])
+
+  const knowledgeResult = service.applyGovernanceAction({ objectType: 'knowledge_source', objectId: 'ks_return_exchange', action: 'delete', actorId: 'boss' })
+  assert.equal(knowledgeResult.ok, true)
+  assert.equal(service.listKnowledgeSources().some((row) => row.id === 'ks_return_exchange'), false)
+
+  const paymentRequestResult = service.applyGovernanceAction({ objectType: 'payment_request', objectId: 'pay_1', action: 'clear', actorId: 'boss' })
+  assert.equal(paymentRequestResult.ok, true)
+  assert.equal(paymentRequestResult.row.providerRef, null)
+
+  assert.equal(service.snapshot().actionAudits.filter((audit) => /_(disable|clear|archive|delete)$/.test(audit.action)).length >= 9, true)
+})
+
+test('clear test data only touches draft-like local rows and records audit', () => {
+  const seed = createOmniSeed()
+  seed.messages.push({
+    id: 'draft_test_msg',
+    threadId: 'thread_1',
+    direction: 'outbound',
+    authorName: 'บอส',
+    text: 'draft',
+    createdAt: '2026-05-24T00:00:00.000Z',
+    sourceRef: 'manual_draft',
+  })
+  seed.orders.push({ id: 'order_draft_test', customerId: 'cust_1', platform: 'omni', status: 'draft', totalAmount: 10 })
+  seed.knowledgeSources.push({
+    id: 'ks_test_case',
+    title: 'Test case',
+    type: 'manual',
+    scope: 'all_pages',
+    status: 'ready',
+    content: 'test',
+    tags: ['test'],
+    updatedAt: '2026-05-24T00:00:00.000Z',
+    createdAt: '2026-05-24T00:00:00.000Z',
+  })
+  const service = createOmniService(seed)
+
+  const result = service.clearTestData({ actorId: 'boss' })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.snapshot.messages.some((row) => row.id === 'draft_test_msg'), false)
+  assert.equal(result.snapshot.orders.some((row) => row.id === 'order_draft_test'), false)
+  assert.equal(result.snapshot.knowledgeSources.some((row) => row.id === 'ks_test_case'), false)
+  assert.equal(result.audit.action, 'test_data_clear')
+})
+
 test('omni report date filters and hourly buckets use configured timezone', () => {
   const seed = createOmniSeed()
   seed.messages = [
@@ -991,6 +1091,35 @@ test('knowledge source routes persist searchable training sources', async () => 
     const deleted = await deleteResponse.json()
     assert.equal(deleteResponse.status, 200)
     assert.equal(deleted.deletedId, created.source.id)
+  } finally {
+    server.close()
+  }
+})
+
+test('governance routes expose matrix and generic state transitions', async () => {
+  const app = express()
+  app.use(express.json())
+  const service = createOmniService()
+  mountRoutes(app, { broadcast() {} }, { snapshot() { return {} } }, { omni: service })
+
+  const server = app.listen(0)
+  try {
+    const baseUrl = `http://127.0.0.1:${server.address().port}`
+    const matrixResponse = await fetch(`${baseUrl}/api/omni/governance/matrix`)
+    const matrixBody = await matrixResponse.json()
+    assert.equal(matrixResponse.status, 200)
+    assert.equal(matrixBody.ok, true)
+    assert.equal(matrixBody.matrix.some((row) => row.objectType === 'page'), true)
+
+    const disableResponse = await fetch(`${baseUrl}/api/omni/governance/page/page_annalynn`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'disable', actorId: 'boss' }),
+    })
+    const disabled = await disableResponse.json()
+    assert.equal(disableResponse.status, 200)
+    assert.equal(disabled.row.status, 'paused')
+    assert.equal(disabled.snapshot.pages.find((page) => page.id === 'page_annalynn').autoReplyEnabled, false)
   } finally {
     server.close()
   }

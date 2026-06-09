@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { createKgpCheckout, createPaymentRequest, fetchPaymentProviderHealth } from '../../lib/omniApi.js'
+import GovernanceActions from './GovernanceActions.jsx'
 
 function paymentMessage(payment = {}) {
   const amount = Number(payment.amount || 0).toLocaleString('th-TH', {
@@ -199,6 +200,13 @@ export default function PaymentDesk({ snapshot, thread, onSnapshot, onUseDraft }
               สร้าง KGP link
             </button>
           </div>
+          <GovernanceActions
+            className="mt-2"
+            objectType="payment_request"
+            objectId={payment.id}
+            objectLabel={payment.id}
+            onChanged={(result) => onSnapshot?.(result.snapshot)}
+          />
         </div>
       ))}
       {error ? <p className="mt-3 text-xs font-semibold text-[var(--color-danger)]">{error}</p> : null}

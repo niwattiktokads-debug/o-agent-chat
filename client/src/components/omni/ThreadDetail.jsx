@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { customerAvatarUrl, customerForThread, formatShortTime, initialsForName, pageForThread, sourceLabel, statusLabel } from '../../lib/omniModel.js'
 import { createAiDraft, saveOmniSettings, sendManualReply } from '../../lib/omniApi.js'
+import GovernanceActions from './GovernanceActions.jsx'
 
 export default function ThreadDetail({ snapshot, thread, onSnapshot, suggestedDraft, workspaceId }) {
   const endRef = useRef(null)
@@ -85,6 +86,12 @@ export default function ThreadDetail({ snapshot, thread, onSnapshot, suggestedDr
           </div>
         </div>
         {guardError ? <div className="mt-2 rounded-[var(--radius-sm)] border border-[var(--color-danger)] bg-[var(--color-danger-soft)] px-2 py-1 text-[11px] font-semibold text-[var(--color-danger)]">{guardError}</div> : null}
+        <div className="mt-3 flex flex-wrap gap-2">
+          <GovernanceActions objectType="thread" objectId={thread.id} objectLabel={customer?.displayName || thread.id} onChanged={(result) => onSnapshot?.(result.snapshot)} />
+          {customer?.id ? (
+            <GovernanceActions objectType="customer" objectId={customer.id} objectLabel={customer.displayName || customer.id} onChanged={(result) => onSnapshot?.(result.snapshot)} />
+          ) : null}
+        </div>
       </div>
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[var(--color-paper)] p-5">
         {visibleMessages.map((message) => (
@@ -96,6 +103,7 @@ export default function ThreadDetail({ snapshot, thread, onSnapshot, suggestedDr
             customerSendEnabled={customerSendEnabled}
             onToggleCustomerSend={toggleCustomerSend}
             guardBusy={guardBusy}
+            onSnapshot={onSnapshot}
           />
         ))}
         <div ref={endRef} />
@@ -144,7 +152,7 @@ function draftSuggestionFromMessage(message) {
   }
 }
 
-function MessageBubble({ message, pageName, customerName, customerSendEnabled = false, onToggleCustomerSend, guardBusy = false }) {
+function MessageBubble({ message, pageName, customerName, customerSendEnabled = false, onToggleCustomerSend, guardBusy = false, onSnapshot }) {
   const outbound = message.direction === 'outbound'
   const draftOnly = outbound && message.deliveryStatus === 'draft_only'
   const author = outbound ? (message.authorName || pageName || 'Page') : (message.authorName === 'Facebook Customer' ? customerName || message.authorName : message.authorName)
@@ -184,6 +192,13 @@ function MessageBubble({ message, pageName, customerName, customerSendEnabled = 
             ))}
           </div>
         ) : null}
+        <GovernanceActions
+          className="mt-2"
+          objectType="message"
+          objectId={message.id}
+          objectLabel={author || message.id}
+          onChanged={(result) => onSnapshot?.(result.snapshot)}
+        />
       </div>
     </article>
   )

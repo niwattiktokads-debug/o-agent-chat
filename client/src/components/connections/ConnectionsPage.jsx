@@ -3,6 +3,7 @@
  * contrast: pass (46-50)
  */
 import React, { useEffect, useMemo, useState } from 'react'
+import GovernanceActions from '../omni/GovernanceActions.jsx'
 import {
   addConnectionOption,
   deleteConnectionOption,
@@ -47,6 +48,9 @@ function StatusPill({ status }) {
     needs_key: 'bg-[var(--color-warn-soft)] text-[var(--color-warn)]',
     failed: 'bg-[var(--color-danger-soft)] text-[var(--color-danger)]',
     saving: 'bg-[var(--color-ai-soft)] text-[var(--color-ai)]',
+    disabled: 'bg-[var(--color-warn-soft)] text-[var(--color-warn)]',
+    archived: 'bg-[var(--color-panel-2)] text-[var(--color-muted)]',
+    cleared: 'bg-[var(--color-ai-soft)] text-[var(--color-ai)]',
   }
   return (
     <span className={`rounded-[var(--radius-pill)] px-2 py-1 text-xs font-semibold ${map[status] || 'bg-[var(--color-panel-2)] text-[var(--color-muted)]'}`}>
@@ -55,7 +59,10 @@ function StatusPill({ status }) {
       {status === 'needs_key' ? 'รอ API key' : null}
       {status === 'failed' ? 'ตรวจไม่ผ่าน' : null}
       {status === 'saving' ? 'กำลังบันทึก' : null}
-      {!['healthy', 'ready_to_verify', 'needs_key', 'failed', 'saving'].includes(status) ? status : null}
+      {status === 'disabled' ? 'ปิดใช้งาน' : null}
+      {status === 'archived' ? 'เก็บถาวร' : null}
+      {status === 'cleared' ? 'ล้างแล้ว' : null}
+      {!['healthy', 'ready_to_verify', 'needs_key', 'failed', 'saving', 'disabled', 'archived', 'cleared'].includes(status) ? status : null}
     </span>
   )
 }
@@ -467,6 +474,7 @@ function ConnectionCard({
   onSave,
   onVerify,
   onDelete,
+  onGoverned,
   onLoadConversations,
   onOpenThread,
   onDraftReply,
@@ -522,15 +530,24 @@ function ConnectionCard({
             {busy === 'save' ? 'กำลังบันทึก' : 'บันทึก key'}
           </button>
           {connection.canDelete ? (
-            <button
-              type="button"
-              onClick={() => onDelete(connection.id)}
-              disabled={busy === 'delete'}
-              aria-label={`ลบ ${connection.title}`}
-              className="rounded-[var(--radius-md)] border border-[var(--color-danger)] px-3 py-2 text-sm font-semibold text-[var(--color-danger)] transition hover:bg-[var(--color-danger-soft)] active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)] disabled:cursor-not-allowed disabled:opacity-55"
-            >
-              {busy === 'delete' ? 'กำลังลบ' : 'ลบ'}
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => onDelete(connection.id)}
+                disabled={busy === 'delete'}
+                aria-label={`ลบ ${connection.title}`}
+                className="rounded-[var(--radius-md)] border border-[var(--color-danger)] px-3 py-2 text-sm font-semibold text-[var(--color-danger)] transition hover:bg-[var(--color-danger-soft)] active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)] disabled:cursor-not-allowed disabled:opacity-55"
+              >
+                {busy === 'delete' ? 'กำลังลบ' : 'ลบ'}
+              </button>
+              <GovernanceActions
+                objectType="connection"
+                objectId={connection.id}
+                objectLabel={connection.title}
+                disabled={Boolean(busy)}
+                onChanged={() => onGoverned(connection.id)}
+              />
+            </>
           ) : null}
         </div>
       </div>
@@ -709,6 +726,7 @@ export default function ConnectionsPage({ onOpenInbox, onOpenChat, onOpenAiTrain
   }
 
   async function onDeleteConnection(connectionId) {
+    if (typeof window !== 'undefined' && typeof window.confirm === 'function' && !window.confirm('ยืนยันลบ custom connection นี้แบบ soft-delete ?')) return
     setError('')
     setBusyById((current) => ({ ...current, [connectionId]: 'delete' }))
     try {
@@ -723,6 +741,16 @@ export default function ConnectionsPage({ onOpenInbox, onOpenChat, onOpenAiTrain
       setError(err.message || 'connection_delete_failed')
     } finally {
       setBusyById((current) => ({ ...current, [connectionId]: null }))
+    }
+  }
+
+  async function onGovernConnection(connectionId) {
+    setError('')
+    try {
+      setPayload(await fetchConnections())
+      setExpandedById((current) => ({ ...current, [connectionId]: true }))
+    } catch (err) {
+      setError(err.message || 'connection_governance_failed')
     }
   }
 
@@ -1088,6 +1116,7 @@ export default function ConnectionsPage({ onOpenInbox, onOpenChat, onOpenAiTrain
                 onSave={onSave}
                 onVerify={onVerify}
                 onDelete={onDeleteConnection}
+                onGoverned={onGovernConnection}
                 onLoadConversations={onLoadConversations}
                 onOpenThread={onOpenThread}
                 onDraftReply={onDraftReply}

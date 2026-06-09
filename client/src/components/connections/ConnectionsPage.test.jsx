@@ -25,6 +25,7 @@ const apiMocks = vi.hoisted(() => ({
   saveLineSudaGroupRules: vi.fn(),
   saveConnectionSecrets: vi.fn(),
   verifyConnection: vi.fn(),
+  applyOmniGovernanceAction: vi.fn(),
 }))
 
 vi.mock('../../lib/omniApi.js', () => ({
@@ -39,6 +40,7 @@ vi.mock('../../lib/omniApi.js', () => ({
   saveLineSudaGroupRules: apiMocks.saveLineSudaGroupRules,
   saveConnectionSecrets: apiMocks.saveConnectionSecrets,
   verifyConnection: apiMocks.verifyConnection,
+  applyOmniGovernanceAction: apiMocks.applyOmniGovernanceAction,
 }))
 
 const payload = {
@@ -159,6 +161,7 @@ const payload = {
 
 describe('ConnectionsPage', () => {
   beforeEach(() => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
     apiMocks.fetchConnections.mockReset()
     apiMocks.fetchConnectionConversations.mockReset()
     apiMocks.fetchConnectionThread.mockReset()
@@ -170,7 +173,9 @@ describe('ConnectionsPage', () => {
     apiMocks.saveLineSudaGroupRules.mockReset()
     apiMocks.saveConnectionSecrets.mockReset()
     apiMocks.verifyConnection.mockReset()
+    apiMocks.applyOmniGovernanceAction.mockReset()
     apiMocks.fetchConnections.mockResolvedValue(payload)
+    apiMocks.applyOmniGovernanceAction.mockResolvedValue({ ok: true })
     apiMocks.addConnectionOption.mockResolvedValue({ ok: true, connection: { id: 'custom_line_2', title: 'LINE OA 2' } })
     apiMocks.deleteConnectionOption.mockResolvedValue({ ok: true, removedId: 'custom_line' })
     apiMocks.fetchConnectionConversations.mockResolvedValue({

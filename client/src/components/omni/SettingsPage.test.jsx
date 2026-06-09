@@ -31,6 +31,8 @@ const baseSnapshot = {
 }
 
 vi.mock('../../lib/omniApi.js', () => ({
+  clearOmniTestData: async () => ({ ok: true, snapshot: baseSnapshot }),
+  fetchOmniGovernanceMatrix: async () => ([]),
   fetchOmniSettings: async () => ({ ai: { enabled: true, customerSendEnabled: false } }),
   fetchOmniSnapshot: async () => baseSnapshot,
   fetchOmniStorageStatus: async () => ({ persistent: true }),
