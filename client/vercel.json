@@ -5,6 +5,10 @@
       "destination": "https://omni-server-production.up.railway.app/webhook/zalo/oa"
     },
     {
+      "source": "/webhook/zalo/oa/",
+      "destination": "https://omni-server-production.up.railway.app/webhook/zalo/oa"
+    },
+    {
       "source": "/oauth/zalo/callback",
       "destination": "https://omni-server-production.up.railway.app/oauth/zalo/callback"
     },
