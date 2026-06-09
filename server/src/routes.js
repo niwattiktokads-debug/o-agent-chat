@@ -64,6 +64,11 @@ export function mountRoutes(app, hub, room, options = {}) {
     return Boolean(product?.id && product?.sku && Number(product.sellPrice ?? product.unitPrice ?? 0) > 0)
   }
 
+  function isConnectionGovernanceType(input) {
+    const value = String(input || '').trim().toLowerCase()
+    return ['connection', 'connections'].includes(value)
+  }
+
   app.get('/api/health', (_req, res) => res.json({ ok: true }))
 
   app.get('/api/omni/pages', (_req, res) => {
@@ -97,6 +102,62 @@ export function mountRoutes(app, hub, room, options = {}) {
 
   app.get('/api/omni/schema', (_req, res) => {
     res.json({ ok: true, schema: getOmniSchemaSummary() })
+  })
+
+  app.get('/api/omni/governance/matrix', (_req, res) => {
+    res.json({ ok: true, matrix: omni.getDeleteGovernanceMatrix() })
+  })
+
+  app.post('/api/omni/governance/test-data', (req, res) => {
+    const result = omni.clearTestData({
+      actorType: 'human',
+      actorId: req.body?.actorId || 'boss',
+      reason: req.body?.reason || 'ui:test_data_clear',
+    })
+    if (!result.ok) return res.status(400).json(result)
+    hub.broadcast('omni', result.snapshot)
+    res.json(result)
+  })
+
+  app.post('/api/omni/governance/:objectType/:objectId', async (req, res) => {
+    const objectType = req.params.objectType
+    const objectId = req.params.objectId
+    const action = req.body?.action
+    const actorId = req.body?.actorId || 'boss'
+    const reason = req.body?.reason || `ui:${objectType}:${action}`
+
+    if (isConnectionGovernanceType(objectType)) {
+      try {
+        const result = await connections.govern(objectId, { action, actorId, reason })
+        const audit = omni.recordActionAudit({
+          action: `connection_${action}`,
+          actorType: 'human',
+          actorId,
+          before: result.before,
+          after: result.connection,
+          sourceRef: `omni_connection:${objectId}`,
+        })
+        return res.json({ ...result, audit: audit.audit })
+      } catch (error) {
+        const status = ['connection_not_found', 'system_connection_locked'].includes(error.message) ? 404 : 400
+        return res.status(status).json({ ok: false, error: error.message || 'connection_governance_failed' })
+      }
+    }
+
+    const result = omni.applyGovernanceAction({
+      objectType,
+      objectId,
+      action,
+      actorType: 'human',
+      actorId,
+      reason,
+    })
+    if (!result.ok) {
+      const status = String(result.error || '').endsWith('_not_found') ? 404 : 400
+      return res.status(status).json(result)
+    }
+    hub.broadcast('omni', result.snapshot)
+    res.json(result)
   })
 
   app.get('/api/omni/retention', (_req, res) => {
@@ -141,6 +202,7 @@ export function mountRoutes(app, hub, room, options = {}) {
   app.delete('/api/omni/knowledge-sources/:sourceId', (req, res) => {
     const result = omni.deleteKnowledgeSource(req.params.sourceId)
     if (!result.ok) return res.status(404).json(result)
+    hub.broadcast('omni', result.snapshot)
     res.json(result)
   })
 
@@ -477,7 +539,16 @@ export function mountRoutes(app, hub, room, options = {}) {
 
   app.delete('/api/omni/connections/:connectionId', async (req, res) => {
     try {
-      res.json(await connections.remove(req.params.connectionId))
+      const result = await connections.remove(req.params.connectionId)
+      const audit = omni.recordActionAudit({
+        action: 'connection_delete',
+        actorType: 'human',
+        actorId: 'boss',
+        before: result.before,
+        after: result.connection,
+        sourceRef: `omni_connection:${req.params.connectionId}`,
+      })
+      res.json({ ...result, audit: audit.audit })
     } catch (error) {
       const status = error.message === 'connection_not_found' ? 404 : 400
       res.status(status).json({ ok: false, error: error.message || 'connection_delete_failed' })

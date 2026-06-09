@@ -34,12 +34,17 @@ test('omni seed starts with configured production page data', () => {
   assert.equal(seed.platformAccounts.find((account) => account.id === 'acct_tt_annalynn_dm').provider, 'tiktok_business_messaging')
   assert.ok(seed.pages.find((page) => page.id === 'page_fb_112154661515664'))
   assert.equal(seed.pages.find((page) => page.id === 'page_fb_112154661515664').name, 'Viris Zamara')
+  assert.equal(seed.pages.find((page) => page.id === 'page_fb_112154661515664').policySetId, 'policy_viriszamara')
+  assert.equal(seed.pages.find((page) => page.id === 'page_fb_112154661515664').agentProfileId, 'agent_viriszamara')
+  assert.equal(seed.policySets.find((policy) => policy.id === 'policy_viriszamara').autoSend.stock, false)
+  assert.ok(seed.agentProfiles.find((agent) => agent.id === 'agent_viriszamara'))
   assert.equal(seed.pages.some((page) => page.id === 'page_shop_4'), false)
   assert.equal(seed.pages.some((page) => page.id === 'page_shop_5'), false)
   assert.equal(seed.pages.every((page) => page.status === 'active'), true)
   assert.equal(seed.pages.every((page) => page.policySetId), true)
   assert.equal(seed.pages.every((page) => page.agentProfileId), true)
-  assert.equal(seed.knowledgeSources.length, 5)
+  assert.equal(seed.knowledgeSources.length, 6)
+  assert.equal(seed.knowledgeSources.find((source) => source.id === 'ks_viriszamara_reply_style').scope, 'page_fb_112154661515664')
   assert.equal(seed.knowledgeSources.every((source) => source.content), true)
 })
 
@@ -127,6 +132,106 @@ test('omni service filters threads by page and blocks unsafe auto-send', () => {
   const blocked = service.evaluateAutoSend({ threadId: 'thread_2' })
   assert.equal(blocked.allowed, false)
   assert.equal(blocked.reason, 'risk_not_low')
+})
+
+test('delete governance matrix covers requested Omni object types', () => {
+  const service = createOmniService()
+  const objectTypes = service.getDeleteGovernanceMatrix().map((row) => row.objectType)
+  assert.deepEqual(objectTypes, [
+    'page',
+    'channel',
+    'customer',
+    'thread',
+    'message',
+    'order',
+    'payment_event',
+    'ai_decision',
+    'knowledge_source',
+    'connection',
+    'payment_request',
+    'test_data',
+  ])
+})
+
+test('omni governance actions soft-delete, clear, and audit targeted objects', () => {
+  const service = createOmniService()
+
+  const pageResult = service.applyGovernanceAction({ objectType: 'page', objectId: 'page_annalynn', action: 'disable', actorId: 'boss' })
+  assert.equal(pageResult.ok, true)
+  assert.equal(pageResult.row.status, 'paused')
+  assert.equal(pageResult.snapshot.pages.find((page) => page.id === 'page_annalynn').autoReplyEnabled, false)
+
+  const channelResult = service.applyGovernanceAction({ objectType: 'channel', objectId: 'acct_fb_annalynn', action: 'clear', actorId: 'boss' })
+  assert.equal(channelResult.ok, true)
+  assert.equal(channelResult.row.providerAccountId, null)
+
+  const customerResult = service.applyGovernanceAction({ objectType: 'customer', objectId: 'cust_1', action: 'clear', actorId: 'boss' })
+  assert.equal(customerResult.ok, true)
+  assert.equal(customerResult.row.displayName, '[cleared customer]')
+
+  const threadResult = service.applyGovernanceAction({ objectType: 'thread', objectId: 'thread_1', action: 'archive', actorId: 'boss' })
+  assert.equal(threadResult.ok, true)
+  assert.equal(threadResult.row.governanceState, 'archived')
+
+  const messageResult = service.applyGovernanceAction({ objectType: 'message', objectId: 'msg_1', action: 'clear', actorId: 'boss' })
+  assert.equal(messageResult.ok, true)
+  assert.equal(messageResult.row.text, '[cleared message]')
+
+  const orderResult = service.applyGovernanceAction({ objectType: 'order', objectId: 'order_1', action: 'archive', actorId: 'boss' })
+  assert.equal(orderResult.ok, true)
+  assert.equal(orderResult.row.governanceState, 'archived')
+
+  const paymentEventResult = service.applyGovernanceAction({ objectType: 'payment_event', objectId: 'pay_event_1', action: 'delete', actorId: 'boss' })
+  assert.equal(paymentEventResult.ok, true)
+  assert.equal(paymentEventResult.snapshot.paymentEvents.some((item) => item.id === 'pay_event_1'), false)
+
+  const decisionResult = service.applyGovernanceAction({ objectType: 'ai_decision', objectId: 'decision_1', action: 'clear', actorId: 'boss' })
+  assert.equal(decisionResult.ok, true)
+  assert.deepEqual(decisionResult.row.sourceIds, [])
+
+  const knowledgeResult = service.applyGovernanceAction({ objectType: 'knowledge_source', objectId: 'ks_return_exchange', action: 'delete', actorId: 'boss' })
+  assert.equal(knowledgeResult.ok, true)
+  assert.equal(service.listKnowledgeSources().some((row) => row.id === 'ks_return_exchange'), false)
+
+  const paymentRequestResult = service.applyGovernanceAction({ objectType: 'payment_request', objectId: 'pay_1', action: 'clear', actorId: 'boss' })
+  assert.equal(paymentRequestResult.ok, true)
+  assert.equal(paymentRequestResult.row.providerRef, null)
+
+  assert.equal(service.snapshot().actionAudits.filter((audit) => /_(disable|clear|archive|delete)$/.test(audit.action)).length >= 9, true)
+})
+
+test('clear test data only touches draft-like local rows and records audit', () => {
+  const seed = createOmniSeed()
+  seed.messages.push({
+    id: 'draft_test_msg',
+    threadId: 'thread_1',
+    direction: 'outbound',
+    authorName: 'บอส',
+    text: 'draft',
+    createdAt: '2026-05-24T00:00:00.000Z',
+    sourceRef: 'manual_draft',
+  })
+  seed.orders.push({ id: 'order_draft_test', customerId: 'cust_1', platform: 'omni', status: 'draft', totalAmount: 10 })
+  seed.knowledgeSources.push({
+    id: 'ks_test_case',
+    title: 'Test case',
+    type: 'manual',
+    scope: 'all_pages',
+    status: 'ready',
+    content: 'test',
+    tags: ['test'],
+    updatedAt: '2026-05-24T00:00:00.000Z',
+    createdAt: '2026-05-24T00:00:00.000Z',
+  })
+  const service = createOmniService(seed)
+
+  const result = service.clearTestData({ actorId: 'boss' })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.snapshot.messages.some((message) => message.id === 'draft_test_msg'), false)
+  assert.equal(result.snapshot.orders.some((order) => order.id === 'order_draft_test'), false)
+  assert.equal(result.snapshot.knowledgeSources.some((source) => source.id === 'ks_test_case'), false)
+  assert.equal(result.audit.action, 'test_data_clear')
 })
 
 test('omni report date filters and hourly buckets use configured timezone', () => {
@@ -275,6 +380,36 @@ test('knowledge source routes persist searchable training sources', async () => 
     const deleted = await deleteResponse.json()
     assert.equal(deleteResponse.status, 200)
     assert.equal(deleted.deletedId, created.source.id)
+    assert.equal(deleted.snapshot.knowledgeSources.some((source) => source.id === created.source.id), false)
+  } finally {
+    server.close()
+  }
+})
+
+test('governance routes expose matrix and generic state transitions', async () => {
+  const app = express()
+  app.use(express.json())
+  const service = createOmniService()
+  mountRoutes(app, { broadcast() {} }, { snapshot() { return {} } }, { omni: service })
+
+  const server = app.listen(0)
+  try {
+    const baseUrl = `http://127.0.0.1:${server.address().port}`
+    const matrixResponse = await fetch(`${baseUrl}/api/omni/governance/matrix`)
+    const matrixBody = await matrixResponse.json()
+    assert.equal(matrixResponse.status, 200)
+    assert.equal(matrixBody.ok, true)
+    assert.equal(matrixBody.matrix.some((row) => row.objectType === 'page'), true)
+
+    const disableResponse = await fetch(`${baseUrl}/api/omni/governance/page/page_annalynn`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'disable', actorId: 'boss' }),
+    })
+    const disabled = await disableResponse.json()
+    assert.equal(disableResponse.status, 200)
+    assert.equal(disabled.row.status, 'paused')
+    assert.equal(disabled.snapshot.pages.find((page) => page.id === 'page_annalynn').autoReplyEnabled, false)
   } finally {
     server.close()
   }
@@ -971,6 +1106,52 @@ test('AI reply engine drafts guarded replies from thread memory', async () => {
   assert.equal(decision.sourceIds.some((id) => id.startsWith('ks_')), true)
   assert.equal(decision.sourceIds.every((id) => id.startsWith('ks_')), true)
   assert.deepEqual(decision.evidenceIds, ['msg_1'])
+})
+
+test('AI reply engine keeps page-scoped knowledge from crossing into VZ', async () => {
+  const seed = createOmniSeed()
+  seed.customers.push({ id: 'cust_vz_1', displayName: 'VZ Customer', matchConfidence: 1 })
+  seed.threads.push({
+    id: 'thread_vz_1',
+    pageId: 'page_fb_112154661515664',
+    platform: 'facebook',
+    customerId: 'cust_vz_1',
+    status: 'open',
+    intent: 'unknown',
+    risk: 'medium',
+    unreadCount: 1,
+    messageCount: 1,
+    updatedAt: '2026-06-08T08:00:00.000Z',
+  })
+  seed.messages.push({
+    id: 'msg_vz_1',
+    threadId: 'thread_vz_1',
+    direction: 'inbound',
+    authorName: 'VZ Customer',
+    text: 'แดง M มีไหมคะ',
+    createdAt: '2026-06-08T08:00:00.000Z',
+    providerMessageId: 'vz_mid_1',
+  })
+  seed.knowledgeSources.push({
+    id: 'ks_annalynn_stock_private',
+    title: 'Anna Lynn private stock rule',
+    type: 'manual',
+    scope: 'page_annalynn',
+    status: 'ready',
+    content: 'Anna Lynn stock answer only',
+    tags: ['stock', 'product'],
+  })
+
+  const service = createOmniService(seed)
+  const thread = service.getThread('thread_vz_1')
+  const ai = createAiReplyEngine({ provider: 'local_rules', model: 'test' })
+  const decision = await ai.draft({ thread, snapshot: service.snapshot(), policy: service.getPolicyForThread(thread) })
+
+  assert.equal(decision.ok, true)
+  assert.equal(decision.intent, 'stock')
+  assert.equal(decision.allowed, false)
+  assert.equal(decision.sourceIds.includes('ks_viriszamara_reply_style'), true)
+  assert.equal(decision.sourceIds.includes('ks_annalynn_stock_private'), false)
 })
 
 test('AI reply engine asks narrowly when customer came from live without product identity', async () => {

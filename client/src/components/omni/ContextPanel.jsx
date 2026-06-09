@@ -30,9 +30,9 @@ export default function ContextPanel({ snapshot, thread, onSnapshot }) {
         </div>
       </div>
       {tab === 'ai' ? <AiDecisionPanel snapshot={snapshot} thread={thread} onDrafted={onSnapshot} /> : null}
-      {tab === 'profiles' ? <ProfilePanel snapshot={snapshot} /> : null}
+      {tab === 'profiles' ? <ProfilePanel snapshot={snapshot} onSnapshot={onSnapshot} /> : null}
       {tab === 'orders' ? <OrderDesk snapshot={snapshot} thread={thread} onSnapshot={onSnapshot} /> : null}
-      {tab === 'payment' ? <PaymentDesk snapshot={snapshot} thread={thread} /> : null}
+      {tab === 'payment' ? <PaymentDesk snapshot={snapshot} thread={thread} onSnapshot={onSnapshot} /> : null}
     </aside>
   )
 }

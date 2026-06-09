@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { createAiDraft } from '../../lib/omniApi.js'
+import GovernanceActions from './GovernanceActions.jsx'
 
 const ACTION_LABELS = {
   draft_ready: 'AI ร่างคำตอบแล้ว',
@@ -84,6 +85,13 @@ export default function AiDecisionPanel({ snapshot, thread, onDrafted }) {
               ยังไม่มีข้อความร่างในรายการนี้ กด “ให้ AI ร่าง” เพื่อสร้าง draft ใหม่
             </div>
           )}
+          <GovernanceActions
+            className="mt-3"
+            objectType="ai_decision"
+            objectId={latestDecision.id}
+            objectLabel={latestDecision.id}
+            onChanged={(result) => onDrafted?.(result.snapshot)}
+          />
         </div>
       ) : (
         <div className="mt-3 rounded-[var(--radius-md)] border border-dashed border-[var(--color-rule)] bg-[var(--color-panel)] p-3 text-xs text-[var(--color-muted)]">
@@ -103,6 +111,13 @@ export default function AiDecisionPanel({ snapshot, thread, onDrafted }) {
                   {decision.intent ? ` · ${decision.intent}` : ''}
                   {decision.risk ? ` · ${decision.risk}` : ''}
                 </div>
+                <GovernanceActions
+                  className="mt-2"
+                  objectType="ai_decision"
+                  objectId={decision.id}
+                  objectLabel={decision.id}
+                  onChanged={(result) => onDrafted?.(result.snapshot)}
+                />
               </div>
             ))}
           </div>

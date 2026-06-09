@@ -23,6 +23,39 @@ export async function fetchOmniSnapshot() {
   return (await getJson('/api/omni/snapshot')).snapshot
 }
 
+export async function fetchOmniGovernanceMatrix() {
+  return (await getJson('/api/omni/governance/matrix')).matrix
+}
+
+export async function applyOmniGovernanceAction(objectType, objectId, action, options = {}) {
+  const response = await fetch(apiUrl(`/api/omni/governance/${encodeURIComponent(objectType)}/${encodeURIComponent(objectId)}`), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      action,
+      actorId: options.actorId || 'boss',
+      reason: options.reason || `ui:${objectType}:${action}`,
+    }),
+  })
+  const body = await response.json()
+  if (!response.ok || !body.ok) throw new Error(body.error || `governance_${action}_failed`)
+  return body
+}
+
+export async function clearOmniTestData(options = {}) {
+  const response = await fetch(apiUrl('/api/omni/governance/test-data'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      actorId: options.actorId || 'boss',
+      reason: options.reason || 'ui:test_data_clear',
+    }),
+  })
+  const body = await response.json()
+  if (!response.ok || !body.ok) throw new Error(body.error || 'test_data_clear_failed')
+  return body
+}
+
 export function subscribeOmniSnapshots(onSnapshot) {
   if (isSupabaseRealtimeEnabled()) {
     let closed = false

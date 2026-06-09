@@ -1,6 +1,7 @@
 import React from 'react'
+import GovernanceActions from './GovernanceActions.jsx'
 
-export default function PaymentDesk({ snapshot, thread }) {
+export default function PaymentDesk({ snapshot, thread, onSnapshot }) {
   const payments = thread ? (snapshot.paymentRequests || []).filter((payment) => payment.threadId === thread.id) : []
   return (
     <section className="p-4">
@@ -11,6 +12,7 @@ export default function PaymentDesk({ snapshot, thread }) {
           <div>{payment.provider} · {payment.status}</div>
           <div>{payment.currency} {payment.amount}</div>
           <div className="mt-1 text-[var(--color-warn)]">ต้องอนุมัติก่อนส่งลูกค้า</div>
+          <GovernanceActions className="mt-2" objectType="payment_request" objectId={payment.id} objectLabel={payment.id} onChanged={(result) => onSnapshot?.(result.snapshot)} />
         </div>
       ))}
     </section>

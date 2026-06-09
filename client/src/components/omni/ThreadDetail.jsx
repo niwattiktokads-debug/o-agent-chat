@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { customerForThread, formatShortTime, pageForThread, sourceLabel, statusLabel } from '../../lib/omniModel.js'
 import { saveManualReplyDraft } from '../../lib/omniApi.js'
+import GovernanceActions from './GovernanceActions.jsx'
 
 export default function ThreadDetail({ snapshot, thread, onSnapshot }) {
   const endRef = useRef(null)
@@ -33,10 +34,16 @@ export default function ThreadDetail({ snapshot, thread, onSnapshot }) {
             <span className="rounded-[var(--radius-pill)] bg-[var(--color-warn-soft)] px-2 py-1 font-semibold text-[var(--color-warn)]">Auto-send off</span>
           </div>
         </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <GovernanceActions objectType="thread" objectId={thread.id} objectLabel={customer?.displayName || thread.id} onChanged={(result) => onSnapshot?.(result.snapshot)} />
+          {customer?.id ? (
+            <GovernanceActions objectType="customer" objectId={customer.id} objectLabel={customer.displayName || customer.id} onChanged={(result) => onSnapshot?.(result.snapshot)} />
+          ) : null}
+        </div>
       </div>
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[var(--color-paper)] p-5">
         {messages.map((message) => (
-          <MessageBubble key={message.id} message={message} pageName={page?.name} customerName={customer?.displayName} />
+          <MessageBubble key={message.id} message={message} pageName={page?.name} customerName={customer?.displayName} onSnapshot={onSnapshot} />
         ))}
         <div ref={endRef} />
       </div>
@@ -45,7 +52,7 @@ export default function ThreadDetail({ snapshot, thread, onSnapshot }) {
   )
 }
 
-function MessageBubble({ message, pageName, customerName }) {
+function MessageBubble({ message, pageName, customerName, onSnapshot }) {
   const outbound = message.direction === 'outbound'
   const author = outbound ? (message.authorName || pageName || 'Page') : (message.authorName === 'Facebook Customer' ? customerName || message.authorName : message.authorName)
   return (
@@ -69,6 +76,13 @@ function MessageBubble({ message, pageName, customerName }) {
             ))}
           </div>
         ) : null}
+        <GovernanceActions
+          className="mt-2"
+          objectType="message"
+          objectId={message.id}
+          objectLabel={author || message.id}
+          onChanged={(result) => onSnapshot?.(result.snapshot)}
+        />
       </div>
     </article>
   )

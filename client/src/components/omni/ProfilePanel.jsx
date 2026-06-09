@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react'
+import GovernanceActions from './GovernanceActions.jsx'
 
 function pageLabel(pageId, pages = []) {
   return pages.find((page) => page.id === pageId)?.name || pageId
@@ -16,7 +17,7 @@ function customerMessageCount(customerId, threads = [], messages = []) {
   return messages.filter((message) => threadIds.has(message.threadId)).length
 }
 
-export default function ProfilePanel({ snapshot }) {
+export default function ProfilePanel({ snapshot, onSnapshot }) {
   const pages = snapshot?.pages || []
   const accounts = snapshot?.platformAccounts || []
   const threads = snapshot?.threads || []
@@ -76,7 +77,14 @@ export default function ProfilePanel({ snapshot }) {
               <div className="mt-2 space-y-1">
                 {page.accounts.length ? page.accounts.map((account) => (
                   <div key={account.id} className="rounded-[var(--radius-sm)] bg-[var(--color-panel-2)] px-2 py-1 text-[11px] text-[var(--color-muted)]">
-                    {account.platform} · {account.provider} · {account.status}{account.providerAccountId ? ` · ${account.providerAccountId}` : ''}
+                    <div>{account.platform} · {account.provider} · {account.status}{account.providerAccountId ? ` · ${account.providerAccountId}` : ''}</div>
+                    <GovernanceActions
+                      className="mt-2"
+                      objectType="channel"
+                      objectId={account.id}
+                      objectLabel={`${page.name} ${account.platform}`}
+                      onChanged={(result) => onSnapshot?.(result.snapshot)}
+                    />
                   </div>
                 )) : (
                   <div className="rounded-[var(--radius-sm)] bg-[var(--color-panel-2)] px-2 py-1 text-[11px] text-[var(--color-muted)]">ยังไม่มี account binding</div>
@@ -109,6 +117,13 @@ export default function ProfilePanel({ snapshot }) {
               <div className="mt-2 text-[11px] text-[var(--color-muted)]">
                 {customer.pageIds.map((id) => pageLabel(id, pages)).join(', ') || 'no page'}
               </div>
+              <GovernanceActions
+                className="mt-2"
+                objectType="customer"
+                objectId={customer.id}
+                objectLabel={customer.displayName || customer.id}
+                onChanged={(result) => onSnapshot?.(result.snapshot)}
+              />
             </article>
           ))}
         </div>

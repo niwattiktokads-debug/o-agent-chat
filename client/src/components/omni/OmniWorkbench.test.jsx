@@ -24,6 +24,20 @@ vi.mock('../../lib/omniApi.js', () => ({
     connectorHealth: [{ id: 'health_meta', provider: 'meta', status: 'healthy' }],
   }),
   subscribeOmniSnapshots: () => () => {},
+  applyOmniGovernanceAction: async () => ({
+    ok: true,
+    snapshot: {
+      pages: [{ id: 'page_mankynd', name: 'MAN KYND', status: 'active' }],
+      platformAccounts: [{ id: 'acct_fb_mankynd', pageId: 'page_mankynd', platform: 'facebook' }],
+      threads: [{ id: 'thread_1', pageId: 'page_mankynd', platform: 'facebook', status: 'draft_ready', intent: 'stock', risk: 'low' }],
+      messages: [{ id: 'msg_1', threadId: 'thread_1', direction: 'inbound', authorName: 'ลูกค้า A', text: 'มีไซซ์ M สีดำไหม' }],
+      customers: [{ id: 'cust_1', displayName: 'ลูกค้า A' }],
+      orders: [],
+      aiDecisions: [],
+      paymentRequests: [],
+      connectorHealth: [],
+    },
+  }),
   fetchConnectorHealth: async () => [{ provider: 'meta', status: 'healthy' }],
   fetchConnections: async () => ({
     ok: true,

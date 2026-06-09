@@ -6,6 +6,7 @@ import {
   lookupThaiAddressByPostcode,
   searchZortProducts,
 } from '../../lib/omniApi.js'
+import GovernanceActions from './GovernanceActions.jsx'
 
 const SHIPPING_METHODS = [
   { value: 'ไปรษณีย์ไทย', label: 'ไปรษณีย์ไทย' },
@@ -49,6 +50,7 @@ export default function OrderDesk({ snapshot, thread, onSnapshot }) {
           <div>{order.platform} · {order.status}</div>
           <div>Total: {order.total || order.totalAmount}</div>
           {order.shippingAddress?.formattedAddress ? <div className="mt-1 line-clamp-2 text-[var(--color-muted)]">{order.shippingAddress.formattedAddress}</div> : null}
+          <GovernanceActions className="mt-2" objectType="order" objectId={order.id} objectLabel={order.id} onChanged={(result) => onSnapshot?.(result.snapshot)} />
         </div>
       ))}
       <h3 className="mt-4 text-xs font-semibold text-[var(--color-muted)]">TikTok ล่าสุด</h3>
@@ -57,6 +59,7 @@ export default function OrderDesk({ snapshot, thread, onSnapshot }) {
         <div key={order.id} className="mt-3 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] p-3 text-xs text-[var(--color-ink-2)]">
           <div>{order.status} · {order.currency || 'THB'} {order.total ?? order.totalAmount}</div>
           <div className="mt-1 truncate text-[var(--color-muted)]">{order.providerOrderId || order.id}</div>
+          <GovernanceActions className="mt-2" objectType="order" objectId={order.id} objectLabel={order.providerOrderId || order.id} onChanged={(result) => onSnapshot?.(result.snapshot)} />
         </div>
       ))}
     </section>

@@ -389,8 +389,17 @@ function writeCustomConnections(connections) {
   writeFileSync(CUSTOM_CONNECTIONS_PATH, `${JSON.stringify({ connections }, null, 2)}\n`)
 }
 
+function connectionGovernanceState(connection = {}) {
+  if (connection.governanceState) return connection.governanceState
+  if (connection.deletedAt) return 'deleted'
+  if (connection.archivedAt) return 'archived'
+  if (connection.disabledAt) return 'disabled'
+  if (connection.clearedAt) return 'cleared'
+  return 'active'
+}
+
 function allConnections() {
-  return [...CONNECTIONS, ...readCustomConnections()]
+  return [...CONNECTIONS, ...readCustomConnections()].filter((connection) => connectionGovernanceState(connection) !== 'deleted')
 }
 
 function normalizeCustomConnection(input = {}) {
@@ -491,6 +500,16 @@ function fieldStatus(field, credentials) {
 function summarizeConnection(connection, credentials, cSnapStatus) {
   const fields = connection.fields.map((field) => fieldStatus(field, credentials))
   const missingRequired = fields.filter((field) => field.required && field.status !== 'configured')
+  const governanceState = connectionGovernanceState(connection)
+  const status = governanceState === 'disabled'
+    ? 'disabled'
+    : governanceState === 'archived'
+      ? 'archived'
+      : governanceState === 'cleared'
+        ? 'cleared'
+        : missingRequired.length
+          ? 'needs_key'
+          : 'ready_to_verify'
   return {
     id: connection.id,
     title: connection.title,
@@ -504,9 +523,10 @@ function summarizeConnection(connection, credentials, cSnapStatus) {
     productionNotes: connection.productionNotes,
     custom: Boolean(connection.custom),
     canDelete: Boolean(connection.canDelete),
+    governanceState,
     fields,
     cSnap: cSnapStatus,
-    status: missingRequired.length ? 'needs_key' : 'ready_to_verify',
+    status,
     missingRequired: missingRequired.map((field) => field.id),
   }
 }
@@ -826,14 +846,71 @@ async function addConnection(input = {}) {
 }
 
 async function removeConnection(connectionId) {
+  return governConnection(connectionId, { action: 'delete', actorId: 'boss' })
+}
+
+async function governConnection(connectionId, { action, actorId = 'boss', reason = '' } = {}) {
+  if (!['archive', 'disable', 'clear', 'delete'].includes(action)) throw new Error('governance_action_invalid')
   const customConnections = readCustomConnections()
-  const connection = customConnections.find((item) => item.id === connectionId)
-  if (!connection) {
+  const rowIndex = customConnections.findIndex((item) => item.id === connectionId)
+  if (rowIndex < 0) {
     if (CONNECTIONS.some((item) => item.id === connectionId)) throw new Error('system_connection_locked')
     throw new Error('connection_not_found')
   }
-  writeCustomConnections(customConnections.filter((item) => item.id !== connectionId))
-  return { ok: true, removedId: connectionId }
+  const connection = customConnections[rowIndex]
+  const before = structuredClone(connection)
+  const now = new Date().toISOString()
+  const nextState = action === 'delete'
+    ? 'deleted'
+    : action === 'archive'
+      ? 'archived'
+      : action === 'disable'
+        ? 'disabled'
+        : 'cleared'
+  const clearedPatch = action === 'clear'
+    ? {
+        description: 'Cleared in branch/test governance flow.',
+        helper: 'manual setup',
+        docs: null,
+        endpoints: [],
+        fields: [],
+        productionNotes: ['Cleared in branch/test governance flow.'],
+      }
+    : {}
+  const after = {
+    ...connection,
+    ...clearedPatch,
+    governanceState: nextState,
+    governanceReason: reason || null,
+    governanceUpdatedAt: now,
+    governanceUpdatedBy: actorId,
+  }
+  if (action === 'archive') {
+    after.archivedAt = now
+    after.archivedBy = actorId
+  }
+  if (action === 'disable') {
+    after.disabledAt = now
+    after.disabledBy = actorId
+  }
+  if (action === 'delete') {
+    after.deletedAt = now
+    after.deletedBy = actorId
+  }
+  if (action === 'clear') {
+    after.clearedAt = now
+    after.clearedBy = actorId
+  }
+  const nextConnections = customConnections.slice()
+  nextConnections[rowIndex] = after
+  writeCustomConnections(nextConnections)
+  return {
+    ok: true,
+    action,
+    removedId: action === 'delete' ? connectionId : null,
+    connection: after,
+    before,
+  }
 }
 
 export function createConnectionRuntime() {
@@ -848,6 +925,7 @@ export function createConnectionRuntime() {
     },
     add: addConnection,
     remove: removeConnection,
+    govern: governConnection,
     verify: verifyConnection,
     saveSecrets: saveConnectionSecrets,
     async listConversations(connectionId, options) {

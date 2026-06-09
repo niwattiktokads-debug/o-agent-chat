@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { setPageAutoReply } from '../../lib/omniApi.js'
+import GovernanceActions from './GovernanceActions.jsx'
 
 export default function PageManagement({ pages, onSnapshot }) {
   const [busyPageId, setBusyPageId] = useState(null)
@@ -34,6 +35,13 @@ export default function PageManagement({ pages, onSnapshot }) {
                   {enabled ? 'auto-reply เปิดอยู่' : 'auto-reply ปิดอยู่'}
                 </div>
               </div>
+              <GovernanceActions
+                objectType="page"
+                objectId={page.id}
+                objectLabel={page.name}
+                onChanged={(result) => onSnapshot?.(result.snapshot)}
+                onError={(err) => setError(err.message || 'page_governance_failed')}
+              />
               <button
                 type="button"
                 role="switch"
