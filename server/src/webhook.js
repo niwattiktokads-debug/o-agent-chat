@@ -815,6 +815,33 @@ async function runMetaAutoReplies({
   }
 }
 
+function normalizeZaloEvent(body) {
+  const eventName = body?.event_name || body?.event || body?.type || 'zalo_event'
+  const userId =
+    body?.sender?.id ||
+    body?.user_id ||
+    body?.from_id ||
+    body?.message?.from_id ||
+    'unknown_user'
+  const text =
+    body?.message?.text ||
+    body?.text ||
+    body?.message ||
+    `[${eventName}]`
+  const eventId =
+    body?.event_id ||
+    body?.message?.msg_id ||
+    body?.message_id ||
+    `${eventName}:${userId}:${body?.timestamp || Date.now()}`
+
+  return {
+    eventId,
+    eventName,
+    userId,
+    text: typeof text === 'string' ? text : JSON.stringify(text),
+  }
+}
+
 export function mountWebhook(app, hub, room, options = {}) {
   const omni = options.omni || null
   const easyStore = options.easyStore || (canUseEasyStoreLiveLookup() ? createEasyStoreRuntime() : null)
@@ -989,5 +1016,32 @@ export function mountWebhook(app, hub, room, options = {}) {
     if (!result.ok) return res.status(404).json(result)
     hub.broadcast('omni', result.snapshot)
     res.json(result)
+  })
+
+  app.get('/webhook/zalo/oa', (_req, res) => {
+    res.json({ ok: true, runtime: 'zalo_oa_webhook', mode: 'ack_only' })
+  })
+
+  app.post('/webhook/zalo/oa', (req, res) => {
+    const event = normalizeZaloEvent(req.body || {})
+    if (seen.has(event.eventId)) return res.json({ ok: true, dedup: true })
+    seen.add(event.eventId)
+
+    const msg = room.addMessage({
+      role: 'Cowork',
+      text: `[Zalo OA] ${event.eventName} from ${event.userId}: ${event.text}`,
+    })
+    hub.broadcast('message', room.snapshot())
+    res.json({ ok: true, mode: 'ack_only', message: msg })
+  })
+
+  app.get('/oauth/zalo/callback', (req, res) => {
+    res.json({
+      ok: true,
+      runtime: 'zalo_oa_oauth_callback',
+      code_present: Boolean(req.query?.code),
+      state_present: Boolean(req.query?.state),
+      next: 'Store Zalo OA credentials in the secret manager, then run zalo-oa-api verify.',
+    })
   })
 }
