@@ -1024,7 +1024,7 @@ export function mountWebhook(app, hub, room, options = {}) {
 
   app.post('/webhook/zalo/oa', (req, res) => {
     const event = normalizeZaloEvent(req.body || {})
-    if (seen.has(event.eventId)) return res.json({ ok: true, dedup: true })
+    if (seen.has(event.eventId)) return res.status(200).type('text/plain').send('OK')
     seen.add(event.eventId)
 
     const msg = room.addMessage({
@@ -1032,7 +1032,7 @@ export function mountWebhook(app, hub, room, options = {}) {
       text: `[Zalo OA] ${event.eventName} from ${event.userId}: ${event.text}`,
     })
     hub.broadcast('message', room.snapshot())
-    res.json({ ok: true, mode: 'ack_only', message: msg })
+    res.status(200).type('text/plain').send('OK')
   })
 
   app.get('/oauth/zalo/callback', (req, res) => {
