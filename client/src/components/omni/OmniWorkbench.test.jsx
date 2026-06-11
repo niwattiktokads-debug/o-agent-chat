@@ -13,12 +13,14 @@ vi.mock('../../lib/omniApi.js', () => ({
     pages: [
       { id: 'page_mankynd', name: 'MAN KYND', status: 'active', workspaceId: 'ws_oagent' },
       { id: 'page_annalynn_tiktok', name: 'AnnaLynn', status: 'active' },
-      { id: 'page_fb_112154661515664', name: 'Viris Zamara', status: 'active' },
+      { id: 'page_fb_112154661515664', name: 'VZ by viris zamara. (ชมพู)', shortName: 'ชมพู', status: 'active', autoReplyEnabled: false },
+      { id: 'page_vz_viris_zamara', name: 'VZ by viris zamara. (น้ำตาล)', shortName: 'น้ำตาล', status: 'active', autoReplyEnabled: false },
     ],
     platformAccounts: [
       { id: 'acct_fb_mankynd', pageId: 'page_mankynd', platform: 'facebook' },
       { id: 'acct_tt_shop', pageId: 'page_annalynn_tiktok', platform: 'tiktok' },
-      { id: 'acct_fb_vz', pageId: 'page_fb_112154661515664', platform: 'facebook' },
+      { id: 'acct_fb_vz_pink', pageId: 'page_fb_112154661515664', platform: 'facebook', providerAccountId: '112154661515664' },
+      { id: 'acct_fb_vz_brown', pageId: 'page_vz_viris_zamara', platform: 'facebook', providerAccountId: '112979362131792' },
     ],
     threads: [{ id: 'thread_1', customerId: 'cust_1', pageId: 'page_mankynd', platform: 'facebook', status: 'draft_ready', intent: 'stock', risk: 'low' }],
     messages: [{ id: 'msg_1', threadId: 'thread_1', direction: 'inbound', authorName: 'ลูกค้า A', text: 'มีไซซ์ M สีดำไหม' }],
@@ -477,7 +479,8 @@ describe('OmniWorkbench', () => {
     expect((await screen.findAllByText('MAN KYND')).length).toBeGreaterThan(0)
     expect((await screen.findAllByText('AnnaLynn')).length).toBeGreaterThan(0)
     expect(await screen.findByText('tiktok')).toBeInTheDocument()
-    expect((await screen.findAllByText('Viris Zamara')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('ชมพู')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('น้ำตาล')).length).toBeGreaterThan(0)
     expect(await screen.findByRole('button', { name: 'AI ร่างให้' })).toBeInTheDocument()
     expect(await screen.findByRole('button', { name: 'แนบภาพ' })).toBeInTheDocument()
     expect(screen.queryByText('แนบภาพ')).not.toBeInTheDocument()

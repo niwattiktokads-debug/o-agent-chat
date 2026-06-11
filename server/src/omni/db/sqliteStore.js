@@ -45,7 +45,8 @@ const SEED_BACKED_COLLECTIONS = [
 ]
 
 const DEPRECATED_SEED_IDS = {
-  pages: ['page_shop_4', 'page_shop_5'],
+  pages: ['page_shop_4', 'page_shop_5', 'page_vz_dot'],
+  platformAccounts: ['acct_fb_vz_dot'],
 }
 
 function clone(value) {

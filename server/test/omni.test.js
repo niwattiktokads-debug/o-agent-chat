@@ -28,7 +28,7 @@ import { createZortCommerceRuntime } from '../src/omni/zortCommerceRuntime.js'
 
 test('omni seed starts with configured production page data', () => {
   const seed = createOmniSeed()
-  assert.equal(seed.pages.length, 10)
+  assert.equal(seed.pages.length, 9)
   assert.equal(seed.pages.find((page) => page.id === 'page_annalynn').name, 'Anna Lynn')
   assert.equal(seed.pages.find((page) => page.id === 'page_ig_annalynn').name, 'Anna Lynn IG')
   assert.equal(seed.pages.find((page) => page.id === 'page_annalynn_tiktok').name, 'AnnaLynn')
@@ -39,16 +39,21 @@ test('omni seed starts with configured production page data', () => {
   assert.equal(seed.platformAccounts.find((account) => account.id === 'acct_tt_annalynn_dm').provider, 'tiktok_business_messaging')
   assert.equal(seed.platformAccounts.find((account) => account.id === 'acct_es_annalynna').provider, 'easystore')
   assert.ok(seed.pages.find((page) => page.id === 'page_fb_112154661515664'))
-  assert.equal(seed.pages.find((page) => page.id === 'page_fb_112154661515664').name, 'Viris Zamara')
+  assert.equal(seed.pages.find((page) => page.id === 'page_fb_112154661515664').name, 'VZ by viris zamara. (ชมพู)')
+  assert.equal(seed.pages.find((page) => page.id === 'page_fb_112154661515664').shortName, 'ชมพู')
   assert.equal(seed.pages.find((page) => page.id === 'page_fb_112154661515664').policySetId, 'policy_viriszamara')
   assert.equal(seed.pages.find((page) => page.id === 'page_fb_112154661515664').agentProfileId, 'agent_viriszamara')
   assert.equal(seed.pages.find((page) => page.id === 'page_fb_112154661515664').autoReplyDefaultEnabled, false)
+  assert.equal(seed.pages.find((page) => page.id === 'page_vz_viris_zamara').name, 'VZ by viris zamara. (น้ำตาล)')
+  assert.equal(seed.pages.find((page) => page.id === 'page_vz_viris_zamara').shortName, 'น้ำตาล')
   assert.equal(seed.pages.find((page) => page.id === 'page_vz_viris_zamara').policySetId, 'policy_viriszamara')
   assert.equal(seed.pages.find((page) => page.id === 'page_vz_viris_zamara').agentProfileId, 'agent_viriszamara')
   assert.equal(seed.pages.find((page) => page.id === 'page_vz_viris_zamara').autoReplyDefaultEnabled, false)
+  assert.equal(seed.platformAccounts.find((account) => account.id === 'acct_fb_112154661515664').providerAccountId, '112154661515664')
   assert.equal(seed.platformAccounts.find((account) => account.id === 'acct_fb_vz_viris_zamara').pageId, 'page_vz_viris_zamara')
-  assert.ok(seed.pages.find((page) => page.id === 'page_vz_dot'))
-  assert.equal(seed.pages.find((page) => page.id === 'page_vz_dot').name, 'VZ.')
+  assert.equal(seed.platformAccounts.find((account) => account.id === 'acct_fb_vz_viris_zamara').providerAccountId, '112979362131792')
+  assert.equal(seed.pages.some((page) => page.id === 'page_vz_dot'), false)
+  assert.equal(seed.platformAccounts.some((account) => account.id === 'acct_fb_vz_dot'), false)
   assert.ok(seed.pages.find((page) => page.id === 'page_tangtob'))
   assert.equal(seed.platformAccounts.find((account) => account.id === 'acct_fb_tangtob').pageId, 'page_tangtob')
   assert.equal(seed.pages.some((page) => page.id === 'page_shop_4'), false)
@@ -2243,6 +2248,8 @@ test('page registry merges file profiles with fallback profiles', () => {
   assert.equal(registry.ig_man_kynd.pageId, '17841402222436331')
   assert.equal(registry.ig_page_des.pageId, 'NOT_LINKED')
   assert.equal(registry.ig_fb_112154661515664.pageId, '17841462136286560')
+  assert.equal(registry.vz_viris_zamara.pageId, '112979362131792')
+  assert.equal(registry.vz_dot, undefined)
   assert.equal(registry.fb_extra_page.omniPageId, 'page_extra')
 })
 
@@ -2542,6 +2549,25 @@ test('normalizes Meta webhook messages into Omni memory rows', () => {
   assert.equal(normalized.threads[0].originContext.ad.title, 'เดรสดำโปรเปิดตัว')
   assert.equal(normalized.threads[0].originContext.post.id, '112154661515664_999')
   assert.match(normalized.threads[0].originContext.replyFrame, /แอด\/โพสต์/)
+})
+
+test('ignores retired VZ dot webhook page id', () => {
+  const normalized = normalizeMetaWebhookPayload({
+    object: 'page',
+    entry: [{
+      id: '113897230373719',
+      messaging: [{
+        sender: { id: 'customer_vz_dot' },
+        recipient: { id: '113897230373719' },
+        timestamp: 1779470000000,
+        message: { mid: 'mid_vz_dot', text: 'test retired page' },
+      }],
+    }],
+  })
+
+  assert.deepEqual(normalized.customers, [])
+  assert.deepEqual(normalized.threads, [])
+  assert.deepEqual(normalized.messages, [])
 })
 
 test('normalizes Meta live referral context into Omni origin rows', () => {
@@ -4466,6 +4492,10 @@ test('SQLite Omni store removes deprecated seed pages and updates seed names', (
   legacySeed.pages.push(
     { id: 'page_shop_4', name: 'Seed Page 4', status: 'active', brandGroupId: 'brand_shared', policySetId: 'policy_default', agentProfileId: 'agent_default' },
     { id: 'page_shop_5', name: 'Seed Page 5', status: 'active', brandGroupId: 'brand_shared', policySetId: 'policy_default', agentProfileId: 'agent_default' },
+    { id: 'page_vz_dot', name: 'VZ.', status: 'active', brandGroupId: 'brand_shared', policySetId: 'policy_default', agentProfileId: 'agent_default' },
+  )
+  legacySeed.platformAccounts.push(
+    { id: 'acct_fb_vz_dot', pageId: 'page_vz_dot', platform: 'facebook', provider: 'meta', providerAccountId: '113897230373719', status: 'healthy' },
   )
   legacySeed.pages = legacySeed.pages.map((page) => (
     page.id === 'page_fb_112154661515664' ? { ...page, name: 'Facebook Page 112154661515664' } : page
@@ -4481,12 +4511,15 @@ test('SQLite Omni store removes deprecated seed pages and updates seed names', (
 
   assert.equal(pages.some((page) => page.id === 'page_shop_4'), false)
   assert.equal(pages.some((page) => page.id === 'page_shop_5'), false)
-  assert.equal(pages.find((page) => page.id === 'page_fb_112154661515664').name, 'Viris Zamara')
+  assert.equal(pages.some((page) => page.id === 'page_vz_dot'), false)
+  assert.equal(migratedStore.snapshot().platformAccounts.some((account) => account.id === 'acct_fb_vz_dot'), false)
+  assert.equal(pages.find((page) => page.id === 'page_fb_112154661515664').name, 'VZ by viris zamara. (ชมพู)')
   assert.equal(pages.find((page) => page.id === 'page_fb_112154661515664').policySetId, 'policy_viriszamara')
   assert.equal(pages.find((page) => page.id === 'page_fb_112154661515664').agentProfileId, 'agent_viriszamara')
   assert.equal(pages.find((page) => page.id === 'page_vz_viris_zamara').policySetId, 'policy_viriszamara')
   assert.equal(pages.find((page) => page.id === 'page_vz_viris_zamara').agentProfileId, 'agent_viriszamara')
   assert.equal(pages.find((page) => page.id === 'page_vz_viris_zamara').autoReplyEnabled, false)
+  assert.equal(pages.find((page) => page.id === 'page_fb_112154661515664').autoReplyEnabled, false)
   migratedStore.close()
 })
 
