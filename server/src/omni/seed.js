@@ -10,7 +10,8 @@ export function createOmniSeed() {
     { id: 'page_easystore_annalynna', name: 'AnnaLynn EasyStore', status: 'active', brandGroupId: 'brand_fashion', policySetId: 'policy_annalynn', agentProfileId: 'agent_annalynn' },
     { id: 'page_des', name: 'เพจเดส', status: 'active', brandGroupId: 'brand_oagent', policySetId: 'policy_page_des', agentProfileId: 'agent_page_des' },
     { id: 'page_tangtob', name: 'ละครแนวตั้งตบ', status: 'active', brandGroupId: 'brand_entertainment', policySetId: 'policy_default', agentProfileId: 'agent_default' },
-    { id: 'page_fb_112154661515664', name: 'Viris Zamara', shortName: 'VZ', status: 'active', brandGroupId: 'brand_viriszamara', policySetId: 'policy_viriszamara', agentProfileId: 'agent_viriszamara' },
+    { id: 'page_fb_112154661515664', name: 'Viris Zamara', shortName: 'VZ', status: 'active', brandGroupId: 'brand_viriszamara', policySetId: 'policy_viriszamara', agentProfileId: 'agent_viriszamara', autoReplyDefaultEnabled: false },
+    { id: 'page_vz_viris_zamara', name: 'VZ by viris zamara.', shortName: 'VZ', status: 'active', brandGroupId: 'brand_viriszamara', policySetId: 'policy_viriszamara', agentProfileId: 'agent_viriszamara', autoReplyDefaultEnabled: false },
     { id: 'page_vz_dot', name: 'VZ.', shortName: 'VZ.', status: 'active', brandGroupId: 'brand_shared', policySetId: 'policy_default', agentProfileId: 'agent_default' },
   ]
 
@@ -26,6 +27,7 @@ export function createOmniSeed() {
       { id: 'acct_fb_page_des', pageId: 'page_des', platform: 'facebook', provider: 'meta', providerAccountId: '1137894522741329', status: 'healthy' },
       { id: 'acct_fb_tangtob', pageId: 'page_tangtob', platform: 'facebook', provider: 'meta', providerAccountId: '106740601303449', status: 'healthy' },
       { id: 'acct_fb_112154661515664', pageId: 'page_fb_112154661515664', platform: 'facebook', provider: 'meta', providerAccountId: '112154661515664', status: 'pending_token' },
+      { id: 'acct_fb_vz_viris_zamara', pageId: 'page_vz_viris_zamara', platform: 'facebook', provider: 'meta', providerAccountId: '112979362131792', status: 'healthy' },
       { id: 'acct_fb_vz_dot', pageId: 'page_vz_dot', platform: 'facebook', provider: 'meta', providerAccountId: '113897230373719', status: 'healthy' },
       { id: 'acct_tt_shop', pageId: 'page_annalynn_tiktok', platform: 'tiktok', provider: 'tiktok_shop', providerAccountId: '7494912558026296148', status: 'healthy' },
       { id: 'acct_tt_annalynn_dm', pageId: 'page_annalynn_tiktok', platform: 'tiktok', provider: 'tiktok_business_messaging', providerAccountId: 'AnnaLynn', status: 'pending_oauth_approval' },
@@ -33,7 +35,7 @@ export function createOmniSeed() {
     ],
     pageRuntimeSettings: pages.map((page) => ({
       pageId: page.id,
-      autoReplyEnabled: true,
+      autoReplyEnabled: page.autoReplyDefaultEnabled !== false,
       updatedAt: '2026-05-24T00:00:00.000Z',
       updatedBy: 'seed',
     })),
@@ -217,6 +219,24 @@ export function createOmniSeed() {
         title: 'VZ by viris zamara reply style',
         type: 'manual',
         scope: 'page_fb_112154661515664',
+        status: 'ready',
+        content: [
+          'VZ by viris zamara ใช้เสียงแอดมินร้านเสื้อผ้าผู้หญิง ตอบไทยสั้น ตรงประเด็น สุภาพ ลงท้ายค่ะ/นะคะ/ค่า',
+          'ตอบเฉพาะเรื่อง stock สี ไซซ์ ราคา ค่าส่ง สลิป เลขพัสดุ ช่องทาง Shopee/TikTok และสถานะออเดอร์เมื่อมีข้อมูลอ้างอิงจริง',
+          'ห้ามเดา stock ราคา order id tracking code สถานะจ่ายเงิน หรือวันส่งของ ถ้าไม่แน่ใจให้ตอบว่า เดี๋ยวแอดมินเช็กให้ก่อนนะคะ',
+          'Customer-facing send ต้องรอ Boss/admin approval ก่อนเสมอ ระบบนี้ตั้งเป็น draft/approval-first สำหรับเพจ VZ',
+        ].join('\n'),
+        tags: ['viriszamara', 'vz', 'reply-style', 'stock', 'price', 'payment', 'shipping', 'faq'],
+        sourceRef: '/Users/babycuca/Documents/O-Agent workspace/services/2026-05-24-vz-reply-ai/style-card.md',
+        updatedAt: '2026-06-08T00:00:00.000+07:00',
+        createdAt: '2026-06-08T00:00:00.000+07:00',
+      },
+      {
+        id: 'ks_vz_viriszamara_reply_style',
+        workspaceId: DEFAULT_WORKSPACE_ID,
+        title: 'VZ by viris zamara reply style',
+        type: 'manual',
+        scope: 'page_vz_viris_zamara',
         status: 'ready',
         content: [
           'VZ by viris zamara ใช้เสียงแอดมินร้านเสื้อผ้าผู้หญิง ตอบไทยสั้น ตรงประเด็น สุภาพ ลงท้ายค่ะ/นะคะ/ค่า',

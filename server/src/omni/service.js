@@ -651,9 +651,10 @@ function normalizeFacebookWebhookSync(snapshot, normalized) {
 
 function pageRuntimeSettingFor(snapshot, pageId) {
   const setting = (snapshot.pageRuntimeSettings || []).find((item) => item.pageId === pageId)
+  const page = (snapshot.pages || []).find((item) => item.id === pageId)
   return {
     pageId,
-    autoReplyEnabled: setting?.autoReplyEnabled !== false,
+    autoReplyEnabled: setting ? setting.autoReplyEnabled !== false : page?.autoReplyDefaultEnabled !== false,
     updatedAt: setting?.updatedAt || null,
     updatedBy: setting?.updatedBy || null,
   }

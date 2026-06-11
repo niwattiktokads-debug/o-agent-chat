@@ -14,6 +14,7 @@ const PAGE_AGENT_FALLBACKS = {
   page_mankynd: 'แอดมิน MAN KYND',
   page_des: 'แอดมินเพจเดส',
   page_fb_112154661515664: 'แอดมิน VZ',
+  page_vz_viris_zamara: 'แอดมิน VZ',
 }
 const PRODUCT_LOOKUP_GENERIC_TERMS = new Set([
   'มี', 'ไหม', 'มั้ย', 'ของ', 'สินค้า', 'ราคา', 'เท่าไหร่', 'บาท', 'พร้อมส่ง', 'ส่ง', 'รูป', 'ภาพ', 'ขอดู',

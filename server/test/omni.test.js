@@ -28,7 +28,7 @@ import { createZortCommerceRuntime } from '../src/omni/zortCommerceRuntime.js'
 
 test('omni seed starts with configured production page data', () => {
   const seed = createOmniSeed()
-  assert.equal(seed.pages.length, 9)
+  assert.equal(seed.pages.length, 10)
   assert.equal(seed.pages.find((page) => page.id === 'page_annalynn').name, 'Anna Lynn')
   assert.equal(seed.pages.find((page) => page.id === 'page_ig_annalynn').name, 'Anna Lynn IG')
   assert.equal(seed.pages.find((page) => page.id === 'page_annalynn_tiktok').name, 'AnnaLynn')
@@ -42,6 +42,11 @@ test('omni seed starts with configured production page data', () => {
   assert.equal(seed.pages.find((page) => page.id === 'page_fb_112154661515664').name, 'Viris Zamara')
   assert.equal(seed.pages.find((page) => page.id === 'page_fb_112154661515664').policySetId, 'policy_viriszamara')
   assert.equal(seed.pages.find((page) => page.id === 'page_fb_112154661515664').agentProfileId, 'agent_viriszamara')
+  assert.equal(seed.pages.find((page) => page.id === 'page_fb_112154661515664').autoReplyDefaultEnabled, false)
+  assert.equal(seed.pages.find((page) => page.id === 'page_vz_viris_zamara').policySetId, 'policy_viriszamara')
+  assert.equal(seed.pages.find((page) => page.id === 'page_vz_viris_zamara').agentProfileId, 'agent_viriszamara')
+  assert.equal(seed.pages.find((page) => page.id === 'page_vz_viris_zamara').autoReplyDefaultEnabled, false)
+  assert.equal(seed.platformAccounts.find((account) => account.id === 'acct_fb_vz_viris_zamara').pageId, 'page_vz_viris_zamara')
   assert.ok(seed.pages.find((page) => page.id === 'page_vz_dot'))
   assert.equal(seed.pages.find((page) => page.id === 'page_vz_dot').name, 'VZ.')
   assert.ok(seed.pages.find((page) => page.id === 'page_tangtob'))
@@ -51,8 +56,9 @@ test('omni seed starts with configured production page data', () => {
   assert.equal(seed.pages.every((page) => page.status === 'active'), true)
   assert.equal(seed.pages.every((page) => page.policySetId), true)
   assert.equal(seed.pages.every((page) => page.agentProfileId), true)
-  assert.equal(seed.knowledgeSources.length, 6)
+  assert.equal(seed.knowledgeSources.length, 7)
   assert.equal(seed.knowledgeSources.find((source) => source.id === 'ks_viriszamara_reply_style').scope, 'page_fb_112154661515664')
+  assert.equal(seed.knowledgeSources.find((source) => source.id === 'ks_vz_viriszamara_reply_style').scope, 'page_vz_viris_zamara')
   assert.equal(seed.knowledgeSources.every((source) => source.content), true)
 })
 
@@ -1017,7 +1023,7 @@ test('omni routes are mounted under api', async () => {
 
     assert.equal(response.status, 200)
     assert.equal(body.ok, true)
-    assert.equal(body.pages.length, 9)
+    assert.equal(body.pages.length, createOmniSeed().pages.length)
   } finally {
     server.close()
   }
@@ -4471,11 +4477,16 @@ test('SQLite Omni store removes deprecated seed pages and updates seed names', (
   legacyStore.close()
 
   const migratedStore = createSqliteOmniStore({ dbPath, seed: createOmniSeed() })
-  const pages = migratedStore.snapshot().pages
+  const pages = createOmniService({ store: migratedStore }).snapshot().pages
 
   assert.equal(pages.some((page) => page.id === 'page_shop_4'), false)
   assert.equal(pages.some((page) => page.id === 'page_shop_5'), false)
   assert.equal(pages.find((page) => page.id === 'page_fb_112154661515664').name, 'Viris Zamara')
+  assert.equal(pages.find((page) => page.id === 'page_fb_112154661515664').policySetId, 'policy_viriszamara')
+  assert.equal(pages.find((page) => page.id === 'page_fb_112154661515664').agentProfileId, 'agent_viriszamara')
+  assert.equal(pages.find((page) => page.id === 'page_vz_viris_zamara').policySetId, 'policy_viriszamara')
+  assert.equal(pages.find((page) => page.id === 'page_vz_viris_zamara').agentProfileId, 'agent_viriszamara')
+  assert.equal(pages.find((page) => page.id === 'page_vz_viris_zamara').autoReplyEnabled, false)
   migratedStore.close()
 })
 
