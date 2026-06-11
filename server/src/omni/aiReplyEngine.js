@@ -13,6 +13,7 @@ const PAGE_AGENT_FALLBACKS = {
   page_annalynn_tiktok: 'แอดมิน Anna Lynn',
   page_mankynd: 'แอดมิน MAN KYND',
   page_des: 'แอดมินเพจเดส',
+  page_fb_112154661515664: 'แอดมิน VZ',
 }
 const PRODUCT_LOOKUP_GENERIC_TERMS = new Set([
   'มี', 'ไหม', 'มั้ย', 'ของ', 'สินค้า', 'ราคา', 'เท่าไหร่', 'บาท', 'พร้อมส่ง', 'ส่ง', 'รูป', 'ภาพ', 'ขอดู',
@@ -710,7 +711,7 @@ function queryTokensForKnowledge(queryText = '') {
     .slice(0, 48)
 }
 
-function relevantKnowledge(intent, snapshot, { workspaceId, queryText = '', originContext = null } = {}) {
+function relevantKnowledge(intent, snapshot, { workspaceId, pageId = null, queryText = '', originContext = null } = {}) {
   const termsByIntent = {
     stock: ['สินค้า', 'stock', 'product', 'faq'],
     price: ['ราคา', 'โปร', 'price', 'product'],
@@ -735,6 +736,10 @@ function relevantKnowledge(intent, snapshot, { workspaceId, queryText = '', orig
       if (!workspaceId) return true
       const sourceWs = source.workspaceId || 'ws_oagent'
       return sourceWs === workspaceId
+    })
+    .filter((source) => {
+      if (!pageId) return source.scope === 'all_pages' || !source.scope
+      return source.scope === 'all_pages' || source.scope === pageId || !source.scope
     })
     .filter((source) => {
       const haystack = [source.title, source.content, ...(source.tags || [])].join(' ').toLowerCase()
@@ -1075,6 +1080,7 @@ function buildCustomerReplyPrompt({ thread, snapshot, policy, baseDecision }) {
   ].join(' ')
   const knowledge = relevantKnowledge(baseDecision.intent, snapshot, {
     workspaceId,
+    pageId: thread.pageId,
     queryText: knowledgeQueryText,
     originContext,
   })
@@ -1368,6 +1374,7 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
       productFactsText(baseDecision.productFacts),
       ...relevantKnowledge(baseDecision.intent, snapshot, {
         workspaceId: _oaiWsId,
+        pageId: thread.pageId,
         queryText: baseDecision.knowledgeQueryText,
         originContext: baseDecision.originContext,
       }).map((source, index) => knowledgeTextForPrompt(source, index)),
@@ -1448,6 +1455,7 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
       productFactsText(baseDecision.productFacts),
       ...relevantKnowledge(baseDecision.intent, snapshot, {
         workspaceId: _gemWsId,
+        pageId: thread.pageId,
         queryText: baseDecision.knowledgeQueryText,
         originContext: baseDecision.originContext,
       }).map((source, index) => knowledgeTextForPrompt(source, index)),
@@ -1489,11 +1497,12 @@ export function createAiReplyEngine({ provider = DEFAULT_PROVIDER, model = DEFAU
         inbound?.text,
         originContextText(originContext),
       ].filter(Boolean).join(' ')
-  const knowledge = relevantKnowledge(intent, snapshot, {
-    workspaceId,
-    queryText: knowledgeQueryText,
-    originContext,
-  })
+      const knowledge = relevantKnowledge(intent, snapshot, {
+        workspaceId,
+        pageId: thread.pageId,
+        queryText: knowledgeQueryText,
+        originContext,
+      })
       const inventoryProductFacts = productFactsForThread(thread, snapshot, originContext)
       let productFacts = inventoryProductFacts
       let productFactsReason = productFacts ? 'product_inventory_fact_match' : ''

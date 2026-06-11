@@ -10,7 +10,7 @@ export function createOmniSeed() {
     { id: 'page_easystore_annalynna', name: 'AnnaLynn EasyStore', status: 'active', brandGroupId: 'brand_fashion', policySetId: 'policy_annalynn', agentProfileId: 'agent_annalynn' },
     { id: 'page_des', name: 'เพจเดส', status: 'active', brandGroupId: 'brand_oagent', policySetId: 'policy_page_des', agentProfileId: 'agent_page_des' },
     { id: 'page_tangtob', name: 'ละครแนวตั้งตบ', status: 'active', brandGroupId: 'brand_entertainment', policySetId: 'policy_default', agentProfileId: 'agent_default' },
-    { id: 'page_fb_112154661515664', name: 'Viris Zamara', shortName: 'VZ', status: 'active', brandGroupId: 'brand_shared', policySetId: 'policy_default', agentProfileId: 'agent_default' },
+    { id: 'page_fb_112154661515664', name: 'Viris Zamara', shortName: 'VZ', status: 'active', brandGroupId: 'brand_viriszamara', policySetId: 'policy_viriszamara', agentProfileId: 'agent_viriszamara' },
     { id: 'page_vz_dot', name: 'VZ.', shortName: 'VZ.', status: 'active', brandGroupId: 'brand_shared', policySetId: 'policy_default', agentProfileId: 'agent_default' },
   ]
 
@@ -42,12 +42,14 @@ export function createOmniSeed() {
       { id: 'policy_mankynd', autoSend: { faq: true, stock: true, price: true, orderStatus: true, refund: true }, forbidden: [] },
       { id: 'policy_annalynn', autoSend: { faq: true, stock: true, price: true, orderStatus: true, refund: true }, forbidden: [] },
       { id: 'policy_page_des', autoSend: { faq: true, stock: true, price: true, orderStatus: true, refund: true }, forbidden: [] },
+      { id: 'policy_viriszamara', autoSend: { faq: false, stock: false, price: false, orderStatus: false, refund: false }, forbidden: ['guess_stock', 'guess_price', 'guess_order_status', 'guess_payment_status'] },
     ],
     agentProfiles: [
       { id: 'agent_default', name: 'Default Sales AI', provider: 'omni_ai_reply', model: 'configurable', role: 'page_primary' },
       { id: 'agent_mankynd', name: 'MAN KYND Page AI', provider: 'omni_ai_reply', model: 'configurable', role: 'page_primary' },
       { id: 'agent_annalynn', name: 'น้องอันนา', provider: 'omni_ai_reply', model: 'configurable', role: 'page_primary' },
       { id: 'agent_page_des', name: 'Page Des AI', provider: 'omni_ai_reply', model: 'configurable', role: 'page_primary' },
+      { id: 'agent_viriszamara', name: 'VZ Reply AI', provider: 'omni_ai_reply', model: 'configurable', role: 'page_primary' },
       { id: 'agent_stock', name: 'Stock Specialist', provider: 'omni_ai_reply', model: 'configurable', role: 'stock_specialist' },
       { id: 'agent_reviewer', name: 'Risk Reviewer', provider: 'omni_ai_reply', model: 'configurable', role: 'reviewer' },
     ],
@@ -208,6 +210,24 @@ export function createOmniSeed() {
         sourceRef: 'boss-chat:2026-05-29-comment-to-inbox-workflow',
         updatedAt: '2026-05-29T09:05:00.000+07:00',
         createdAt: '2026-05-29T09:05:00.000+07:00',
+      },
+      {
+        id: 'ks_viriszamara_reply_style',
+        workspaceId: DEFAULT_WORKSPACE_ID,
+        title: 'VZ by viris zamara reply style',
+        type: 'manual',
+        scope: 'page_fb_112154661515664',
+        status: 'ready',
+        content: [
+          'VZ by viris zamara ใช้เสียงแอดมินร้านเสื้อผ้าผู้หญิง ตอบไทยสั้น ตรงประเด็น สุภาพ ลงท้ายค่ะ/นะคะ/ค่า',
+          'ตอบเฉพาะเรื่อง stock สี ไซซ์ ราคา ค่าส่ง สลิป เลขพัสดุ ช่องทาง Shopee/TikTok และสถานะออเดอร์เมื่อมีข้อมูลอ้างอิงจริง',
+          'ห้ามเดา stock ราคา order id tracking code สถานะจ่ายเงิน หรือวันส่งของ ถ้าไม่แน่ใจให้ตอบว่า เดี๋ยวแอดมินเช็กให้ก่อนนะคะ',
+          'Customer-facing send ต้องรอ Boss/admin approval ก่อนเสมอ ระบบนี้ตั้งเป็น draft/approval-first สำหรับเพจ VZ',
+        ].join('\n'),
+        tags: ['viriszamara', 'vz', 'reply-style', 'stock', 'price', 'payment', 'shipping', 'faq'],
+        sourceRef: '/Users/babycuca/Documents/O-Agent workspace/services/2026-05-24-vz-reply-ai/style-card.md',
+        updatedAt: '2026-06-08T00:00:00.000+07:00',
+        createdAt: '2026-06-08T00:00:00.000+07:00',
       },
       {
         id: 'ks_shipping_payment',

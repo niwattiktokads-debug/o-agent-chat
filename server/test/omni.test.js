@@ -40,6 +40,8 @@ test('omni seed starts with configured production page data', () => {
   assert.equal(seed.platformAccounts.find((account) => account.id === 'acct_es_annalynna').provider, 'easystore')
   assert.ok(seed.pages.find((page) => page.id === 'page_fb_112154661515664'))
   assert.equal(seed.pages.find((page) => page.id === 'page_fb_112154661515664').name, 'Viris Zamara')
+  assert.equal(seed.pages.find((page) => page.id === 'page_fb_112154661515664').policySetId, 'policy_viriszamara')
+  assert.equal(seed.pages.find((page) => page.id === 'page_fb_112154661515664').agentProfileId, 'agent_viriszamara')
   assert.ok(seed.pages.find((page) => page.id === 'page_vz_dot'))
   assert.equal(seed.pages.find((page) => page.id === 'page_vz_dot').name, 'VZ.')
   assert.ok(seed.pages.find((page) => page.id === 'page_tangtob'))
@@ -49,7 +51,8 @@ test('omni seed starts with configured production page data', () => {
   assert.equal(seed.pages.every((page) => page.status === 'active'), true)
   assert.equal(seed.pages.every((page) => page.policySetId), true)
   assert.equal(seed.pages.every((page) => page.agentProfileId), true)
-  assert.equal(seed.knowledgeSources.length, 5)
+  assert.equal(seed.knowledgeSources.length, 6)
+  assert.equal(seed.knowledgeSources.find((source) => source.id === 'ks_viriszamara_reply_style').scope, 'page_fb_112154661515664')
   assert.equal(seed.knowledgeSources.every((source) => source.content), true)
 })
 
