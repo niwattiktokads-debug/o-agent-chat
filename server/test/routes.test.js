@@ -1685,7 +1685,7 @@ test('POST /webhook/meta broadcasts inbound before background auto reply finishe
   }
 })
 
-test('POST /webhook/meta sends event-driven Dex signal only for new inbound messages', async () => {
+test('POST /webhook/meta emits attention without writing customer alerts to team chat', async () => {
   events.length = 0
   const payload = {
     object: 'page',
@@ -1704,10 +1704,9 @@ test('POST /webhook/meta sends event-driven Dex signal only for new inbound mess
   assert.equal(first.status, 200)
   assert.equal(first.body.result.dexSignals.length, 1)
   assert.equal(first.body.result.dexSignals[0].pageName, 'Anna Lynn')
-  assert.equal(first.body.result.dexSignalMessage.role, 'Codex')
-  assert.match(first.body.result.dexSignalMessage.text, /@เดส มีข้อความลูกค้าใหม่/)
+  assert.equal(first.body.result.dexSignalMessage, null)
   assert.equal(events.some((event) => event.event === 'omni:attention'), true)
-  assert.equal(events.some((event) => event.event === 'message'), true)
+  assert.equal(events.some((event) => event.event === 'message'), false)
 
   events.length = 0
   const second = await req('POST', '/webhook/meta', payload)

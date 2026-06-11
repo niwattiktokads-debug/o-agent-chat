@@ -356,15 +356,9 @@ function createDexSignals({ normalized, snapshot, insertedMessages = 0 }) {
     })
 }
 
-function signalDex({ room, hub, signals }) {
+function signalDex({ hub, signals }) {
   if (!signals.length) return null
-  const first = signals[0]
-  const extra = signals.length > 1 ? ` (+${signals.length - 1})` : ''
-  const message = room.addMessage({
-    role: 'Codex',
-    text: `[STATE] @เดส มีข้อความลูกค้าใหม่${extra}: ${first.pageName}/${first.platform} · ${first.customerName} · "${first.latestInboundText}" · thread=${first.threadId} · ${first.action}`,
-  })
-  hub.broadcast('message', room.snapshot())
+  const message = null
   hub.broadcast('omni:attention', { signals, message })
   return message
 }
@@ -893,7 +887,7 @@ export function mountWebhook(app, hub, room, options = {}) {
     const existingMessageIds = new Set((omni.snapshot().messages || []).map((message) => message.id))
     const result = omni.syncFacebookWebhookEvents(normalized)
     const dexSignals = createDexSignals({ normalized, snapshot: result.snapshot, insertedMessages: result.messages.inserted })
-    const dexSignalMessage = signalDex({ room, hub, signals: dexSignals })
+    const dexSignalMessage = signalDex({ hub, signals: dexSignals })
     hub.broadcast('omni', result.snapshot)
     const shouldAutoReply = req.query.autoReply === '0' || req.body?.autoReply === false
       ? false
@@ -939,7 +933,7 @@ export function mountWebhook(app, hub, room, options = {}) {
     const normalized = normalizeTikTokMessagingWebhookPayload(req.body || {})
     const result = omni.syncTikTokMessagingWebhookEvents(normalized)
     const dexSignals = createDexSignals({ normalized, snapshot: result.snapshot, insertedMessages: result.messages.inserted })
-    const dexSignalMessage = signalDex({ room, hub, signals: dexSignals })
+    const dexSignalMessage = signalDex({ hub, signals: dexSignals })
     hub.broadcast('omni', result.snapshot)
     res.json({ ok: true, result: { customers: result.customers, threads: result.threads, messages: result.messages, dexSignals, dexSignalMessage } })
   })
