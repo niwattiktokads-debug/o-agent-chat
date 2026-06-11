@@ -59,6 +59,30 @@ function cleanNameCandidate(value) {
   return candidate
 }
 
+function phoneMatchesFor(text) {
+  return String(text || '').match(PHONE_PATTERN) || []
+}
+
+function looksLikeUnlabeledAddressBlock(text) {
+  const phoneMatches = phoneMatchesFor(text)
+  if (!phoneMatches.length) return false
+  return ADDRESS_KEYWORDS.test(text) || Boolean(extractPostcode(text, phoneMatches))
+}
+
+function extractUnlabeledRecipientName(text) {
+  if (!looksLikeUnlabeledAddressBlock(text)) return ''
+  for (const rawLine of String(text || '').split(/\n+/)) {
+    const line = cleanText(removeRawMatches(rawLine, phoneMatchesFor(rawLine)))
+    if (!line) continue
+    if (/ชื่อสินค้า|สินค้า|sku/i.test(line)) continue
+    if (NAME_LINE.test(line) || PHONE_LINE.test(line) || ADDRESS_KEYWORDS.test(line)) continue
+    if (/\d/.test(line)) continue
+    const name = cleanNameCandidate(line)
+    if (name) return name
+  }
+  return ''
+}
+
 function extractRecipientName(text, fallback = '') {
   for (const rawLine of String(text || '').split(/\n|,/)) {
     if (/ชื่อสินค้า|สินค้า|sku/i.test(rawLine)) continue
@@ -67,6 +91,8 @@ function extractRecipientName(text, fallback = '') {
     const name = cleanNameCandidate(match[2])
     if (name) return name
   }
+  const unlabeledName = extractUnlabeledRecipientName(text)
+  if (unlabeledName) return unlabeledName
   return cleanNameCandidate(fallback)
 }
 
