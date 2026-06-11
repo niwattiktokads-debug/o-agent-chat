@@ -38,6 +38,8 @@ function makeSnapshot(pages = []) {
 
 describe('SocialOpsBoard workspace derivation', () => {
   beforeEach(() => {
+    window.localStorage.clear()
+
     apiMocks.capturePostSession.mockReset()
     apiMocks.fetchConnections.mockReset()
     apiMocks.fetchLiveSources.mockReset()
@@ -165,11 +167,37 @@ describe('SocialOpsBoard workspace derivation', () => {
     render(<SocialOpsBoard mode="post" snapshot={snapshot} onSnapshot={() => {}} onOpenChat={() => {}} />)
 
     expect(await screen.findByRole('heading', { name: 'คำสั่งซื้อ (0)' })).toBeInTheDocument()
-    fireEvent.click(await screen.findByRole('button', { name: /เปิดขาย BLACK-M/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /เลือกโพสต์ เปิดขาย BLACK-M/ }))
 
     expect(await screen.findByRole('heading', { name: 'คำสั่งซื้อ (1)' })).toBeInTheDocument()
     expect(await screen.findByText('order_from_post')).toBeInTheDocument()
     expect(screen.queryByText('tt_order_1')).not.toBeInTheDocument()
+  })
+
+  it('persists pinned post per profile and restores it after remount', async () => {
+    apiMocks.fetchSocialPosts.mockResolvedValue({
+      ok: true,
+      posts: [
+        { id: 'post_1', message: 'เปิดขาย BLACK-M', commentCount: 1, createdTime: '2026-06-01T00:00:00.000Z' },
+        { id: 'post_2', message: 'เปิดขาย BLUE-L', commentCount: 3, createdTime: '2026-06-02T00:00:00.000Z' },
+      ],
+    })
+
+    const { unmount } = render(<SocialOpsBoard mode="post" snapshot={makeSnapshot()} onSnapshot={() => {}} onOpenChat={() => {}} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: /เลือกโพสต์ เปิดขาย BLUE-L/ }))
+    fireEvent.click(screen.getByRole('button', { name: /ปักหมุดโพสต์ เปิดขาย BLUE-L/ }))
+
+    expect(JSON.parse(window.localStorage.getItem('omni_post_selling_pinned_posts_v1'))).toMatchObject({
+      man_kynd: 'post_2',
+    })
+    expect(await screen.findByText('ปักหมุดใช้งาน')).toBeInTheDocument()
+
+    unmount()
+    render(<SocialOpsBoard mode="post" snapshot={makeSnapshot()} onSnapshot={() => {}} onOpenChat={() => {}} />)
+
+    expect((await screen.findAllByText('เชื่อมโพสต์แล้ว')).length).toBeGreaterThan(0)
+    expect(screen.getByRole('button', { name: /เลิกปักหมุดโพสต์ เปิดขาย BLUE-L/ })).toBeInTheDocument()
   })
 
   it('Live CF with anna_lynn sends ws_custom workspaceId', async () => {

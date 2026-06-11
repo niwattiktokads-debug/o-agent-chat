@@ -533,7 +533,7 @@ describe('OmniWorkbench', () => {
     expect(screen.queryByRole('button', { name: /จับ CF/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /สร้าง draft จาก CF/ })).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: /เปิดขาย BLACK-M/ }))
+    fireEvent.click(screen.getByRole('button', { name: /เลือกโพสต์ เปิดขาย BLACK-M/ }))
     expect((await screen.findAllByText('เชื่อมโพสต์แล้ว')).length).toBeGreaterThan(0)
     fireEvent.change(screen.getByLabelText('ค้นหาสินค้า'), { target: { value: 'Lorra' } })
     fireEvent.click(screen.getByRole('button', { name: 'ค้นหา' }))

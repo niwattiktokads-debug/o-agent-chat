@@ -30,6 +30,8 @@ const PROFILE_TO_OMNI_PAGE = {
   ig_vz_viris_zamara: 'page_ig_vz_viris_zamara',
 }
 
+const POST_SELLING_PINNED_POSTS_KEY = 'omni_post_selling_pinned_posts_v1'
+
 /**
  * Resolve workspaceId from a profileKey using snapshot pages.
  * Returns undefined (not 'ws_oagent') when mapping is not confident,
@@ -75,6 +77,34 @@ function orderBelongsToPostSession(order, selectedPost) {
   const postId = normalizePostRef(selectedPost?.id)
   if (!postId) return false
   return orderPostRefs(order).some((ref) => ref === postId)
+}
+
+function readPinnedPostSessions() {
+  if (typeof window === 'undefined') return {}
+  try {
+    const rawValue = window.localStorage.getItem(POST_SELLING_PINNED_POSTS_KEY)
+    const parsedValue = rawValue ? JSON.parse(rawValue) : {}
+    if (!parsedValue || typeof parsedValue !== 'object' || Array.isArray(parsedValue)) return {}
+    return Object.fromEntries(
+      Object.entries(parsedValue)
+        .filter(([profileKey, postId]) => typeof profileKey === 'string' && typeof postId === 'string' && postId.trim())
+    )
+  } catch {
+    return {}
+  }
+}
+
+function writePinnedPostSessions(pinnedPosts) {
+  if (typeof window === 'undefined') return
+  const cleanPinnedPosts = Object.fromEntries(
+    Object.entries(pinnedPosts || {})
+      .filter(([profileKey, postId]) => typeof profileKey === 'string' && typeof postId === 'string' && postId.trim())
+  )
+  if (Object.keys(cleanPinnedPosts).length === 0) {
+    window.localStorage.removeItem(POST_SELLING_PINNED_POSTS_KEY)
+    return
+  }
+  window.localStorage.setItem(POST_SELLING_PINNED_POSTS_KEY, JSON.stringify(cleanPinnedPosts))
 }
 
 export default function SocialOpsBoard({ mode, snapshot, onSnapshot, onOpenChat, topSlot = null }) {
@@ -154,8 +184,18 @@ function PostSellingSessionBoard({ snapshot, onSnapshot }) {
   const [searchStatus, setSearchStatus] = useState('')
   const [configuredProducts, setConfiguredProducts] = useState([])
   const [orderQuery, setOrderQuery] = useState('')
+  const [pinnedPosts, setPinnedPosts] = useState(() => readPinnedPostSessions())
 
+  const pinnedPostId = pinnedPosts[pageProfile] || ''
   const selectedPost = posts.find((post) => post.id === selectedPostId) || null
+  const displayPosts = useMemo(() => {
+    if (!pinnedPostId) return posts
+    return [...posts].sort((a, b) => {
+      if (a.id === pinnedPostId) return -1
+      if (b.id === pinnedPostId) return 1
+      return 0
+    })
+  }, [posts, pinnedPostId])
   const sessionOrders = useMemo(() => {
     const query = orderQuery.trim().toLowerCase()
     return (snapshot?.orders || [])
@@ -198,8 +238,13 @@ function PostSellingSessionBoard({ snapshot, onSnapshot }) {
     try {
       const result = await fetchSocialPosts(nextPageProfile, 10)
       const nextPosts = result.posts || []
+      const nextPinnedPostId = readPinnedPostSessions()[nextPageProfile] || ''
       setPosts(nextPosts)
-      setSelectedPostId((current) => (nextPosts.some((post) => post.id === current) ? current : ''))
+      setSelectedPostId((current) => {
+        if (nextPosts.some((post) => post.id === current)) return current
+        if (nextPinnedPostId && nextPosts.some((post) => post.id === nextPinnedPostId)) return nextPinnedPostId
+        return ''
+      })
       setStatus(`ดึงโพสต์แล้ว ${nextPosts.length} รายการ · เลือกโพสต์ก่อนเปิดการขาย`)
     } catch (error) {
       setStatus(error.message)
@@ -269,6 +314,24 @@ function PostSellingSessionBoard({ snapshot, onSnapshot }) {
       ended: 'จบโพสต์',
     }
     setStatus(`${labels[nextStatus]} · บันทึกเป็น session state ในหน้านี้ ยังไม่เปิด live automation`)
+  }
+
+  function togglePinnedPost(post) {
+    const postId = post?.id
+    if (!postId) return
+    const isRemoving = pinnedPostId === postId
+    setPinnedPosts((current) => {
+      const next = { ...current }
+      if (isRemoving) {
+        delete next[pageProfile]
+      } else {
+        next[pageProfile] = postId
+      }
+      writePinnedPostSessions(next)
+      return next
+    })
+    setSelectedPostId(postId)
+    setStatus(isRemoving ? `ยกเลิกปักโพสต์ ${postId} แล้ว` : `ปักโพสต์ ${postId} สำหรับเพจนี้แล้ว`)
   }
 
   const canOpenSale = Boolean(selectedPost && configuredProducts.length)
@@ -343,23 +406,39 @@ function PostSellingSessionBoard({ snapshot, onSnapshot }) {
               <div className="mt-3 grid max-h-44 gap-2 overflow-y-auto">
                 {posts.length === 0 ? (
                   <div className="rounded-[var(--radius-md)] border border-dashed border-[var(--color-rule)] px-3 py-5 text-center text-xs text-[var(--color-muted)]">ยังไม่มีโพสต์จากเพจนี้</div>
-                ) : posts.map((post) => {
+                ) : displayPosts.map((post) => {
                   const active = post.id === selectedPostId
+                  const pinned = post.id === pinnedPostId
                   const title = post.message || post.story || post.id
                   return (
-                    <button
+                    <div
                       key={post.id}
-                      type="button"
-                      onClick={() => setSelectedPostId(post.id)}
-                      className={`rounded-[var(--radius-md)] border px-3 py-2 text-left text-xs transition ${active ? 'border-[var(--color-accent)] bg-[var(--color-accent-soft)] text-[var(--color-ink)]' : 'border-[var(--color-rule)] bg-[var(--color-panel)] text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)]'}`}
+                      className={`grid grid-cols-[minmax(0,1fr)_72px] overflow-hidden rounded-[var(--radius-md)] border text-xs transition ${active ? 'border-[var(--color-accent)] bg-[var(--color-accent-soft)] text-[var(--color-ink)]' : 'border-[var(--color-rule)] bg-[var(--color-panel)] text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)]'}`}
                     >
-                      <span className="line-clamp-2 break-words font-bold leading-5">{title}</span>
-                      <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-[var(--color-muted)]">
-                        <span className="max-w-full truncate">{post.id}</span>
-                        <span>{(post.commentCount ?? post.comments?.summary?.total_count ?? 0).toLocaleString('th-TH')} comments</span>
-                        <span>{formatDateTime(post.createdTime || post.created_time)}</span>
-                      </span>
-                    </button>
+                      <button
+                        type="button"
+                        aria-label={`เลือกโพสต์ ${title}`}
+                        onClick={() => setSelectedPostId(post.id)}
+                        className="min-w-0 px-3 py-2 text-left"
+                      >
+                        <span className="line-clamp-2 break-words font-bold leading-5">{title}</span>
+                        <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-[var(--color-muted)]">
+                          {pinned ? <span className="font-bold text-[var(--color-accent)]">ปักหมุดใช้งาน</span> : null}
+                          <span className="max-w-full truncate">{post.id}</span>
+                          <span>{(post.commentCount ?? post.comments?.summary?.total_count ?? 0).toLocaleString('th-TH')} comments</span>
+                          <span>{formatDateTime(post.createdTime || post.created_time)}</span>
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        aria-pressed={pinned}
+                        aria-label={`${pinned ? 'เลิกปักหมุดโพสต์' : 'ปักหมุดโพสต์'} ${title}`}
+                        onClick={() => togglePinnedPost(post)}
+                        className={`border-l border-[var(--color-rule)] px-2 text-center text-[11px] font-bold ${pinned ? 'bg-[var(--color-accent)] text-[var(--color-accent-ink)]' : 'text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)]'}`}
+                      >
+                        {pinned ? 'ปักแล้ว' : 'ปัก'}
+                      </button>
+                    </div>
                   )
                 })}
               </div>
