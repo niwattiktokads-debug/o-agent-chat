@@ -1,4 +1,4 @@
-const CACHE_NAME = 'o-agent-omni-v2'
+const CACHE_NAME = 'o-agent-omni-v4'
 const APP_SHELL = ['/', '/manifest.webmanifest', '/icons/omni-icon.svg']
 
 self.addEventListener('install', (event) => {

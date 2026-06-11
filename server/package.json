@@ -1,6 +1,6 @@
 {
   "name": "o-agent-chat-server",
-  "version": "0.0.51",
+  "version": "4.0.0",
   "type": "module",
   "private": true,
   "scripts": {
