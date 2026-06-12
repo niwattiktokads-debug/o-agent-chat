@@ -353,8 +353,8 @@ function PostSellingSessionBoard({ snapshot, onSnapshot }) {
 
   return (
     <section className="mt-4 min-h-[calc(100dvh-220px)] overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)]">
-      <div className="grid min-h-[calc(100dvh-220px)] lg:grid-cols-[minmax(360px,1.15fr)_minmax(280px,0.62fr)_minmax(260px,0.52fr)]">
-        <div className="min-h-0 overflow-y-auto border-b border-[var(--color-rule)] lg:border-b-0 lg:border-r">
+      <div className="grid min-h-[calc(100dvh-220px)] lg:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.62fr)_minmax(260px,0.52fr)]">
+        <div className="min-h-0 min-w-0 overflow-y-auto border-b border-[var(--color-rule)] lg:border-b-0 lg:border-r">
           <div className="sticky top-0 z-10 border-b border-[var(--color-rule)] bg-[var(--color-panel)] px-4 py-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-sm font-bold text-[var(--color-ink)]">
@@ -445,8 +445,8 @@ function PostSellingSessionBoard({ snapshot, onSnapshot }) {
             </div>
 
             <div className="grid gap-3 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-paper)] p-3">
-              <div className="grid items-end gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(132px,160px)_120px]">
-                <label className="grid gap-1 text-xs font-semibold text-[var(--color-muted)]">
+              <div className="grid min-w-0 items-end gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(132px,160px)_120px]">
+                <label className="grid min-w-0 gap-1 text-xs font-semibold text-[var(--color-muted)]">
                   ค้นหาสินค้า
                   <input
                     value={productQuery}
@@ -454,16 +454,16 @@ function PostSellingSessionBoard({ snapshot, onSnapshot }) {
                     onKeyDown={(event) => {
                       if (event.key === 'Enter') searchProducts()
                     }}
-                    className="h-10 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] px-3 text-sm text-[var(--color-ink)]"
+                    className="h-10 min-w-0 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] px-3 text-sm text-[var(--color-ink)]"
                     placeholder="SKU หรือชื่อสินค้า"
                   />
                 </label>
-                <label className="grid gap-1 text-xs font-semibold text-[var(--color-muted)]">
+                <label className="grid min-w-0 gap-1 text-xs font-semibold text-[var(--color-muted)]">
                   ตัวกรอง
                   <select
                     value={productFilter}
                     onChange={(event) => setProductFilter(event.target.value)}
-                    className="h-10 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] px-3 text-sm text-[var(--color-ink)]"
+                    className="h-10 min-w-0 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] px-3 text-sm text-[var(--color-ink)]"
                   >
                     <option value="all">สินค้าทั้งหมด</option>
                     <option value="in_stock">มีสต็อก</option>
@@ -480,7 +480,7 @@ function PostSellingSessionBoard({ snapshot, onSnapshot }) {
               </div>
               <StatusLine value={searchStatus} />
               {productResults.length ? (
-                <div className="grid max-h-40 gap-2 overflow-y-auto">
+                <div className="grid max-h-40 min-w-0 gap-2 overflow-y-auto">
                   {productResults
                     .filter((product) => productFilter !== 'in_stock' || Number(product.availableStock ?? product.stock ?? 0) > 0)
                     .map((product) => (
@@ -488,42 +488,42 @@ function PostSellingSessionBoard({ snapshot, onSnapshot }) {
                         key={product.id || product.sku}
                         type="button"
                         onClick={() => addProduct(product)}
-                        className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-left text-xs text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)]"
+                        className="min-w-0 overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-left text-xs text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)]"
                       >
-                        <span className="block font-bold text-[var(--color-ink)]">{product.sku || product.id} · {product.name}</span>
-                        <span className="mt-1 block text-[11px] text-[var(--color-muted)]">ราคา {formatMoney(product.sellPrice ?? product.unitPrice)} · คงเหลือ {Number(product.availableStock ?? product.stock ?? 0).toLocaleString('th-TH')}</span>
+                        <span className="line-clamp-2 break-words font-bold leading-5 text-[var(--color-ink)]">{product.sku || product.id} · {product.name}</span>
+                        <span className="mt-1 block truncate text-[11px] text-[var(--color-muted)]">ราคา {formatMoney(product.sellPrice ?? product.unitPrice)} · คงเหลือ {Number(product.availableStock ?? product.stock ?? 0).toLocaleString('th-TH')}</span>
                       </button>
                     ))}
                 </div>
               ) : null}
             </div>
 
-            <div className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-paper)] p-3">
+            <div className="min-w-0 overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-paper)] p-3">
               <h3 className="text-xs font-bold text-[var(--color-ink)]">สินค้าที่ต้องการขาย</h3>
               {configuredProducts.length === 0 ? (
                 <div className="mt-3 rounded-[var(--radius-md)] border border-dashed border-[var(--color-rule)] px-3 py-8 text-center text-xs text-[var(--color-muted)]">เลือกสินค้าเพื่อกำหนดรหัสสินค้า ราคา จำนวน และของแถม</div>
               ) : (
-                <div className="mt-3 grid gap-3">
+                <div className="mt-3 grid min-w-0 gap-3">
                   {configuredProducts.map((item) => (
-                    <div key={item.localId} className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] p-3">
+                    <div key={item.localId} className="min-w-0 overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] p-3">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <div className="truncate text-sm font-bold text-[var(--color-ink)]">{item.sku} · {item.name}</div>
+                          <div className="break-words text-sm font-bold leading-5 text-[var(--color-ink)]">{item.sku} · {item.name}</div>
                           <div className="mt-1 text-[11px] text-[var(--color-muted)]">EasyStore product {item.id || '-'}</div>
                         </div>
-                        <button type="button" onClick={() => removeProduct(item.localId)} className="rounded-[var(--radius-md)] border border-[var(--color-rule)] px-2 py-1 text-xs font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)]">ลบ</button>
+                        <button type="button" onClick={() => removeProduct(item.localId)} className="shrink-0 rounded-[var(--radius-md)] border border-[var(--color-rule)] px-2 py-1 text-xs font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)]">ลบ</button>
                       </div>
-                      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      <div className="mt-3 grid min-w-0 gap-2 sm:grid-cols-2">
                         <PostProductInput label="รหัสสินค้าใน session" value={item.sellingCode} onChange={(value) => updateProduct(item.localId, { sellingCode: value })} />
                         <PostProductInput label="ราคา" type="number" value={item.salePrice} onChange={(value) => updateProduct(item.localId, { salePrice: Number(value || 0) })} />
                         <PostProductInput label="จำนวนขาย" type="number" value={item.quantity} onChange={(value) => updateProduct(item.localId, { quantity: Math.max(1, Number(value || 1)) })} />
                         <PostProductInput label="คงเหลือ" type="number" value={item.remaining} onChange={(value) => updateProduct(item.localId, { remaining: Math.max(0, Number(value || 0)) })} />
-                        <label className="grid gap-1 text-[11px] font-semibold text-[var(--color-muted)] sm:col-span-2">
+                        <label className="grid min-w-0 gap-1 text-[11px] font-semibold text-[var(--color-muted)] sm:col-span-2">
                           ของแถม
                           <input
                             value={item.gift}
                             onChange={(event) => updateProduct(item.localId, { gift: event.target.value })}
-                            className="h-9 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] px-2 text-xs text-[var(--color-ink)]"
+                            className="h-9 min-w-0 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] px-2 text-xs text-[var(--color-ink)]"
                             placeholder="ไม่มี"
                           />
                         </label>
@@ -549,7 +549,7 @@ function PostSellingSessionBoard({ snapshot, onSnapshot }) {
           </div>
         </div>
 
-        <div className="flex min-h-[420px] flex-col border-b border-[var(--color-rule)] bg-[var(--color-paper)] lg:border-b-0 lg:border-r">
+        <div className="flex min-h-[420px] min-w-0 flex-col border-b border-[var(--color-rule)] bg-[var(--color-paper)] lg:border-b-0 lg:border-r">
           <div className="border-b border-[var(--color-rule)] bg-[var(--color-panel)] px-4 py-3">
             <h3 className="text-sm font-bold text-[var(--color-ink)]">ข้อความ</h3>
             <div className="mt-1 text-xs text-[var(--color-muted)]">{selectedPost ? 'รอดึงคอมเมนต์/ข้อความจากโพสต์ที่เชื่อมต่อ' : 'เลือกโพสต์ก่อนเริ่ม session'}</div>
@@ -583,7 +583,7 @@ function PostSellingSessionBoard({ snapshot, onSnapshot }) {
           </div>
         </div>
 
-        <div className="flex min-h-[420px] flex-col bg-[var(--color-panel)]">
+        <div className="flex min-h-[420px] min-w-0 flex-col bg-[var(--color-panel)]">
           <div className="border-b border-[var(--color-rule)] px-4 py-3">
             <div className="flex items-center justify-between gap-3">
               <h3 className="text-sm font-bold text-[var(--color-ink)]">คำสั่งซื้อ ({sessionOrders.length})</h3>
@@ -620,13 +620,13 @@ function PostSellingSessionBoard({ snapshot, onSnapshot }) {
 
 function PostProductInput({ label, value, onChange, type = 'text' }) {
   return (
-    <label className="grid gap-1 text-[11px] font-semibold text-[var(--color-muted)]">
+    <label className="grid min-w-0 gap-1 text-[11px] font-semibold text-[var(--color-muted)]">
       {label}
       <input
         type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-9 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] px-2 text-xs text-[var(--color-ink)]"
+        className="h-9 min-w-0 rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] px-2 text-xs text-[var(--color-ink)]"
       />
     </label>
   )

@@ -1,6 +1,6 @@
 import React from 'react'
 import { describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import SocialOpsBoard from './SocialOpsBoard.jsx'
 
 const apiMocks = {
@@ -198,6 +198,31 @@ describe('SocialOpsBoard workspace derivation', () => {
 
     expect((await screen.findAllByText('เชื่อมโพสต์แล้ว')).length).toBeGreaterThan(0)
     expect(screen.getByRole('button', { name: /เลิกปักหมุดโพสต์ เปิดขาย BLUE-L/ })).toBeInTheDocument()
+  })
+
+  it('keeps long EasyStore product names inside the settings column', async () => {
+    const longName = 'Molly Set "ชุดเซ็ตโอเวอร์ไซซ์ เอวยางยืดขอบเรียบ ปลายขาพับใหญ่" เสื้อเชิ้ต+กางเกงเอวยางยืด ผ้าสีลาฟ เบาสบาย สีดำ'
+    apiMocks.searchEasyStoreProducts.mockResolvedValue({
+      ok: true,
+      products: [{ id: '76013338', sku: 'mollyสีดำSize2', name: longName, sellPrice: 990, availableStock: 18 }],
+    })
+
+    render(<SocialOpsBoard mode="post" snapshot={makeSnapshot()} onSnapshot={() => {}} onOpenChat={() => {}} />)
+
+    await waitFor(() => expect(apiMocks.fetchSocialPosts).toHaveBeenCalled())
+    fireEvent.change(screen.getByLabelText('ค้นหาสินค้า'), { target: { value: 'molly' } })
+    fireEvent.click(screen.getByRole('button', { name: 'ค้นหา' }))
+
+    const resultButton = await screen.findByRole('button', { name: /mollyสีดำSize2 · Molly Set/ })
+    expect(resultButton).toHaveClass('min-w-0')
+    expect(resultButton.querySelector('span')).toHaveClass('line-clamp-2', 'break-words')
+
+    fireEvent.click(resultButton)
+
+    const configuredSection = screen.getByRole('heading', { name: 'สินค้าที่ต้องการขาย' }).closest('div')
+    const configuredTitle = within(configuredSection).getByText(/mollyสีดำSize2 · Molly Set/)
+    expect(configuredTitle).toHaveClass('break-words')
+    expect(configuredTitle).not.toHaveClass('truncate')
   })
 
   it('Live CF with anna_lynn sends ws_custom workspaceId', async () => {
