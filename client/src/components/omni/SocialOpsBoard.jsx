@@ -31,6 +31,7 @@ const PROFILE_TO_OMNI_PAGE = {
 }
 
 const POST_SELLING_PINNED_POSTS_KEY = 'omni_post_selling_pinned_posts_v1'
+const POST_SELLING_PINNED_PRODUCTS_KEY = 'omni_post_selling_pinned_products_v1'
 
 /**
  * Resolve workspaceId from a profileKey using snapshot pages.
@@ -105,6 +106,118 @@ function writePinnedPostSessions(pinnedPosts) {
     return
   }
   window.localStorage.setItem(POST_SELLING_PINNED_POSTS_KEY, JSON.stringify(cleanPinnedPosts))
+}
+
+function readPinnedProductGroups() {
+  if (typeof window === 'undefined') return []
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(POST_SELLING_PINNED_PRODUCTS_KEY) || '[]')
+    return Array.isArray(parsed) ? parsed.filter(Boolean).map(String) : []
+  } catch {
+    return []
+  }
+}
+
+function writePinnedProductGroups(groupIds = []) {
+  if (typeof window === 'undefined') return
+  const cleanIds = Array.from(new Set((groupIds || []).filter(Boolean).map(String)))
+  if (cleanIds.length === 0) {
+    window.localStorage.removeItem(POST_SELLING_PINNED_PRODUCTS_KEY)
+    return
+  }
+  window.localStorage.setItem(POST_SELLING_PINNED_PRODUCTS_KEY, JSON.stringify(cleanIds))
+}
+
+function compactProductToken(value = '') {
+  return String(value || '').replace(/\s+/g, ' ').trim()
+}
+
+function cleanVariantSize(value = '') {
+  const raw = compactProductToken(value)
+  if (!raw) return ''
+  const readable = raw.includes('=') ? raw.split('=').pop() : raw
+  return readable.replace(/,/g, '/').replace(/\s*\/\s*/g, '/').trim()
+}
+
+function postProductName(product = {}) {
+  return product.productName || product.title || product.name || product.sku || product.productId || product.id || 'สินค้า EasyStore'
+}
+
+function postProductSku(product = {}) {
+  return product.sku || product.productId || product.id || '-'
+}
+
+function postProductStock(product = {}) {
+  const stockValue = product.availableStock
+    ?? (product.stock && typeof product.stock === 'object' ? product.stock.totalQuantity : product.stock)
+    ?? product.availableTotal
+    ?? product.quantity
+    ?? 0
+  const numeric = Number(stockValue || 0)
+  return Number.isFinite(numeric) ? numeric : 0
+}
+
+function postProductSize(product = {}) {
+  const explicit = cleanVariantSize(product.size || product.variantSize)
+  if (explicit) return explicit
+  const variantSize = compactProductToken(product.variantTitle || '').split(',').slice(1).join(',').trim()
+  return cleanVariantSize(variantSize)
+}
+
+function derivePostParentSku(product = {}) {
+  const explicit = compactProductToken(product.parentSku || product.parentSKU || product.parent_sku || product.masterSku || product.productSku)
+  if (explicit) return explicit
+  const sku = compactProductToken(product.sku)
+  const size = postProductSize(product).replace(/\s+/g, '')
+  if (sku && size && sku.toLowerCase().endsWith(size.toLowerCase())) {
+    return sku.slice(0, Math.max(0, sku.length - size.length)) || sku
+  }
+  return compactProductToken(product.productId || product.id || sku)
+}
+
+function postProductGroupKey(product = {}) {
+  return compactProductToken(derivePostParentSku(product) || product.parentProductId || product.productId || product.id || product.sku)
+}
+
+function buildPostProductGroups(products = []) {
+  const groups = new Map()
+  for (const product of products || []) {
+    const id = postProductGroupKey(product)
+    if (!id) continue
+    const variant = { ...product }
+    const existing = groups.get(id)
+    if (!existing) {
+      groups.set(id, {
+        id,
+        name: postProductName(product),
+        parentSku: derivePostParentSku(product),
+        imageUrl: product.imageUrl,
+        variants: [variant],
+        totalStock: postProductStock(product),
+      })
+      continue
+    }
+    existing.variants.push(variant)
+    existing.totalStock += postProductStock(product)
+    if (!existing.imageUrl && product.imageUrl) existing.imageUrl = product.imageUrl
+  }
+  return Array.from(groups.values()).map((group) => ({
+    ...group,
+    variantCount: group.variants.length,
+    primary: group.variants[0],
+  }))
+}
+
+function sortPostProductGroups(groups = [], pinnedIds = []) {
+  const pinRank = new Map(pinnedIds.map((id, index) => [id, index]))
+  return [...groups].sort((a, b) => {
+    const aPinned = pinRank.has(a.id)
+    const bPinned = pinRank.has(b.id)
+    if (aPinned && bPinned) return pinRank.get(a.id) - pinRank.get(b.id)
+    if (aPinned) return -1
+    if (bPinned) return 1
+    return 0
+  })
 }
 
 export default function SocialOpsBoard({ mode, snapshot, onSnapshot, onOpenChat, topSlot = null }) {
@@ -182,9 +295,11 @@ function PostSellingSessionBoard({ snapshot, onSnapshot }) {
   const [productFilter, setProductFilter] = useState('all')
   const [productResults, setProductResults] = useState([])
   const [searchStatus, setSearchStatus] = useState('')
+  const [expandedProductGroups, setExpandedProductGroups] = useState(() => new Set())
   const [configuredProducts, setConfiguredProducts] = useState([])
   const [orderQuery, setOrderQuery] = useState('')
   const [pinnedPosts, setPinnedPosts] = useState(() => readPinnedPostSessions())
+  const [pinnedProductGroups, setPinnedProductGroups] = useState(() => readPinnedProductGroups())
 
   const pinnedPostId = pinnedPosts[pageProfile] || ''
   const selectedPost = posts.find((post) => post.id === selectedPostId) || null
@@ -196,6 +311,12 @@ function PostSellingSessionBoard({ snapshot, onSnapshot }) {
       return 0
     })
   }, [posts, pinnedPostId])
+  const filteredProductResults = useMemo(() => {
+    return productResults.filter((product) => productFilter !== 'in_stock' || postProductStock(product) > 0)
+  }, [productResults, productFilter])
+  const productGroups = useMemo(() => {
+    return sortPostProductGroups(buildPostProductGroups(filteredProductResults), pinnedProductGroups)
+  }, [filteredProductResults, pinnedProductGroups])
   const sessionOrders = useMemo(() => {
     const query = orderQuery.trim().toLowerCase()
     return (snapshot?.orders || [])
@@ -265,36 +386,102 @@ function PostSellingSessionBoard({ snapshot, onSnapshot }) {
     setSearchStatus('กำลังค้นสินค้า EasyStore')
     try {
       const result = await searchEasyStoreProducts(productQuery.trim(), 8)
-      setProductResults(result.products || [])
-      setSearchStatus(`พบสินค้า ${(result.products || []).length} รายการ`)
+      const products = result.products || []
+      setProductResults(products)
+      setExpandedProductGroups(new Set())
+      setSearchStatus(`พบสินค้า ${products.length} รายการ · ${buildPostProductGroups(products).length} กลุ่ม`)
     } catch (error) {
       setSearchStatus(error.message)
     }
   }
 
-  function addProduct(product) {
+  function configuredProductFromEasyStore(product, index = 0) {
     const sku = product.sku || product.id
-    if (configuredProducts.some((item) => item.sku === sku)) {
-      setSearchStatus('สินค้านี้อยู่ในโพสต์แล้ว')
+    const unitPrice = Number(product.sellPrice ?? product.unitPrice ?? 0)
+    return {
+      localId: `${sku}:${Date.now()}:${index}`,
+      id: product.id,
+      sku,
+      name: product.name || postProductName(product) || sku,
+      sellingCode: sku,
+      salePrice: unitPrice,
+      quantity: 1,
+      remaining: postProductStock(product),
+      gift: '',
+      easyStoreProduct: product,
+    }
+  }
+
+  function addProducts(products = [], label = 'สินค้า') {
+    const incomingProducts = products.filter(Boolean)
+    if (incomingProducts.length === 0) {
+      setSearchStatus('ไม่มีสินค้าให้เพิ่ม')
       return
     }
-    const unitPrice = Number(product.sellPrice ?? product.unitPrice ?? 0)
-    setConfiguredProducts((current) => [
-      ...current,
-      {
-        localId: `${sku}:${Date.now()}`,
-        id: product.id,
-        sku,
-        name: product.name || sku,
-        sellingCode: sku,
-        salePrice: unitPrice,
-        quantity: 1,
-        remaining: Number(product.availableStock ?? product.stock ?? 0),
-        gift: '',
-        easyStoreProduct: product,
-      },
-    ])
-    setSearchStatus(`เพิ่ม ${sku} เข้าโพสต์ขายแล้ว`)
+    let addedCount = 0
+    let skippedCount = 0
+    setConfiguredProducts((current) => {
+      const seenSkus = new Set(current.map((item) => item.sku))
+      const nextItems = incomingProducts
+        .map((product, index) => configuredProductFromEasyStore(product, index))
+        .filter((item) => {
+          if (seenSkus.has(item.sku)) {
+            skippedCount += 1
+            return false
+          }
+          seenSkus.add(item.sku)
+          addedCount += 1
+          return true
+        })
+      return [...current, ...nextItems]
+    })
+    if (addedCount === 0) {
+      setSearchStatus(skippedCount ? `${label} อยู่ในโพสต์แล้ว` : 'ไม่มีสินค้าให้เพิ่ม')
+      return
+    }
+    const suffix = skippedCount ? ` · ข้ามซ้ำ ${skippedCount} รายการ` : ''
+    setSearchStatus(`เพิ่ม ${label} เข้าโพสต์ขายแล้ว ${addedCount} รายการ${suffix}`)
+  }
+
+  function addProduct(product) {
+    const sku = postProductSku(product)
+    addProducts([product], sku)
+  }
+
+  function toggleProductGroup(groupId) {
+    setExpandedProductGroups((current) => {
+      const next = new Set(current)
+      if (next.has(groupId)) next.delete(groupId)
+      else next.add(groupId)
+      return next
+    })
+  }
+
+  function pinProductGroup(groupId) {
+    if (!groupId) return
+    setPinnedProductGroups((current) => {
+      if (current.includes(groupId)) return current
+      const next = [groupId, ...current]
+      writePinnedProductGroups(next)
+      return next
+    })
+  }
+
+  function togglePinnedProductGroup(groupId) {
+    if (!groupId) return
+    setPinnedProductGroups((current) => {
+      const isRemoving = current.includes(groupId)
+      const next = isRemoving ? current.filter((id) => id !== groupId) : [groupId, ...current]
+      writePinnedProductGroups(next)
+      setSearchStatus(isRemoving ? `ยกเลิกปักสินค้า ${groupId} แล้ว` : `ปักสินค้า ${groupId} ใช้บ่อยแล้ว`)
+      return next
+    })
+  }
+
+  function addProductGroup(group, { pin = false } = {}) {
+    if (!group) return
+    if (pin) pinProductGroup(group.id)
+    addProducts(group.variants, group.name)
   }
 
   function updateProduct(localId, patch) {
@@ -480,20 +667,100 @@ function PostSellingSessionBoard({ snapshot, onSnapshot }) {
               </div>
               <StatusLine value={searchStatus} />
               {productResults.length ? (
-                <div className="grid max-h-40 min-w-0 gap-2 overflow-y-auto">
-                  {productResults
-                    .filter((product) => productFilter !== 'in_stock' || Number(product.availableStock ?? product.stock ?? 0) > 0)
-                    .map((product) => (
-                      <button
-                        key={product.id || product.sku}
-                        type="button"
-                        onClick={() => addProduct(product)}
-                        className="min-w-0 overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] px-3 py-2 text-left text-xs text-[var(--color-ink-2)] hover:bg-[var(--color-panel-2)]"
-                      >
-                        <span className="line-clamp-2 break-words font-bold leading-5 text-[var(--color-ink)]">{product.sku || product.id} · {product.name}</span>
-                        <span className="mt-1 block truncate text-[11px] text-[var(--color-muted)]">ราคา {formatMoney(product.sellPrice ?? product.unitPrice)} · คงเหลือ {Number(product.availableStock ?? product.stock ?? 0).toLocaleString('th-TH')}</span>
-                      </button>
-                    ))}
+                <div className="min-w-0">
+                  {pinnedProductGroups.length ? (
+                    <div className="mb-2 rounded-[var(--radius-md)] border border-[var(--color-accent)] bg-[var(--color-accent-soft)] px-3 py-2 text-xs font-bold text-[var(--color-accent)]">
+                      ปักหมุดใช้บ่อย
+                    </div>
+                  ) : null}
+                  <div
+                    role="grid"
+                    aria-label="รายการสินค้า EasyStore สำหรับโพสต์"
+                    className="grid max-h-64 min-w-0 gap-2 overflow-y-auto"
+                  >
+                    {productGroups.length ? productGroups.map((group) => {
+                      const isPinned = pinnedProductGroups.includes(group.id)
+                      const isExpanded = expandedProductGroups.has(group.id)
+                      const hasVariants = group.variantCount > 1
+                      const primarySku = postProductSku(group.primary)
+                      const primaryLabel = hasVariants ? group.name : (group.primary?.name || group.name)
+                      return (
+                        <div
+                          key={group.id}
+                          role="gridcell"
+                          aria-label={`${group.name} ${group.parentSku} ${group.totalStock} ชิ้น ${group.variantCount} ตัวเลือก`}
+                          className="min-w-0 overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel)] text-xs text-[var(--color-ink-2)]"
+                        >
+                          <div className="grid min-w-0 gap-2 p-3">
+                            <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_38px] gap-2">
+                              <button
+                                type="button"
+                                onClick={() => (hasVariants ? toggleProductGroup(group.id) : addProduct(group.primary))}
+                                aria-label={hasVariants ? `ดูตัวเลือก ${group.name}` : `เพิ่ม ${primarySku} · ${primaryLabel}`}
+                                aria-expanded={hasVariants ? isExpanded : undefined}
+                                className="min-w-0 text-left"
+                              >
+                                <span className="line-clamp-2 break-words font-bold leading-5 text-[var(--color-ink)]">{primarySku} · {primaryLabel}</span>
+                                <span className="mt-1 block truncate text-[11px] font-semibold text-[var(--color-muted)]">SKU แม่: {group.parentSku}</span>
+                                <span className="mt-1 flex flex-wrap gap-1 text-[11px] font-semibold text-[var(--color-muted)]">
+                                  <span>{group.variantCount} ตัวเลือก</span>
+                                  <span>รวม {group.totalStock.toLocaleString('th-TH')} ชิ้น</span>
+                                  <span>{formatMoney(group.primary?.sellPrice ?? group.primary?.unitPrice)}</span>
+                                </span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => togglePinnedProductGroup(group.id)}
+                                aria-label={`${isPinned ? 'เลิกปักหมุดสินค้า' : 'ปักหมุดสินค้า'} ${group.name}`}
+                                aria-pressed={isPinned}
+                                className={`grid h-9 w-9 place-items-center rounded-[var(--radius-md)] border text-sm font-bold ${isPinned ? 'border-[var(--color-accent)] bg-[var(--color-accent)] text-[var(--color-accent-ink)]' : 'border-[var(--color-rule)] bg-[var(--color-panel-2)] text-[var(--color-muted)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]'}`}
+                              >
+                                {isPinned ? '★' : '☆'}
+                              </button>
+                            </div>
+                            <div className="grid min-w-0 gap-2 sm:grid-cols-2">
+                              <button
+                                type="button"
+                                onClick={() => addProductGroup(group)}
+                                aria-label={`เพิ่มทั้งหมด ${group.name}`}
+                                className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-panel-2)] px-2.5 py-2 text-xs font-bold text-[var(--color-ink)] hover:bg-[var(--color-accent-soft)] hover:text-[var(--color-accent)]"
+                              >
+                                เพิ่มทั้งหมด
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => addProductGroup(group, { pin: true })}
+                                aria-label={`ปัก+เพิ่มทั้งหมด ${group.name}`}
+                                className="rounded-[var(--radius-md)] bg-[var(--color-accent)] px-2.5 py-2 text-xs font-bold text-[var(--color-accent-ink)]"
+                              >
+                                ปัก+เพิ่มทั้งหมด
+                              </button>
+                            </div>
+                          </div>
+                          {hasVariants && isExpanded ? (
+                            <div className="grid gap-1 border-t border-[var(--color-rule)] bg-[var(--color-panel-2)] p-2">
+                              {group.variants.map((variant) => (
+                                <button
+                                  key={variant.id || variant.variantId || variant.sku}
+                                  type="button"
+                                  onClick={() => addProduct(variant)}
+                                  aria-label={`เพิ่ม ${postProductSku(variant)}`}
+                                  className="flex min-w-0 items-center justify-between gap-2 rounded-[var(--radius-sm)] bg-[var(--color-panel)] px-2 py-1.5 text-left text-[11px] font-bold text-[var(--color-ink)] hover:bg-[var(--color-accent-soft)] hover:text-[var(--color-accent)]"
+                                >
+                                  <span className="min-w-0 truncate">{postProductSku(variant)}</span>
+                                  <span className="shrink-0 text-[var(--color-muted)]">{postProductStock(variant).toLocaleString('th-TH')} ชิ้น</span>
+                                </button>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      )
+                    }) : (
+                      <div className="rounded-[var(--radius-md)] border border-dashed border-[var(--color-rule)] px-3 py-6 text-center text-xs text-[var(--color-muted)]">
+                        ไม่มีสินค้าตามตัวกรองนี้
+                      </div>
+                    )}
+                  </div>
                 </div>
               ) : null}
             </div>

@@ -225,6 +225,58 @@ describe('SocialOpsBoard workspace derivation', () => {
     expect(configuredTitle).not.toHaveClass('truncate')
   })
 
+  it('groups EasyStore search variants into a parent product card with expandable variants', async () => {
+    apiMocks.searchEasyStoreProducts.mockResolvedValue({
+      ok: true,
+      products: [
+        { id: 'molly_1', productId: 'molly-black', variantId: 'molly_1', sku: 'molสีดำSize1', productName: 'Molly Set', name: 'Molly Set สีดำ Size 1', variantTitle: 'ดำ / Size 1', color: 'ดำ', size: 'Size 1', sellPrice: 990, availableStock: 0 },
+        { id: 'molly_2', productId: 'molly-black', variantId: 'molly_2', sku: 'molสีดำSize2', productName: 'Molly Set', name: 'Molly Set สีดำ Size 2', variantTitle: 'ดำ / Size 2', color: 'ดำ', size: 'Size 2', sellPrice: 990, availableStock: 18 },
+        { id: 'molly_3', productId: 'molly-black', variantId: 'molly_3', sku: 'molสีดำSize3', productName: 'Molly Set', name: 'Molly Set สีดำ Size 3', variantTitle: 'ดำ / Size 3', color: 'ดำ', size: 'Size 3', sellPrice: 990, availableStock: 20 },
+      ],
+    })
+
+    render(<SocialOpsBoard mode="post" snapshot={makeSnapshot()} onSnapshot={() => {}} onOpenChat={() => {}} />)
+
+    await waitFor(() => expect(apiMocks.fetchSocialPosts).toHaveBeenCalled())
+    fireEvent.change(screen.getByLabelText('ค้นหาสินค้า'), { target: { value: 'mol' } })
+    fireEvent.click(screen.getByRole('button', { name: 'ค้นหา' }))
+
+    const grid = await screen.findByRole('grid', { name: 'รายการสินค้า EasyStore สำหรับโพสต์' })
+    await waitFor(() => expect(within(grid).getAllByRole('gridcell')).toHaveLength(1))
+    expect(within(grid).getByText('SKU แม่: molสีดำ')).toBeInTheDocument()
+    expect(within(grid).getByText('3 ตัวเลือก')).toBeInTheDocument()
+    expect(within(grid).getByText('รวม 38 ชิ้น')).toBeInTheDocument()
+
+    fireEvent.click(within(grid).getByRole('button', { name: /ดูตัวเลือก Molly Set/ }))
+    fireEvent.click(await within(grid).findByRole('button', { name: 'เพิ่ม molสีดำSize2' }))
+
+    expect(await screen.findByText('Session rule · molสีดำSize2')).toBeInTheDocument()
+  })
+
+  it('adds all variants from a parent group and pins the group in one action', async () => {
+    apiMocks.searchEasyStoreProducts.mockResolvedValue({
+      ok: true,
+      products: [
+        { id: 'molly_1', productId: 'molly-black', variantId: 'molly_1', sku: 'molสีดำSize1', productName: 'Molly Set', name: 'Molly Set สีดำ Size 1', variantTitle: 'ดำ / Size 1', color: 'ดำ', size: 'Size 1', sellPrice: 990, availableStock: 12 },
+        { id: 'molly_2', productId: 'molly-black', variantId: 'molly_2', sku: 'molสีดำSize2', productName: 'Molly Set', name: 'Molly Set สีดำ Size 2', variantTitle: 'ดำ / Size 2', color: 'ดำ', size: 'Size 2', sellPrice: 990, availableStock: 18 },
+      ],
+    })
+
+    render(<SocialOpsBoard mode="post" snapshot={makeSnapshot()} onSnapshot={() => {}} onOpenChat={() => {}} />)
+
+    await waitFor(() => expect(apiMocks.fetchSocialPosts).toHaveBeenCalled())
+    fireEvent.change(screen.getByLabelText('ค้นหาสินค้า'), { target: { value: 'mol' } })
+    fireEvent.click(screen.getByRole('button', { name: 'ค้นหา' }))
+
+    const grid = await screen.findByRole('grid', { name: 'รายการสินค้า EasyStore สำหรับโพสต์' })
+    fireEvent.click(await within(grid).findByRole('button', { name: 'ปัก+เพิ่มทั้งหมด Molly Set' }))
+
+    expect(await screen.findByText('Session rule · molสีดำSize1')).toBeInTheDocument()
+    expect(await screen.findByText('Session rule · molสีดำSize2')).toBeInTheDocument()
+    expect(JSON.parse(window.localStorage.getItem('omni_post_selling_pinned_products_v1'))).toContain('molสีดำ')
+    expect(screen.getByText('ปักหมุดใช้บ่อย')).toBeInTheDocument()
+  })
+
   it('Live CF with anna_lynn sends ws_custom workspaceId', async () => {
     const snapshot = makeSnapshot([
       { id: 'page_mankynd', name: 'MAN KYND', workspaceId: 'ws_oagent' },
